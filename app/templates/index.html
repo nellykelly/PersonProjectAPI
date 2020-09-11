@@ -7,7 +7,7 @@
     <meta name="description" content="">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="manifest" href="site.webmanifest">
-    <link rel="shortcut icon" type="image/x-icon" href="assets/img/favicon.ico">
+    <link rel="shortcut icon" type="image/x-icon" href="{{ url_for('static', filename='assets/img/favicon.ico') }}">
 
     <!-- CSS here -->
     <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
@@ -49,8 +49,8 @@
         <div class="preloader d-flex align-items-center justify-content-center">
             <div class="preloader-inner position-relative">
                 <div class="preloader-circle"></div>
-                <div class="preloader-img pere-text">
-                    <img src="assets/img/logo/loder.png" alt="">
+                <div class="preloader-img pere-text">   
+                    <img src="{{url_for('static', filename='assets/img/logo/loder.png')}}" >
                 </div>
             </div>
         </div>
@@ -66,7 +66,7 @@
                             <!-- Logo -->
                             <div class="col-xl-2 col-lg-2">
                                 <div class="logo">
-                                    <a href="index.html"><img src="assets/img/logo/logo.png" alt=""></a>
+                                    <a href="index.html"><img src="{{url_for('static', filename='assets/img/logo/logo.png')}}" ></a>
                                 </div>
                             </div>
                             <div class="col-xl-10 col-lg-10">
@@ -132,7 +132,7 @@
                     <div class="col-lg-4 col-md-6 col-sm-8">
                         <div class="single-services mb-30">
                             <div class="features-icon">
-                                <img src="assets/img/icon/icon1.svg" alt="">
+                                <a href="index.html"><img src="{{url_for('static', filename='assets/img/icon/icon1.svg')}}" ></a>
                             </div>
                             <div class="features-caption">
                                 <h3>0 API's Intigrated</h3>
@@ -143,7 +143,7 @@
                     <div class="col-lg-4 col-md-6 col-sm-8">
                         <div class="single-services mb-30">
                             <div class="features-icon">
-                                <img src="assets/img/icon/icon2.svg" alt="">
+                                <img src="{{url_for('static', filename='assets/img/icon/icon2.svg')}}" alt="">
                             </div>
                             <div class="features-caption">
                                 <h3>Built for use</h3>
@@ -154,7 +154,7 @@
                     <div class="col-lg-4 col-md-6 col-sm-8">
                         <div class="single-services mb-30">
                             <div class="features-icon">
-                                <img src="assets/img/icon/icon3.svg" alt="">
+                                <img src="{{url_for('static', filename='assets/img/icon/icon3.svg')}}" alt="">
                             </div>
                             <div class="features-caption">
                                 <h3>In Progress</h3>
@@ -180,7 +180,7 @@
                     <div class="properties pb-20">
                         <div class="properties__card">
                             <div class="properties__img overlay1">
-                                <a href="#"><img src="assets/img/gallery/featured1.png" alt=""></a>
+                                <a href="#"><img src="{{url_for('static', filename='assets/img/gallery/featured1.png')}}" alt=""></a>
                             </div>
                             <div class="properties__caption">
                                 <p>User Experience</p>
@@ -213,7 +213,7 @@
                     <div class="properties pb-20">
                         <div class="properties__card">
                             <div class="properties__img overlay1">
-                                <a href="#"><img src="assets/img/gallery/featured2.png" alt=""></a>
+                                <a href="#"><img src="{{url_for('static', filename='assets/img/gallery/featured2.png')}}" alt=""></a>
                             </div>
                             <div class="properties__caption">
                                 <p>User Experience</p>
@@ -244,7 +244,7 @@
                     <div class="properties pb-20">
                         <div class="properties__card">
                             <div class="properties__img overlay1">
-                                <a href="#"><img src="assets/img/gallery/featured3.png" alt=""></a>
+                                <a href="#"><img src="{{url_for('static', filename='assets/img/gallery/featured3.png')}}" alt=""></a>
                             </div>
                             <div class="properties__caption">
                                 <p>User Experience</p>
@@ -277,7 +277,7 @@
                     <div class="properties pb-20">
                         <div class="properties__card">
                             <div class="properties__img overlay1">
-                                <a href="#"><img src="assets/img/gallery/featured2.png" alt=""></a>
+                                <a href="#"><img src="{{url_for('static', filename='assets/img/gallery/featured2.png')}}" alt=""></a>
                             </div>
                             <div class="properties__caption">
                                 <p>User Experience</p>
@@ -315,7 +315,7 @@
             <div class="support-wrapper align-items-center">
                 <div class="left-content1">
                     <div class="about-icon">
-                        <img src="assets/img/icon/about.svg" alt="">
+                        <img src="{{url_for('static', filename='assets/img/icon/about.svg')}}" alt="">
                     </div>
                     <!-- section tittle -->
                     <div class="section-tittle section-tittle2 mb-55">
@@ -328,7 +328,7 @@
                     </div>
                     <div class="single-features">
                         <div class="features-icon">
-                            <img src="assets/img/icon/right-icon.svg" alt="">
+                            <img src="{{url_for('static', filename='assets/img/icon/right-icon.svg')}}" alt="">
                         </div>
                         <div class="features-caption">
                             <p>Techniques to engage effectively with vulnerable children and young people.</p>
@@ -336,7 +336,7 @@
                     </div>
                     <div class="single-features">
                         <div class="features-icon">
-                            <img src="assets/img/icon/right-icon.svg" alt="">
+                            <img src="{{url_for('static', filename='assets/img/icon/right-icon.svg')}}" alt="">
                         </div>
                         <div class="features-caption">
                             <p>Join millions of people from around the world  learning together.</p>
@@ -345,7 +345,7 @@
 
                     <div class="single-features">
                         <div class="features-icon">
-                            <img src="assets/img/icon/right-icon.svg" alt="">
+                            <img src="{{url_for('static', filename='assets/img/icon/right-icon.svg')}}" alt="">
                         </div>
                         <div class="features-caption">
                             <p>Join millions of people from around the world learning together. Online learning is as easy and natural.</p>
@@ -355,7 +355,7 @@
                 <div class="right-content1">
                     <!-- img -->
                     <div class="right-img">
-                        <img src="assets/img/gallery/about.png" alt="">
+                        <img src="{{url_for('static', filename='assets/img/gallery/about2.png')}}" alt="">
 
                         <div class="video-icon" >
                             <a class="popup-video btn-icon" href="https://www.youtube.com/watch?v=up68UAfH0d0"><i class="fas fa-play"></i></a>
@@ -379,7 +379,7 @@
                     <div class="col-lg-3 col-md-4 col-sm-6">
                         <div class="single-topic text-center mb-30">
                             <div class="topic-img">
-                                <img src="assets/img/gallery/topic1.png" alt="">
+                                <img src="{{url_for('static', filename='assets/img/gallery/topic1.png')}}" alt="">
                                 <div class="topic-content-box">
                                     <div class="topic-content">
                                         <h3><a href="#">Programing</a></h3>
@@ -391,7 +391,7 @@
                     <div class="col-lg-3 col-md-4 col-sm-6">
                         <div class="single-topic text-center mb-30">
                             <div class="topic-img">
-                                <img src="assets/img/gallery/topic2.png" alt="">
+                                <img src="{{url_for('static', filename='assets/img/gallery/topic2.png')}}" alt="">
                                 <div class="topic-content-box">
                                     <div class="topic-content">
                                         <h3><a href="#">Programing</a></h3>
@@ -403,7 +403,7 @@
                     <div class="col-lg-3 col-md-4 col-sm-6">
                         <div class="single-topic text-center mb-30">
                             <div class="topic-img">
-                                <img src="assets/img/gallery/topic3.png" alt="">
+                                <img src="{{url_for('static', filename='assets/img/gallery/topic3.png')}}" alt="">
                                 <div class="topic-content-box">
                                     <div class="topic-content">
                                         <h3><a href="#">Programing</a></h3>
@@ -415,7 +415,7 @@
                     <div class="col-lg-3 col-md-4 col-sm-6">
                         <div class="single-topic text-center mb-30">
                             <div class="topic-img">
-                                <img src="assets/img/gallery/topic4.png" alt="">
+                                <img src="{{url_for('static', filename='assets/img/gallery/topic4.png')}}" alt="">
                                 <div class="topic-content-box">
                                     <div class="topic-content">
                                         <h3><a href="#">Programing</a></h3>
@@ -427,7 +427,7 @@
                     <div class="col-lg-3 col-md-4 col-sm-6">
                         <div class="single-topic text-center mb-30">
                             <div class="topic-img">
-                                <img src="assets/img/gallery/topic5.png" alt="">
+                                <img src="{{url_for('static', filename='assets/img/gallery/topic5.png')}}" alt="">
                                 <div class="topic-content-box">
                                     <div class="topic-content">
                                         <h3><a href="#">Programing</a></h3>
@@ -439,7 +439,7 @@
                     <div class="col-lg-3 col-md-4 col-sm-6">
                         <div class="single-topic text-center mb-30">
                             <div class="topic-img">
-                                <img src="assets/img/gallery/topic6.png" alt="">
+                                <img src="{{url_for('static', filename='assets/img/gallery/topic6.png')}}" alt="">
                                 <div class="topic-content-box">
                                     <div class="topic-content">
                                         <h3><a href="#">Programing</a></h3>
@@ -451,7 +451,7 @@
                     <div class="col-lg-3 col-md-4 col-sm-6">
                         <div class="single-topic text-center mb-30">
                             <div class="topic-img">
-                                <img src="assets/img/gallery/topic7.png" alt="">
+                                <img src="{{url_for('static', filename='assets/img/gallery/topic7.png')}}" alt="">
                                 <div class="topic-content-box">
                                     <div class="topic-content">
                                         <h3><a href="#">Programing</a></h3>
@@ -463,7 +463,7 @@
                     <div class="col-lg-3 col-md-4 col-sm-6">
                         <div class="single-topic text-center mb-30">
                             <div class="topic-img">
-                                <img src="assets/img/gallery/topic8.png" alt="">
+                                <img src="{{url_for('static', filename='assets/img/gallery/topic8.png')}}" alt="">
                                 <div class="topic-content-box">
                                     <div class="topic-content">
                                         <h3><a href="#">Programing</a></h3>
@@ -489,7 +489,7 @@
                 <div class="right-content3">
                     <!-- img -->
                     <div class="right-img">
-                        <img src="assets/img/gallery/about3.png" alt="">
+                        <img src="{{url_for('static', filename='assets/img/gallery/about3.png')}}" alt="">
                     </div>
                 </div>
                 <div class="left-content3">
@@ -501,7 +501,7 @@
                     </div>
                     <div class="single-features">
                         <div class="features-icon">
-                            <img src="assets/img/icon/right-icon.svg" alt="">
+                            <img src="{{url_for('static', filename='assets/img/icon/right-icon.svg')}}" alt="">
                         </div>
                         <div class="features-caption">
                             <p>Techniques to engage effectively with vulnerable children and young people.</p>
@@ -509,7 +509,7 @@
                     </div>
                     <div class="single-features">
                         <div class="features-icon">
-                            <img src="assets/img/icon/right-icon.svg" alt="">
+                            <img src="{{url_for('static', filename='assets/img/icon/right-icon.svg')}}" alt="">
                         </div>
                         <div class="features-caption">
                             <p>Join millions of people from around the world
@@ -518,7 +518,7 @@
                     </div>
                     <div class="single-features">
                         <div class="features-icon">
-                            <img src="assets/img/icon/right-icon.svg" alt="">
+                            <img src="{{url_for('static', filename='assets/img/icon/right-icon.svg')}}" alt="">
                         </div>
                         <div class="features-caption">
                             <p>Join millions of people from around the world learning together.
@@ -595,7 +595,7 @@
                 <div class="right-content2">
                     <!-- img -->
                     <div class="right-img">
-                        <img src="assets/img/gallery/about2.png" alt="">
+                        <img src="{{url_for('static', filename='assets/img/gallery/about2.png')}}" alt="">
                     </div>
                 </div>
                 <div class="left-content2">
@@ -626,7 +626,7 @@
                             <div class="single-footer-caption mb-30">
                                 <!-- logo -->
                                 <div class="footer-logo mb-25">
-                                    <a href="index.html"><img src="assets/img/logo/logo2_footer.png" alt=""></a>
+                                    <a href="index.html"><img src="{{url_for('static', filename='assets/img/logo/logo2_footer.png')}}" alt=""></a>
                                 </div>
                                 <div class="footer-tittle">
                                     <div class="footer-pera">
@@ -711,7 +711,7 @@
     <a title="Go to Top" href="#"> <i class="fas fa-level-up-alt"></i></a>
 </div>
 
-<script src="{{url_for('static', filename='main_scripts.js')}}"></script>
+
 <!-- JS here -->
 <script src="{{url_for('static', filename='./assets/js/vendor/modernizr-3.5.0.min.js')}}"></script>
 <!-- <script src="./assets/js/vendor/modernizr-3.5.0.min.js"></script>
@@ -725,37 +725,38 @@
 <script src="{{url_for('static', filename='./assets/js/jquery.slicknav.min.js')}}"></script>
 
 <!-- Jquery Slick , Owl-Carousel Plugins -->
-<script src="./assets/js/owl.carousel.min.js"></script>
-<script src="./assets/js/slick.min.js"></script>
+<script src="{{url_for('static', filename='./assets/js/owl.carousel.min.js')}}"></script>
+<script src="{{url_for('static', filename='./assets/js/slick.min.js')}}"></script>
+
 <!-- One Page, Animated-HeadLin -->
-<script src="./assets/js/wow.min.js"></script>
-<script src="./assets/js/animated.headline.js"></script>
-<script src="./assets/js/jquery.magnific-popup.js"></script>
+<script src="{{url_for('static', filename='./assets/js/wow.min.js')}}"></script>
+<script src="{{url_for('static', filename='./assets/js/animated.headline.js')}}"></script>
+<script src="{{url_for('static', filename='./assets/js/jquery.magnific-popup.js')}}"></script>
 
 <!-- Date Picker -->
-<script src="./assets/js/gijgo.min.js"></script>
+<script src="{{url_for('static', filename='./assets/js/gijgo.min.js')}}"></script>
 <!-- Nice-select, sticky -->
-<script src="./assets/js/jquery.nice-select.min.js"></script>
-<script src="./assets/js/jquery.sticky.js"></script>
+<script src="{{url_for('static', filename='./assets/js/jquery.nice-select.min.js')}}"></script>
+<script src="{{url_for('static', filename='./assets/js/jquery.sticky.js')}}"></script>
 <!-- Progress -->
-<script src="./assets/js/jquery.barfiller.js"></script>
+<script src="{{url_for('static', filename='./assets/js/jquery.barfiller.js')}}"></script>
 
 <!-- counter , waypoint,Hover Direction -->
-<script src="./assets/js/jquery.counterup.min.js"></script>
-<script src="./assets/js/waypoints.min.js"></script>
-<script src="./assets/js/jquery.countdown.min.js"></script>
-<script src="./assets/js/hover-direction-snake.min.js"></script>
+<script src="{{url_for('static', filename='./assets/js/jquery.counterup.min.js')}}"></script>
+<script src="{{url_for('static', filename='./assets/js/waypoints.min.js')}}"></script>
+<script src="{{url_for('static', filename='./assets/js/jquery.countdown.min.js')}}"></script>
+<script src="{{url_for('static', filename='./assets/js/hover-direction-snake.min.js')}}"></script>
 
 <!-- contact js -->
-<script src="./assets/js/contact.js"></script>
-<script src="./assets/js/jquery.form.js"></script>
-<script src="./assets/js/jquery.validate.min.js"></script>
-<script src="./assets/js/mail-script.js"></script>
-<script src="./assets/js/jquery.ajaxchimp.min.js"></script>
+<script src="{{url_for('static', filename='./assets/js/contact.js')}}"></script>
+<script src="{{url_for('static', filename='./assets/js/jquery.form.js')}}"></script>
+<script src="{{url_for('static', filename='./assets/js/jquery.validate.min.js')}}"></script>
+<script src="{{url_for('static', filename='./assets/js/mail-script.js')}}"></script>
+<script src="{{url_for('static', filename='./assets/js/jquery.ajaxchimp.min.js')}}"></script>
 
-<!-- Jquery Plugins, main Jquery -->	
-<script src="./assets/js/plugins.js"></script>
-<script src="./assets/js/main.js"></script>
+<!-- Jquery Plugins, main Jquery -->
+<script src="{{url_for('static', filename='./assets/js/plugins.js')}}"></script>
+<script src="{{url_for('static', filename='./assets/js/main.js')}}"></script>	
 
 </body>
 </html>
