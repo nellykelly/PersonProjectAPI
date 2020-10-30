@@ -51,7 +51,7 @@ class calender:
             start = event['start'].get('dateTime', event['start'].get('date'))
             print(start, event['summary'])
 
-    def CreateEvent(self,Title,StartTime,EndTime,StartDate,EndDate,Emails, Location, details):
+    def CreateEvent(Title,StartTime,EndTime,StartDate,EndDate,Emails, Location, details):
         """Shows basic usage of the Google Calendar API.
         Prints the start and name of the next 10 events on the user's calendar.
         """
@@ -77,6 +77,9 @@ class calender:
         service = build('calendar', 'v3', credentials=creds)
 
         #2015-05-28T17:00:00-07:00
+
+        begin_timeF = StartDate+ "T07:00:00-" + StartTime
+        end_timeF = EndDate + "T07:00:00-" + EndTime
 
         event = {
           'summary': '%s' % Title,
