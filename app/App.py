@@ -1,6 +1,8 @@
 from flask import Flask, render_template, request, redirect
 from GoogleCal import *
 import GoogleCal
+from yahoo import yfintut
+import yahoo
 
 #set FLASK_APP=App.py
 
@@ -38,3 +40,32 @@ def GoogleCalender():
 		return redirect(request.url)
 	return render_template('GoogleCalander.html')
 
+# @app.route('/yahoof')
+# def yahoof():
+
+# 	return render_template('yahoof.html', myfunc=yfintut )
+
+@app.route('/yahoof', methods=["GET", "POST"])
+def yahoof():
+	if request.method == "POST":
+		req = request.form
+		print(req)
+		print("--------------------------")
+		Company = req.get("Company")
+		print("--------------------------")
+		
+		# temp.append(investment)
+		# temp.append(priceOpen)
+		# temp.append(priceHigh)
+		# temp.append(priceLow)
+		# temp.append(pricelast)
+		#+temp.append(today)
+
+		Run = True
+		Data = yahoo.yfintut(Company)
+		for i in Data:
+			print(i)
+
+		return render_template('yahoof.html', run = Run, CompanyName=Data[0], Open=Data[1], High=Data[2],Close=Data[3], Low=Data[4], Date=Data[5])
+
+	return render_template('yahoof.html')

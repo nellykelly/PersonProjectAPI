@@ -92,8 +92,8 @@
                         <div class="row">
                             <div class="col-xl-6 col-lg-7 col-md-12">
                                 <div class="hero__caption">
-                                    <h1 data-animation="fadeInLeft" data-delay="0.2s">Google Calander<br> API</h1>
-                                    <p data-animation="fadeInLeft" data-delay="0.4s">This API will create a event on my calender. Please dont create more then 1 event</p>
+                                    <h1 data-animation="fadeInLeft" data-delay="0.2s">Yahoo Finance<br> API</h1>
+                                    <p data-animation="fadeInLeft" data-delay="0.4s">This API allows you to search and find the last Stock values of a company</p>
                                     <!-- <a href="#" class="btn hero-btn" data-animation="fadeInLeft" data-delay="0.7s">Join for Free</a> -->
                                 </div>
                             </div>
@@ -103,18 +103,46 @@
             </div>
   </section>
   <section>
-    <div class="center">
-        <p align="center">
-        <iframe src="https://calendar.google.com/calendar/embed?height=600&amp;wkst=1&amp;bgcolor=%234285F4&amp;ctz=America%2FLos_Angeles&amp;src=bmljZXBlcnNvbjc4N0BnbWFpbC5jb20&amp;src=YWRkcmVzc2Jvb2sjY29udGFjdHNAZ3JvdXAudi5jYWxlbmRhci5nb29nbGUuY29t&amp;src=ajd0YzJ0NG03cnZ0ZTZuZWdtbTFqYWo1dWNAZ3JvdXAuY2FsZW5kYXIuZ29vZ2xlLmNvbQ&amp;src=dXUwcnY0bW1hcHQzdWkza2l2cWw5M2RnYzRAZ3JvdXAuY2FsZW5kYXIuZ29vZ2xlLmNvbQ&amp;src=ZW4udXNhI2hvbGlkYXlAZ3JvdXAudi5jYWxlbmRhci5nb29nbGUuY29t&amp;src=a29za2VsYS5uZWxzb25AZ21haWwuY29t&amp;color=%237986CB&amp;color=%238E24AA&amp;color=%23AD1457&amp;color=%23F6BF26&amp;color=%2333B679&amp;color=%23F6BF26" style="border:solid 1px #777" width="800" height="600" frameborder="0" scrolling="no"></iframe>
-      </p>
+    <form name="search" action="/yahoof" method="POST">
+      Stock Symbol: <input type="text" name="Company">
+
+      <input type="submit" value="Submit">
+    </form>
+
+  </section>
+  <br>
+  <section>
+    <div>
+      {% if run %}
+      <h2> {{ CompanyName }}</h2>
+      <h2> Date: {{ Date}}</h2>
+      <div class="row1">
+        <div class="column1" style="background-color:#aaa;">
+          <h2>Open</h2>
+          <p>{{Open}}</p>
+        </div>
+        <div class="column1" style="background-color:#bbb;">
+          <h2>High</h2>
+          <p>{{High}}</p>
+        </div>
+        <div class="column1" style="background-color:#ccc;">
+          <h2>Low</h2>
+          <p>{{Low}}</p>
+        </div>
+        <div class="column1" style="background-color:#ccc;">
+          <h2>Close</h2>
+          <p>{{Close}}</p>
+        </div>
+      </div>
+      <p></p>
+      {% endif %}
     </div>
   </section>
-    <p>#2015-05-28T17:00:00-07:00</p>
     <div class="support-wrapper align-items-center">
        <div class="logo">
         <a href="index.html"><img src="{{url_for('static', filename='assets/img/logo/logo.png')}}" ></a>
         </div>
-      <div class="mt-30">
+<!--       <div class="mt-30">
         <form name="search" action="/googlecalender" method="post">
           Title: <input type="text" name="title">
           Location: <input type="text" name="location">
@@ -127,7 +155,7 @@
           <input type="submit" value="Submit">
         </form>
       </div>
-    </div>
+    </div> -->
     <!-- Contact Area End -->
 </main>
 <footer>
