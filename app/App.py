@@ -21,6 +21,10 @@ def index():
 def course():
 	return render_template('courses.html')
 
+@app.route('/personal')
+def personal():
+	return render_template('indexp.html')
+
 @app.route('/googlecalender', methods=["GET", "POST"])
 def GoogleCalender():
 	if request.method == "POST":

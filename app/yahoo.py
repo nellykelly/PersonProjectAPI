@@ -1,5 +1,5 @@
 import platform
-import yfinance as yf
+#import yfinance as yf
 import datetime
 
 def yfintut(tickersymbol):
