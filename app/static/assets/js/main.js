@@ -2,7 +2,7 @@
   { "use strict"
   
 
-/* 1. Proloder */
+/* 1. Proloder  This file is for the profile only*/
     $(window).on('load', function () {
       $('#preloader-active').delay(450).fadeOut('slow');
       $('body').delay(450).css({
