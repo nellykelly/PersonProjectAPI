@@ -3,15 +3,49 @@ from GoogleCal import *
 import GoogleCal
 from yahoo import yfintut
 import yahoo
+from flask_sqlalchemy import SQLAlchemy
+from datetime import datetime
 
 #set FLASK_APP=App.py
 
 app = Flask(__name__)
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///blog.db"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+db = SQLAlchemy(app)
 
 @app.route('/name')
 def test(name):
 	# return '<h1> Hello World {}!</h1>'.format(name)
 	return '<h1>	Hello Nelson</h1>'
+
+
+@app.route("/blog")
+def blog():
+    posts = BlogPost.query.order_by(BlogPost.created.desc()).all()
+    return render_template("blog.html", posts=posts)
+
+
+@app.route("/blog/<int:post_id>")
+def blog_details(post_id):
+    post = BlogPost.query.get_or_404(post_id)
+    return render_template("blog_details.html", post=post)
+
+
+@app.route("/create-post", methods=["GET", "POST"])
+def create_post():
+    if request.method == "POST":
+        title = request.form.get("title")
+        content = request.form.get("content")
+
+        new_post = BlogPost(title=title, content=content)
+        db.session.add(new_post)
+        db.session.commit()
+
+        return redirect("/blog")
+
+    return render_template("create_post.html")
+
 
 @app.route('/')
 def index():
@@ -73,3 +107,15 @@ def yahoof():
 		return render_template('yahoof.html', run = Run, CompanyName=Data[0], Open=Data[1], High=Data[2],Close=Data[3], Low=Data[4], Date=Data[5])
 
 	return render_template('yahoof.html')
+
+class BlogPost(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(200), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    created = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+if __name__ == "__main__":
+    with app.app_context():
+        db.create_all()
+    app.run(debug=True)
