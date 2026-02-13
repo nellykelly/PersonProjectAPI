@@ -83,6 +83,14 @@
 </div>
 <!-- Header End -->
 <main>
+   <h1>{{ post.title }}</h1>
+   <p>{{ post.created.strftime("%Y-%m-%d") }}</p>
+
+   <div>
+       {{ post.content }}
+   </div>
+
+<a href="/blog">Back to blog</a>
    <!--? slider Area Start-->
    <section class="slider-area slider-area2">
      <div class="slider-active">
