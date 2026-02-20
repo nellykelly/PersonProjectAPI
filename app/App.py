@@ -91,13 +91,6 @@ def yahoof():
 		print("--------------------------")
 		Company = req.get("Company")
 		print("--------------------------")
-		
-		# temp.append(investment)
-		# temp.append(priceOpen)
-		# temp.append(priceHigh)
-		# temp.append(priceLow)
-		# temp.append(pricelast)
-		#+temp.append(today)
 
 		Run = True
 		Data = yahoo.yfintut(Company)
