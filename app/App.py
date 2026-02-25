@@ -8,6 +8,8 @@ from datetime import datetime
 
 #set FLASK_APP=App.py
 
+#https://www.notion.so/b591889f468443e3ba9f551516820c6b?v=400448ca9a2a457a8e93e4f15835303b
+
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///blog.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
