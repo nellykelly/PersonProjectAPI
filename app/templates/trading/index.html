@@ -12,7 +12,10 @@
         Prices come from yfinance and are typically delayed ~15 minutes. Nothing here is financial advice.
     </div>
 
-    <p><a class="button small" href="{{ url_for('trading.watchlist_view') }}">Live Watchlist &rarr;</a></p>
+    <p>
+        <a class="button small" href="{{ url_for('trading.watchlist_view') }}">Live Watchlist &rarr;</a>
+        <a class="button small" href="{{ url_for('trading.risk_dashboard_view') }}">Risk Dashboard &rarr;</a>
+    </p>
 
     <div class="section-title">
         <h2>Open a position</h2>

@@ -5,6 +5,7 @@
   "use strict";
 
   var API_BASE = "/projects/trading-simulator/api";
+  var TRADING_BASE = "/projects/trading-simulator";
 
   function initOpenForm() {
     var kindSelect = document.getElementById("kind");
@@ -170,9 +171,107 @@
     }
   }
 
+  // position -> risk request -> report/live feed: a risk request is a
+  // real POST that creates a persisted, queryable row (see
+  // app/services/risk_engine.py), not just a number computed inline for
+  // this one page render -- this panel is a thin client over that API,
+  // not where the actual risk logic lives.
+  function initRiskPanel() {
+    var panel = document.getElementById("risk-panel");
+    if (!panel) return;
+    var positionId = panel.dataset.positionId;
+    var base = TRADING_BASE + "/positions/" + positionId;
+    var historyCount = 0;
+    var eventSource = null;
+
+    function fmt(n, digits) {
+      return n == null ? "n/a" : Number(n).toFixed(digits == null ? 2 : digits);
+    }
+
+    function renderResult(result) {
+      document.getElementById("risk-result-grid").style.display = "";
+      document.getElementById("risk-pv").textContent = "$" + fmt(result.pv);
+      document.getElementById("risk-pnl").textContent = "$" + fmt(result.pnl);
+      document.getElementById("risk-delta").textContent = fmt(result.delta);
+      document.getElementById("risk-gamma").textContent = fmt(result.gamma, 3);
+      document.getElementById("risk-scenario-gamma").textContent = fmt(result.scenario_gamma, 3);
+      document.getElementById("risk-theta").textContent = fmt(result.theta);
+      document.getElementById("risk-vega").textContent = fmt(result.vega);
+      document.getElementById("risk-ir-delta").textContent = fmt(result.ir_delta);
+      document.getElementById("risk-ir-vega").textContent = result.ir_vega == null ? "n/m (not modeled)" : fmt(result.ir_vega);
+    }
+
+    function appendHistoryRow(riskRequest) {
+      var emptyState = document.getElementById("risk-history-empty");
+      if (emptyState) emptyState.style.display = "none";
+      historyCount++;
+      var row = document.createElement("tr");
+      var scenarioText = riskRequest.scenario
+        ? "spot " + (riskRequest.scenario.spot_shock_pct * 100).toFixed(0) + "%, vol " + (riskRequest.scenario.vol_shock_pts * 100).toFixed(0) + "pt"
+        : "as-of-now";
+      row.innerHTML =
+        "<td>" + historyCount + "</td>" +
+        "<td class='muted'>" + new Date(riskRequest.requested_at).toLocaleTimeString() + "</td>" +
+        "<td>" + scenarioText + "</td>" +
+        "<td class='mono'>$" + fmt(riskRequest.result.underlying_price_used) + "</td>" +
+        "<td class='mono'>$" + fmt(riskRequest.result.pnl) + "</td>";
+      document.getElementById("risk-history-body").insertBefore(row, document.getElementById("risk-history-body").firstChild);
+    }
+
+    function submitRiskRequest(body) {
+      fetch(base + "/risk-requests", { method: "POST", body: body ? new URLSearchParams(body) : undefined })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (!data.ok) return;
+          renderResult(data.risk_request.result);
+          appendHistoryRow(data.risk_request);
+        })
+        .catch(function () {});
+    }
+
+    document.getElementById("risk-request-now").addEventListener("click", function () {
+      submitRiskRequest(null);
+    });
+
+    document.getElementById("risk-request-scenario").addEventListener("click", function () {
+      var spotPct = parseFloat(document.getElementById("spot-shock-pct").value || "0") / 100;
+      var volPts = parseFloat(document.getElementById("vol-shock-pts").value || "0") / 100;
+      submitRiskRequest({ spot_shock_pct: spotPct, vol_shock_pts: volPts });
+    });
+
+    document.getElementById("risk-feed-toggle").addEventListener("click", function () {
+      var btn = this;
+      var statusEl = document.getElementById("risk-feed-status");
+      if (eventSource) {
+        eventSource.close();
+        eventSource = null;
+        btn.textContent = "Start live risk feed";
+        statusEl.textContent = "";
+        return;
+      }
+      eventSource = new EventSource(API_BASE + "/positions/" + positionId + "/risk-feed");
+      btn.textContent = "Stop live risk feed";
+      statusEl.textContent = "connecting...";
+      eventSource.onmessage = function (event) {
+        var data = JSON.parse(event.data);
+        if (data.error) {
+          statusEl.textContent = data.error;
+          return;
+        }
+        statusEl.textContent = "live -- last tick " + new Date().toLocaleTimeString();
+        renderResult(data.result);
+        appendHistoryRow(data);
+      };
+      eventSource.onerror = function () {
+        statusEl.textContent = "reconnecting...";
+      };
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     initOpenForm();
     initAutoRefresh();
     initPositionDetail();
+    initRiskPanel();
   });
 })();

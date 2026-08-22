@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Production Town{% endblock %}
+{% block content_class %}wide{% endblock %}
+
+{% block content %}
+<section>
+    <p><a href="{{ url_for('pipeline_world.index') }}">&larr; Back to Pipeline World</a></p>
+
+    <div class="section-title">
+        <h1 class="major">Production Town</h1>
+        <span class="badge badge-closed" id="live-indicator">○ Connecting...</span>
+    </div>
+
+    <p class="muted">
+        Every character that has cleared all 7 pipeline stages (Sanitize, Security Scan, Test: Uniqueness,
+        Test: Profanity, Build, Deploy, Verify) lives here. New arrivals appear the instant their Deploy
+        stage passes -- watch this page while someone joins from
+        <a href="{{ url_for('pipeline_world.index') }}">Pipeline World</a> to see it happen live.
+        <span id="population-count">{{ live_world | length }}</span> character(s) currently live.
+    </p>
+
+    <div class="chart-wrapper" style="padding:0; overflow:hidden;">
+        <canvas id="town-canvas" width="1000" height="600" style="width:100%; height:auto; display:block; cursor:pointer;"></canvas>
+    </div>
+
+    <div id="character-detail" class="empty-state" style="margin-top:1.5rem;">
+        Click a character to see details.
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+  window.PRODUCTION_TOWN_BOUNDS = {{ production_town_bounds | tojson }};
+  window.INITIAL_LIVE_WORLD = {{ live_world | tojson }};
+  window.APPEARANCE_COLORS = {{ appearance_options | tojson }};
+  window.HEAD_TYPE_OPTIONS = {{ head_type_options | tojson }};
+  window.BODY_TYPE_OPTIONS = {{ body_type_options | tojson }};
+  window.HAND_TYPE_OPTIONS = {{ hand_type_options | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/pipeline_town.js') }}"></script>
+{% endblock %}

@@ -9,3 +9,16 @@ yfinance>=0.2.40,<0.3.0
 requests>=2.32,<3.0
 python-dotenv>=1.0,<2.0
 gunicorn>=22.0,<23.0
+
+# Pipeline World / SRE Infra Layer
+redis>=5.0,<9.0
+rq>=1.16,<3.0
+Flask-SocketIO>=5.3,<6.0
+psycopg2-binary>=2.9,<3.0
+Flask-Migrate>=4.0,<5.0
+
+# Real runtime dependency, not dev-only: app/services/queue.py falls back
+# to this whenever REDIS_URL is unset (the documented no-Docker dev path,
+# and every SSE endpoint's concurrency cap in sse_limits.py also needs a
+# Redis connection) -- a production install without it crashes on boot.
+fakeredis>=2.20,<3.0

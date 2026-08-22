@@ -23,6 +23,25 @@ PROJECTS = [
         "icon": "assets/img/icons/qr-scorer.svg",
     },
     {
+        "slug": "pipeline-world",
+        "title": "Pipeline World",
+        "blurb": "Submit a character and watch it move through a real, queued CI/CD-style "
+        "pipeline (validate, test, build, deploy) live in a top-down world -- with a "
+        "genuine SQL analytics page over every run logged.",
+        "endpoint": "pipeline_world.index",
+        "tags": ["RQ + Redis", "Socket.IO", "Postgres", "Window Functions"],
+        "icon": "assets/img/icons/pipeline-world.svg",
+    },
+    {
+        "slug": "sre-infra",
+        "title": "SRE Infra Layer",
+        "blurb": "The Redis-backed queue, cache-aside world state, and per-IP rate limiting "
+        "underneath Pipeline World -- written up and dashboarded as its own piece.",
+        "endpoint": "sre_infra.index",
+        "tags": ["Redis", "Cache-Aside", "Rate Limiting"],
+        "icon": "assets/img/icons/sre-infra.svg",
+    },
+    {
         "slug": "network-sniffer",
         "title": "Network Sniffer",
         "blurb": "A live dashboard of this app's OWN network traffic -- every inbound "
@@ -34,7 +53,24 @@ PROJECTS = [
     },
 ]
 
+# Smaller, earlier projects -- not part of this site's live demos, just
+# named + linked for range (Rails/game-dev, not just Flask) and, in
+# Beeznest's case, concrete social proof (a placement).
+EARLIER_PROJECTS = [
+    {
+        "title": "Beeznest",
+        "blurb": "B2B networking platform built with Ruby on Rails + SQLite. "
+        "2nd place at StreetCode Accelerator Demo Day.",
+        "url": "https://github.com/nellykelly/BezzNest",
+    },
+    {
+        "title": "Timed-Squares",
+        "blurb": "Turn-based puzzle game built with JavaScript/Processing and Python/Pygame.",
+        "url": "http://tinyurl.com/nhsjcdh",
+    },
+]
+
 
 @bp.route("")
 def index():
-    return render_template("projects/index.html", projects=PROJECTS)
+    return render_template("projects/index.html", projects=PROJECTS, earlier_projects=EARLIER_PROJECTS)

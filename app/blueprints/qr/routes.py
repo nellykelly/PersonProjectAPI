@@ -1,6 +1,7 @@
 from flask import current_app, render_template, request
 
 from app.blueprints.qr import bp
+from app.extensions import limiter
 from app.services import backtest, edgar, market_data, quant_score
 
 
@@ -32,6 +33,7 @@ def _build_categories(report: dict) -> list[dict]:
 
 
 @bp.route("")
+@limiter.limit(lambda: current_app.config["QR_SCORE_RATE_LIMIT"])
 def index():
     ticker = (request.args.get("ticker") or "").strip().upper()
     report = None
@@ -60,6 +62,7 @@ def index():
 
 
 @bp.route("/backtest")
+@limiter.limit(lambda: current_app.config["QR_BACKTEST_RATE_LIMIT"])
 def backtest_view():
     years_ago = request.args.get("years_ago", "1")
     try:

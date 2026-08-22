@@ -1,8 +1,9 @@
 # Nelson Koskela -- Personal Site
 
-Personal portfolio site for Nelson Koskela, Software Engineer at JPMorgan Chase & Co.
-Built with Flask (blueprints, one per section/project), SQLite, and Docker, per
-[`docs/build-spec.md`](docs/build-spec.md).
+Personal portfolio site for Nelson Koskela, Software Engineer II at JPMorgan Chase & Co.,
+Corporate & Investment Banking. Built with Flask (blueprints, one per section/project),
+Docker, and (for Pipeline World) Redis + Postgres, per [`docs/build-spec.md`](docs/build-spec.md)
+and [`docs/build-spec-pipeline-world.md`](docs/build-spec-pipeline-world.md).
 
 - **GitHub:** https://github.com/nellykelly
 - **LinkedIn:** https://www.linkedin.com/in/nelson-k-70180a101
@@ -18,28 +19,33 @@ Built with Flask (blueprints, one per section/project), SQLite, and Docker, per
 |---|---|---|
 | Home | `/` | Intro + links to the rest of the site |
 | About | `/about` | Bio, resume download |
-| Projects | `/projects` | Landing page for the three projects below |
-| [Trading Simulator](app/blueprints/trading/README.md) | `/projects/trading-simulator` | Shared, anonymous public trade book -- open a simulated stock/option position and track PnL against live-polled `yfinance` data |
+| Projects | `/projects` | Landing page for the five projects below + an "Earlier Projects" archive |
+| [Trading Simulator](app/blueprints/trading/README.md) | `/projects/trading-simulator` | Shared, anonymous public trade book -- open a simulated stock/option position and track PnL against live-polled `yfinance` data; a live watchlist grid with a click-to-plot multi-stock chart |
 | [QR -- Quant Company Scorer](app/blueprints/qr/README.md) | `/projects/qr-quant-scraper` | Scores a company on valuation/leverage/growth/profitability from SEC EDGAR + market data, with a backtest module |
+| [Pipeline World](app/blueprints/pipeline_world/README.md) | `/projects/pipeline-world` | Submit a character, watch it move through a real, queued CI/CD-style pipeline live in a top-down world; a Postgres SQL analytics page over every run |
+| [SRE Infra Layer](app/blueprints/sre_infra/README.md) | `/projects/sre-infra` | The Redis queue/cache-aside/rate-limit infrastructure underneath Pipeline World, dashboarded |
 | [Network Sniffer](app/blueprints/sniffer/README.md) | `/projects/network-sniffer` | Live dashboard of this app's own inbound requests and outbound API calls |
 | Contact | `/contact` | Email / LinkedIn / GitHub |
 
 ## Tech stack
 
-Flask 3 (application-factory + blueprints), Flask-SQLAlchemy (SQLite), Flask-Limiter,
-`yfinance`, SEC EDGAR's public `data.sec.gov` API, vanilla JS + Chart.js (CDN) on the
-frontend, gunicorn + Docker for deployment. See [`requirements.txt`](requirements.txt).
+Flask 3 (application-factory + blueprints), Flask-SQLAlchemy, Flask-Limiter, Flask-SocketIO,
+RQ + Redis, Postgres (Pipeline World) / SQLite (everything else works against either),
+`yfinance`, SEC EDGAR's public `data.sec.gov` API, vanilla JS + Chart.js (CDN) + Socket.IO
+client (CDN) on the frontend, gunicorn + Docker for deployment. See
+[`requirements.txt`](requirements.txt).
 
 ## Running it
 
-### Docker (recommended)
+### Docker (recommended -- required for the full stack)
 
 ```bash
 cp .env.example .env   # fill in a real SECRET_KEY, etc.
 docker compose up --build
 ```
 
-Then visit http://localhost:8000.
+Then visit http://localhost:8000. This starts four services: `web`, `worker` (the RQ
+worker consuming Pipeline World's queue), `postgres`, and `redis`.
 
 ### Locally (no Docker)
 
@@ -54,27 +60,44 @@ flask --app wsgi run
 `gunicorn` (used by the Dockerfile) doesn't run on Windows -- use `flask --app wsgi run`
 or `python wsgi.py` for local Windows development instead.
 
+Without Docker, `REDIS_URL`/`DATABASE_URL` are unset, so Pipeline World falls back to an
+in-memory `fakeredis` instance with a worker thread inside the web process (still
+genuinely asynchronous -- see [`app/services/queue.py`](app/services/queue.py)) and
+SQLite. Everything works this way **except** `/projects/pipeline-world/pipeline-analytics`,
+which specifically requires a live Postgres connection (its SQL uses `DATE_TRUNC` and
+window functions) -- point `DATABASE_URL` at your own Postgres to exercise it locally, or
+just use Docker.
+
 ### Tests
 
 ```bash
 pytest
 ```
 
-All 34 tests run offline -- external calls (`yfinance`, SEC EDGAR) are monkeypatched in
-tests, since both are rate-limited/flaky on live, unauthenticated use and shouldn't gate CI.
+The full suite runs offline -- external calls (`yfinance`, SEC EDGAR) are monkeypatched,
+and Pipeline World's queue/cache run against `fakeredis` with RQ in synchronous mode, so
+a full character join runs to completion inline with no sleeps or polling. A handful of
+Postgres-specific analytics-correctness tests auto-skip here and run for real once
+pointed at a live Postgres (i.e. via `docker-compose`).
 
 ## Project structure
 
 ```
 app/                  Flask package (application factory in app/__init__.py)
-  blueprints/          main, about, contact, projects, trading, qr, sniffer
-  services/            market_data.py, pricing.py, edgar.py, quant_score.py, backtest.py, net_monitor.py
+  blueprints/          main, about, contact, projects, trading, qr, sniffer,
+                       pipeline_world, sre_infra
+  services/            market_data.py, pricing.py, edgar.py, quant_score.py, backtest.py,
+                       net_monitor.py, watchlist.py, validators.py, pipeline.py, queue.py,
+                       world_cache.py, analytics.py
   static/ templates/    Dark theme (HTML5 UP "Dimension", see below) + custom CSS/JS
 tests/                 pytest, one file per blueprint/service
-docs/                  build-spec.md (original spec), SECURITY-NOTE.md
+docs/                  build-spec.md, build-spec-pipeline-world.md (original specs), SECURITY-NOTE.md,
+                        INTERVIEW-NOTES.md (personal reference: decisions/tradeoffs/bugs worth
+                        discussing in an interview -- not linked from the live site)
 legacy/                Retired code from the original repo (blog, Google Calendar
                         integration, the licensed "pink" Colorlib template) -- kept for
                         history, not part of the running app. See legacy/README.md.
+worker.py              RQ worker entrypoint (its own container in docker-compose)
 ```
 
 ## Design
@@ -84,7 +107,8 @@ The dark, one-page "Dimension" template already in this repo
 `base.html` + per-blueprint templates, per the build spec's instruction to use the dark
 template and not the pink one (a separately *licensed* Colorlib education template that
 also lived in this repo -- see `legacy/README-colorlib-license.txt`). Design credit:
-[HTML5 UP](https://html5up.net) (Dimension, CCA 3.0).
+[HTML5 UP](https://html5up.net) (Dimension, CCA 3.0). Project icons are hand-drawn SVGs
+(`app/static/assets/img/icons/`), not stock art.
 
 ## Known local-environment quirk (not a code bug)
 
@@ -99,4 +123,5 @@ the graceful-degradation design called for in the build spec.
 ## Hosting
 
 Left open per the build spec -- config is 12-factor (env vars, no hardcoded provider
-assumptions), so Render, Fly.io, or a plain VPS all work without code changes.
+assumptions), so Render, Fly.io, or a plain VPS all work without code changes, as long as
+the host can also run the Postgres/Redis/worker services docker-compose defines.

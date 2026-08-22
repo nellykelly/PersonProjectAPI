@@ -1,69 +1,84 @@
 import json
 import queue
+import time
 from datetime import datetime
 
 from flask import Response, current_app, flash, jsonify, redirect, render_template, request, session, url_for
 
 from app.blueprints.trading import bp
 from app.extensions import db, limiter
-from app.models import Position, utcnow
-from app.services import market_data, pricing, watchlist
+from app.models import Leg, RiskRequest, Strategy, utcnow
+from app.services import instruments, market_data, pricing, risk_dashboard, risk_engine, sse_limits, watchlist
 from app.services.market_data import MarketDataError
 
 SSE_KEEPALIVE_SECONDS = 15
+RISK_FEED_INTERVAL_SECONDS = 10
 
 
 def _session_id() -> str:
     return session.get("session_id") or "anonymous"
 
 
-def _open_positions_count(session_id: str) -> int:
-    return Position.query.filter_by(session_id=session_id, status="open").count()
+def _open_strategies_count(session_id: str) -> int:
+    # The per-session cap is on booked *strategies* (what a visitor thinks
+    # of as "a position I opened"), not legs -- a multi-leg strategy still
+    # only counts once even though it holds several Leg rows.
+    return Strategy.query.filter_by(session_id=session_id, status="open").count()
 
 
-def _price_positions(positions: list[Position]) -> list[dict]:
+def _price_positions(legs: list[Leg]) -> list[dict]:
     quotes: dict[str, float | None] = {}
     rows = []
-    for position in positions:
-        if position.ticker not in quotes:
+    for leg in legs:
+        if leg.ticker not in quotes:
             try:
-                quotes[position.ticker] = market_data.get_last_price(position.ticker)
+                quotes[leg.ticker] = market_data.get_last_price(leg.ticker)
             except MarketDataError:
-                quotes[position.ticker] = None
+                quotes[leg.ticker] = None
 
-        underlying = quotes[position.ticker]
+        underlying = quotes[leg.ticker]
         pnl = None
+        greeks = None
         if underlying is not None:
             try:
                 pnl = pricing.compute_pnl(
-                    position.kind,
-                    position.quantity,
-                    position.entry_price,
+                    leg.kind,
+                    leg.signed_quantity,
+                    leg.entry_price,
                     underlying,
-                    strike=position.strike,
-                    expiry=position.expiry,
-                    entry_iv=position.entry_iv,
+                    strike=leg.strike,
+                    expiry=leg.expiry,
+                    entry_iv=leg.entry_iv,
                 )
             except Exception:
                 pnl = None
-        rows.append({"position": position, "underlying_price": underlying, "pnl": pnl})
+            try:
+                greeks = pricing.position_greeks(
+                    leg.kind,
+                    leg.signed_quantity,
+                    underlying,
+                    strike=leg.strike,
+                    expiry=leg.expiry,
+                    entry_iv=leg.entry_iv,
+                )
+            except Exception:
+                greeks = None
+        rows.append({"position": leg, "underlying_price": underlying, "pnl": pnl, "greeks": greeks})
     return rows
 
 
 @bp.route("")
 def index():
-    open_positions = Position.query.filter_by(status="open").order_by(Position.opened_at.desc()).all()
-    closed_positions = (
-        Position.query.filter_by(status="closed").order_by(Position.closed_at.desc()).limit(20).all()
-    )
+    open_legs = Leg.query.filter_by(status="open").order_by(Leg.opened_at.desc()).all()
+    closed_legs = Leg.query.filter_by(status="closed").order_by(Leg.closed_at.desc()).limit(20).all()
 
     return render_template(
         "trading/index.html",
-        rows=_price_positions(open_positions),
-        closed_positions=closed_positions,
+        rows=_price_positions(open_legs),
+        closed_positions=closed_legs,
         whitelist=current_app.config["TICKER_WHITELIST"],
         max_open=current_app.config["TRADING_MAX_OPEN_POSITIONS_PER_SESSION"],
-        open_count=_open_positions_count(_session_id()),
+        open_count=_open_strategies_count(_session_id()),
     )
 
 
@@ -72,7 +87,7 @@ def index():
 def open_position():
     session_id = _session_id()
     max_open = current_app.config["TRADING_MAX_OPEN_POSITIONS_PER_SESSION"]
-    if _open_positions_count(session_id) >= max_open:
+    if _open_strategies_count(session_id) >= max_open:
         flash(f"You've reached the max of {max_open} open positions for this session.", "error")
         return redirect(url_for("trading.index"))
 
@@ -101,16 +116,11 @@ def open_position():
         flash(str(exc), "error")
         return redirect(url_for("trading.index"))
 
-    position = Position(
-        session_id=session_id,
-        ticker=ticker,
-        kind=kind,
-        quantity=quantity,
-        entry_underlying_price=underlying_price,
-    )
+    entry_iv = None
 
     if kind == "stock":
-        position.entry_price = underlying_price
+        entry_price = underlying_price
+        instrument = instruments.get_or_create_instrument(ticker, "stock")
     else:
         expiry_str = request.form.get("expiry")
         strike_raw = request.form.get("strike")
@@ -119,7 +129,7 @@ def open_position():
             return redirect(url_for("trading.index"))
         try:
             expiry = datetime.strptime(expiry_str, "%Y-%m-%d").date()
-            strike = float(strike_raw)
+            requested_strike = float(strike_raw)
         except ValueError:
             flash("Invalid expiry or strike.", "error")
             return redirect(url_for("trading.index"))
@@ -130,65 +140,89 @@ def open_position():
             flash(str(exc), "error")
             return redirect(url_for("trading.index"))
 
-        side = chain["calls"] if kind == "call" else chain["puts"]
-        match = min(side, key=lambda o: abs(o["strike"] - strike)) if side else None
+        chain_side = chain["calls"] if kind == "call" else chain["puts"]
+        match = min(chain_side, key=lambda o: abs(o["strike"] - requested_strike)) if chain_side else None
         if match is None:
             flash("No matching contract found for that expiry/strike.", "error")
             return redirect(url_for("trading.index"))
 
-        position.strike = match["strike"]
-        position.expiry = expiry
-        position.entry_price = match.get("lastPrice") or 0.0
-        position.entry_iv = match.get("impliedVolatility")
+        strike = match["strike"]
+        entry_price = match.get("lastPrice") or 0.0
+        entry_iv = match.get("impliedVolatility")
+        instrument = instruments.get_or_create_instrument(ticker, kind, strike=strike, expiry=expiry)
 
-    db.session.add(position)
+    # Today's UI only ever books a single-leg strategy -- a multi-leg
+    # composer would add more Legs onto an existing open Strategy instead
+    # of creating a new one, without changing this model at all.
+    strategy = Strategy(session_id=session_id, name="Single Leg")
+    leg = Leg(
+        strategy=strategy,
+        instrument=instrument,
+        side="buy",
+        quantity=quantity,
+        entry_price=entry_price,
+        entry_iv=entry_iv,
+        entry_underlying_price=underlying_price,
+    )
+    db.session.add(strategy)
+    db.session.add(leg)
     db.session.commit()
     flash(f"Opened a {kind} position on {ticker}.", "success")
-    return redirect(url_for("trading.position_detail", position_id=position.id))
+    return redirect(url_for("trading.position_detail", position_id=leg.id))
 
 
 @bp.route("/positions/<int:position_id>")
 def position_detail(position_id):
-    position = db.get_or_404(Position, position_id)
-    priced = _price_positions([position])[0] if position.status == "open" else {
-        "position": position,
-        "underlying_price": position.close_price,
+    leg = db.get_or_404(Leg, position_id)
+    priced = _price_positions([leg])[0] if leg.status == "open" else {
+        "position": leg,
+        "underlying_price": leg.close_price,
         "pnl": None,
+        "greeks": None,
     }
     return render_template("trading/position_detail.html", **priced)
 
 
 @bp.route("/positions/<int:position_id>/close", methods=["POST"])
+@limiter.limit(lambda: current_app.config["TRADING_RATE_LIMIT"])
 def close_position(position_id):
-    position = db.get_or_404(Position, position_id)
-    if position.status == "closed":
-        return redirect(url_for("trading.position_detail", position_id=position.id))
+    leg = db.get_or_404(Leg, position_id)
+    if leg.status == "closed":
+        return redirect(url_for("trading.position_detail", position_id=leg.id))
 
     try:
-        underlying_price = market_data.get_last_price(position.ticker)
+        underlying_price = market_data.get_last_price(leg.ticker)
     except MarketDataError as exc:
         flash(str(exc), "error")
-        return redirect(url_for("trading.position_detail", position_id=position.id))
+        return redirect(url_for("trading.position_detail", position_id=leg.id))
 
     result = pricing.compute_pnl(
-        position.kind,
-        position.quantity,
-        position.entry_price,
+        leg.kind,
+        leg.signed_quantity,
+        leg.entry_price,
         underlying_price,
-        strike=position.strike,
-        expiry=position.expiry,
-        entry_iv=position.entry_iv,
+        strike=leg.strike,
+        expiry=leg.expiry,
+        entry_iv=leg.entry_iv,
     )
-    position.status = "closed"
-    position.closed_at = utcnow()
-    position.close_price = result["current_value"]
+    leg.status = "closed"
+    leg.closed_at = utcnow()
+    leg.close_price = result["current_value"]
+
+    # Single-leg-per-strategy today, so closing the only leg always
+    # closes the whole strategy too; a real multi-leg close would only
+    # flip the strategy closed once every leg in it is closed.
+    if leg.strategy.legs.filter(Leg.status == "open").count() == 0:
+        leg.strategy.status = "closed"
+
     db.session.commit()
 
-    flash(f"Closed {position.ticker}: PnL ${result['pnl']:.2f}", "success")
-    return redirect(url_for("trading.position_detail", position_id=position.id))
+    flash(f"Closed {leg.ticker}: PnL ${result['pnl']:.2f}", "success")
+    return redirect(url_for("trading.position_detail", position_id=leg.id))
 
 
 @bp.route("/api/quote/<ticker>")
+@limiter.limit(lambda: current_app.config["TRADING_READ_RATE_LIMIT"])
 def api_quote(ticker):
     try:
         price = market_data.get_last_price(ticker)
@@ -198,10 +232,11 @@ def api_quote(ticker):
 
 
 @bp.route("/api/positions/<int:position_id>/history")
+@limiter.limit(lambda: current_app.config["TRADING_READ_RATE_LIMIT"])
 def api_position_history(position_id):
-    position = db.get_or_404(Position, position_id)
+    leg = db.get_or_404(Leg, position_id)
     try:
-        history = market_data.get_history(position.ticker, period="6mo")
+        history = market_data.get_history(leg.ticker, period="6mo")
     except MarketDataError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 503
 
@@ -211,23 +246,120 @@ def api_position_history(position_id):
         pnl_value = None
         try:
             pnl_value = pricing.compute_pnl(
-                position.kind,
-                position.quantity,
-                position.entry_price,
+                leg.kind,
+                leg.signed_quantity,
+                leg.entry_price,
                 underlying,
-                strike=position.strike,
-                expiry=position.expiry,
-                entry_iv=position.entry_iv,
+                strike=leg.strike,
+                expiry=leg.expiry,
+                entry_iv=leg.entry_iv,
                 as_of=ts.date(),
             )["pnl"]
         except Exception:
             pass
         points.append({"date": ts.strftime("%Y-%m-%d"), "price": round(underlying, 2), "pnl": pnl_value})
 
-    return jsonify({"ok": True, "ticker": position.ticker, "points": points})
+    return jsonify({"ok": True, "ticker": leg.ticker, "points": points})
+
+
+@bp.route("/positions/<int:position_id>/risk-requests", methods=["POST"])
+@limiter.limit(lambda: current_app.config["TRADING_RISK_REQUEST_RATE_LIMIT"])
+def submit_risk_request_route(position_id):
+    """The "risk request" step: an explicit, queryable ask for risk on
+    this leg -- either as-of-now (no body) or under a what-if scenario
+    (spot_shock_pct / vol_shock_pts). Returns the persisted RiskRequest
+    with its RiskResult already attached; GET /api/risk-requests/<id>
+    fetches that same report again later."""
+    db.get_or_404(Leg, position_id)  # 404 before bothering to build a scenario
+
+    scenario = None
+    spot_shock_raw = request.form.get("spot_shock_pct")
+    vol_shock_raw = request.form.get("vol_shock_pts")
+    if spot_shock_raw or vol_shock_raw:
+        try:
+            scenario = {
+                "spot_shock_pct": float(spot_shock_raw or 0),
+                "vol_shock_pts": float(vol_shock_raw or 0),
+            }
+        except ValueError:
+            return jsonify({"ok": False, "error": "spot_shock_pct/vol_shock_pts must be numbers"}), 400
+
+    try:
+        risk_request = risk_engine.submit_risk_request(position_id, scenario=scenario)
+    except MarketDataError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 503
+
+    return jsonify({"ok": True, "risk_request": risk_request.to_dict()})
+
+
+@bp.route("/api/risk-requests/<int:risk_request_id>")
+def api_risk_request_report(risk_request_id):
+    """The "report" step: fetch a previously-submitted risk request's
+    result again, without recomputing anything -- it was already
+    persisted the moment it ran."""
+    risk_request = db.get_or_404(RiskRequest, risk_request_id)
+    return jsonify({"ok": True, "risk_request": risk_request.to_dict()})
+
+
+@bp.route("/risk-dashboard")
+def risk_dashboard_view():
+    """The site-wide "report" view over the whole position -> risk
+    request -> report/live feed system: every risk request run against
+    any leg, not just the per-leg history panel on one position's own
+    detail page (see app/services/risk_dashboard.py)."""
+    return render_template(
+        "trading/risk_dashboard.html",
+        stats=risk_dashboard.summary_stats(),
+        recent=risk_dashboard.recent_risk_requests(),
+    )
+
+
+@bp.route("/api/positions/<int:position_id>/risk-feed")
+def api_risk_feed(position_id):
+    """Server-Sent Events: the "live data feed" step -- submits a fresh
+    RiskRequest on an interval for as long as a viewer is connected,
+    streaming each RiskResult the instant it's computed. Each tick is a
+    real, persisted RiskRequest/RiskResult row, not a throwaway
+    calculation, so a live-feed session leaves behind the same queryable
+    history a single on-demand request would (see risk_engine.py).
+
+    Captured here, while the request context is still active -- by the
+    time the generator body below actually runs (Werkzeug iterates it
+    lazily, after this view function has already returned), the context
+    is gone and current_app/db can't be resolved anymore (same reasoning
+    as the watchlist SSE route above)."""
+    db.get_or_404(Leg, position_id)
+    client_ip = request.remote_addr or "unknown"
+    try:
+        sse_limits.acquire_sse_slot("risk-feed", client_ip)
+    except sse_limits.TooManyConnections as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 429
+
+    app = current_app._get_current_object()
+
+    def stream():
+        with app.app_context():
+            try:
+                yield ": connected\n\n"
+                while True:
+                    try:
+                        risk_request = risk_engine.submit_risk_request(position_id)
+                        payload = risk_request.to_dict()
+                    except Exception as exc:
+                        payload = {"error": str(exc)}
+                    yield f"data: {json.dumps(payload)}\n\n"
+                    time.sleep(RISK_FEED_INTERVAL_SECONDS)
+            finally:
+                sse_limits.release_sse_slot("risk-feed", client_ip)
+
+    response = Response(stream(), mimetype="text/event-stream")
+    response.headers["Cache-Control"] = "no-cache"
+    response.headers["X-Accel-Buffering"] = "no"
+    return response
 
 
 @bp.route("/api/expiries/<ticker>")
+@limiter.limit(lambda: current_app.config["TRADING_READ_RATE_LIMIT"])
 def api_expiries(ticker):
     try:
         return jsonify({"ok": True, "expiries": market_data.get_expiries(ticker)})
@@ -236,6 +368,7 @@ def api_expiries(ticker):
 
 
 @bp.route("/api/chain/<ticker>/<expiry>")
+@limiter.limit(lambda: current_app.config["TRADING_READ_RATE_LIMIT"])
 def api_chain(ticker, expiry):
     try:
         chain = market_data.get_option_chain(ticker, expiry)
@@ -262,6 +395,12 @@ def api_watchlist_stream():
     connection like this one is open and only during market hours --
     this route starting it is what "at least one viewer" means."""
 
+    client_ip = request.remote_addr or "unknown"
+    try:
+        sse_limits.acquire_sse_slot("watchlist", client_ip)
+    except sse_limits.TooManyConnections as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 429
+
     # Captured here, while the request context is still active -- by the
     # time the generator body below actually runs (Werkzeug iterates it
     # lazily, after this view function has already returned), the
@@ -269,18 +408,20 @@ def api_watchlist_stream():
     app = current_app._get_current_object()
 
     def stream():
-        q = watchlist.subscribe()
-        watchlist.ensure_poller_running(app)
-        try:
-            yield ": connected\n\n"
-            while True:
-                try:
-                    entry = q.get(timeout=SSE_KEEPALIVE_SECONDS)
-                    yield f"data: {json.dumps(entry)}\n\n"
-                except queue.Empty:
-                    yield ": keepalive\n\n"
-        finally:
-            watchlist.unsubscribe(q)
+        with app.app_context():
+            q = watchlist.subscribe()
+            watchlist.ensure_poller_running(app)
+            try:
+                yield ": connected\n\n"
+                while True:
+                    try:
+                        entry = q.get(timeout=SSE_KEEPALIVE_SECONDS)
+                        yield f"data: {json.dumps(entry)}\n\n"
+                    except queue.Empty:
+                        yield ": keepalive\n\n"
+            finally:
+                watchlist.unsubscribe(q)
+                sse_limits.release_sse_slot("watchlist", client_ip)
 
     response = Response(stream(), mimetype="text/event-stream")
     response.headers["Cache-Control"] = "no-cache"

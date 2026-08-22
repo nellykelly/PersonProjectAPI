@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Pipeline Analytics{% endblock %}
+{% block content_class %}wide{% endblock %}
+
+{% block content %}
+<section>
+    <p><a href="{{ url_for('pipeline_world.index') }}">&larr; Back to Pipeline World</a></p>
+    <h1 class="major">Pipeline Analytics</h1>
+    <p class="muted">
+        Real SQL over the <code>pipeline_runs</code> table -- joins, <code>GROUP BY</code> aggregations, and
+        window functions, computed live, not derived from ORM model iteration. This page requires a live
+        <strong>Postgres</strong> connection (<code>DATE_TRUNC</code> and the window-function frame syntax
+        below are Postgres dialect) -- see <code>app/services/analytics.py</code>.
+    </p>
+
+    {% for key, metric in metrics.items() %}
+    <h2>{{ metric.label }}</h2>
+    {% if metric.error %}
+    <div class="flash flash-error">{{ metric.error }}</div>
+    {% elif not metric.rows %}
+    <div class="empty-state">No pipeline runs logged yet -- join Pipeline World to generate some.</div>
+    {% else %}
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    {% for col in metric.rows[0].keys() %}
+                    <th>{{ col }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in metric.rows %}
+                <tr>
+                    {% for value in row.values() %}
+                    <td class="mono">{{ value }}</td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+    <details>
+        <summary class="muted">View SQL</summary>
+        <pre class="mono">{{ metric.sql }}</pre>
+    </details>
+    {% endfor %}
+</section>
+{% endblock %}

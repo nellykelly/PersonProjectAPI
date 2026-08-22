@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}Pipeline World{% endblock %}
+{% block content_class %}wide{% endblock %}
+
+{% block content %}
+<section>
+    <div class="section-title">
+        <h1 class="major"><img class="page-icon" src="{{ url_for('static', filename='assets/img/icons/pipeline-world.svg') }}" alt="">Pipeline World</h1>
+        <span class="badge badge-closed" id="live-indicator">○ Connecting...</span>
+    </div>
+
+    <div class="disclaimer-banner">
+        No code is ever submitted or executed here -- the only inputs are a name, a pick from a fixed
+        appearance list, and free-text answers to the same 4 fixed icebreaker questions everyone answers.
+        That "join" event runs through a real, queued 7-stage pipeline (see the live build log below) before
+        your character is written as live. Everyone watching this page sees the same runs in real time. See
+        the <a href="{{ url_for('sre_infra.index') }}">SRE Infra Layer</a> page for the queue/cache/rate-limit
+        infrastructure underneath, and
+        <a href="{{ url_for('pipeline_world.pipeline_analytics') }}">Pipeline Analytics</a> for the SQL over
+        every run logged here.
+    </div>
+
+    <p><a class="button" href="{{ url_for('pipeline_world.town') }}">View Production Town &rarr;</a></p>
+
+    <div class="section-title">
+        <h2>Join the world</h2>
+    </div>
+
+    <form id="join-form">
+        <div class="fields">
+            <div class="field half">
+                <label for="first_name">First name</label>
+                <input type="text" id="first_name" name="first_name" maxlength="30" required>
+            </div>
+            <div class="field half">
+                <label for="last_name">Last name</label>
+                <input type="text" id="last_name" name="last_name" maxlength="30" required>
+            </div>
+        </div>
+
+        <label>Outfit color</label>
+        <div class="tag-list" id="appearance-picker" style="gap:0.5rem; margin-bottom: 1.5rem;">
+            {% for option in appearance_options %}
+            <button type="button" class="appearance-swatch" data-appearance-id="{{ option.id }}"
+                    style="--swatch-color:{{ option.color }};" title="{{ option.label }}">
+                {{ option.label }}
+            </button>
+            {% endfor %}
+        </div>
+        <input type="hidden" id="appearance_id" name="appearance_id" value="">
+
+        <label>Head type</label>
+        <div class="tag-list" id="head-type-picker" style="gap:0.5rem; margin-bottom: 1.5rem;">
+            {% for option in head_type_options %}
+            <button type="button" class="appearance-swatch" data-head-type-id="{{ option.id }}"
+                    style="--swatch-color:{{ option.skin }};" title="{{ option.label }}">
+                {{ option.label }}
+            </button>
+            {% endfor %}
+        </div>
+        <input type="hidden" id="head_type_id" name="head_type_id" value="">
+
+        <label>Body type</label>
+        <div class="tag-list" id="body-type-picker" style="gap:0.5rem; margin-bottom: 1.5rem;">
+            {% for option in body_type_options %}
+            <button type="button" class="appearance-swatch" data-body-type-id="{{ option.id }}" title="{{ option.label }}">
+                {{ option.label }}
+            </button>
+            {% endfor %}
+        </div>
+        <input type="hidden" id="body_type_id" name="body_type_id" value="">
+
+        <label>Hands</label>
+        <div class="tag-list" id="hand-type-picker" style="gap:0.5rem; margin-bottom: 1.5rem;">
+            {% for option in hand_type_options %}
+            <button type="button" class="appearance-swatch" data-hand-type-id="{{ option.id }}" title="{{ option.label }}">
+                {{ option.label }}
+            </button>
+            {% endfor %}
+        </div>
+        <input type="hidden" id="hand_type_id" name="hand_type_id" value="">
+
+        <label>Icebreakers <span class="muted">(same 4 questions for everyone -- shown as speech bubbles in Production Town, free text, cleaned and checked by the pipeline)</span></label>
+        <div class="fields">
+            {% for question in icebreaker_questions %}
+            <div class="field half">
+                <label for="icebreaker_answer_{{ question.id }}">{{ question.question }}</label>
+                <textarea id="icebreaker_answer_{{ question.id }}" name="icebreaker_answer_{{ question.id }}" rows="2"
+                          maxlength="{{ max_icebreaker_answer_length }}"
+                          placeholder="e.g. {{ question.example }}" required></textarea>
+            </div>
+            {% endfor %}
+        </div>
+
+        <input type="hidden" id="confirm_last_name_collision" name="confirm_last_name_collision" value="0">
+
+        <div id="join-message" class="muted" style="margin-bottom: 1rem;"></div>
+
+        <button type="submit" class="button primary" id="join-submit">Join Pipeline World</button>
+    </form>
+
+    <div class="section-title">
+        <h2>Live build log</h2>
+        <span class="muted">What the pipeline is actually running, as it runs</span>
+    </div>
+    <div class="terminal-wrapper">
+        <pre id="build-log" class="terminal"></pre>
+    </div>
+
+    <div class="section-title">
+        <h2>Pipeline runs</h2>
+        <span class="muted">Live -- updates as runs happen, for everyone watching</span>
+    </div>
+    <div class="data-table-wrapper">
+        <div class="data-table-scroll">
+            <table class="traffic-table" id="tracker-table">
+                <thead>
+                    <tr>
+                        <th>Character</th>
+                        {% for stage in stage_order %}
+                        <th title="{{ stage_info[stage].description }}">{{ stage_info[stage].label }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody id="tracker-body">
+                    {% for row in recent_runs %}
+                    <tr data-character-id="{{ row.character.id }}" class="{{ 'row-live' if row.character.status == 'live' else 'row-failed' if row.character.status == 'failed' else '' }}">
+                        <td>{{ row.character.full_name }}</td>
+                        {% for stage in stage_order %}
+                        {% set status = row.stages[stage] %}
+                        <td class="stage-cell" data-stage="{{ stage }}">
+                            <span class="stage-status stage-status-{{ status or 'none' }}">{{ "PASS" if status == "pass" else "FAIL" if status == "fail" else "-" }}</span>
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% if not recent_runs %}
+    <div class="empty-state">No one has joined yet -- be the first.</div>
+    {% endif %}
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+  window.PIPELINE_STAGE_ORDER = {{ stage_order | tojson }};
+  window.PIPELINE_STAGE_INFO = {{ stage_info | tojson }};
+  window.ICEBREAKER_QUESTION_IDS = {{ icebreaker_questions | map(attribute="id") | list | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/pipeline_tracker.js') }}"></script>
+{% endblock %}

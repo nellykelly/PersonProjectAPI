@@ -7,25 +7,122 @@ def utcnow():
     return datetime.now(timezone.utc)
 
 
-class Position(db.Model):
-    """A single simulated trade in the shared, anonymous public trade book.
+class Instrument(db.Model):
+    """Reference/master data for one specific contract -- the thing a
+    real trade-booking system keeps separate from the trades themselves,
+    so a hundred visitors trading the same AAPL $230 call expiring the
+    same day all point at *one* instrument row instead of each embedding
+    their own copy of its strike/expiry/exercise style. Deduped on
+    (underlying_ticker, instrument_type, strike, expiry) -- see
+    `get_or_create_instrument` in app/services/instruments.py.
 
-    No user accounts -- `session_id` is a random UUID stored in a cookie,
-    used only to cap how many open positions one visitor can hold at once.
-    All positions (across all visitors) are visible to everyone.
+    Modeled loosely on FpML's option product definition (strike, exercise
+    style, buyer/seller) rather than inventing our own field names --
+    `instrument_type` uses this app's existing 'stock'/'call'/'put'
+    vocabulary (see Leg.kind's old docstring) rather than FpML's 'equity',
+    since that's what the rest of this codebase (pricing.py, market_data.py)
+    already speaks.
     """
 
-    __tablename__ = "positions"
+    __tablename__ = "instruments"
 
     id = db.Column(db.Integer, primary_key=True)
-    session_id = db.Column(db.String(36), nullable=False, index=True)
-
-    ticker = db.Column(db.String(10), nullable=False, index=True)
-    kind = db.Column(db.String(4), nullable=False)  # 'stock' | 'call' | 'put'
-    quantity = db.Column(db.Integer, nullable=False)
+    underlying_ticker = db.Column(db.String(10), nullable=False, index=True)
+    instrument_type = db.Column(db.String(4), nullable=False)  # 'stock' | 'call' | 'put'
 
     strike = db.Column(db.Float, nullable=True)
     expiry = db.Column(db.Date, nullable=True)
+
+    # Real US equity options are always American-style, physically
+    # settled (shares actually change hands) -- both null for 'stock'
+    # instruments, which have no exercise/settlement concept at all.
+    exercise_style = db.Column(db.String(9), nullable=True)  # 'american' | 'european'
+    settlement_type = db.Column(db.String(8), nullable=True)  # 'physical' | 'cash'
+    contract_multiplier = db.Column(db.Integer, nullable=False, default=1)
+
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "underlying_ticker", "instrument_type", "strike", "expiry", name="uq_instrument_identity"
+        ),
+    )
+
+    @property
+    def is_option(self) -> bool:
+        return self.instrument_type in ("call", "put")
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "underlying_ticker": self.underlying_ticker,
+            "instrument_type": self.instrument_type,
+            "strike": self.strike,
+            "expiry": self.expiry.isoformat() if self.expiry else None,
+            "exercise_style": self.exercise_style,
+            "settlement_type": self.settlement_type,
+            "contract_multiplier": self.contract_multiplier,
+        }
+
+
+class Strategy(db.Model):
+    """A book -- a named container holding one or more Legs, the same way
+    a real desk books a straddle or an iron condor as one strategy made
+    of several independent option legs rather than several unrelated
+    trades that happen to share a ticker (see FpML's "strategy as a
+    container of legs" trade model). Today's UI only ever opens a single
+    leg per strategy ("Single Leg"), but the schema doesn't assume that --
+    a multi-leg composer can add more Legs to an existing open Strategy
+    without any structural change here.
+    """
+
+    __tablename__ = "strategies"
+
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.String(36), nullable=False, index=True)
+    name = db.Column(db.String(40), nullable=False, default="Single Leg")
+
+    opened_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+    status = db.Column(db.String(6), nullable=False, default="open")  # 'open' | 'closed'
+
+    legs = db.relationship("Leg", backref="strategy", order_by="Leg.id", lazy="dynamic")
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "opened_at": self.opened_at.isoformat(),
+            "status": self.status,
+            "legs": [leg.to_dict() for leg in self.legs],
+        }
+
+
+class Leg(db.Model):
+    """One booked transaction in the shared, anonymous public trade book
+    -- was a flat `Position` row; now a leg that references its Strategy
+    (the book it belongs to) and its Instrument (the contract's reference
+    data) instead of embedding ticker/strike/expiry itself. A single-leg
+    trade (today's only UI flow) is just a Strategy with exactly one Leg.
+
+    No user accounts -- `session_id` on Strategy is a random UUID stored
+    in a cookie, used only to cap how many open strategies one visitor
+    can hold at once. Every strategy (across all visitors) is visible to
+    everyone.
+    """
+
+    __tablename__ = "legs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    strategy_id = db.Column(db.Integer, db.ForeignKey("strategies.id"), nullable=False, index=True)
+    instrument_id = db.Column(db.Integer, db.ForeignKey("instruments.id"), nullable=False, index=True)
+
+    # 'buy' (long this leg) | 'sell' (short this leg) -- real trade
+    # booking always records direction explicitly rather than folding it
+    # into a signed quantity. The current open-position flow only ever
+    # buys (no short-selling UI yet), so this is always "buy" for now,
+    # but the field is honest about what a leg actually needs to carry.
+    side = db.Column(db.String(4), nullable=False, default="buy")
+    quantity = db.Column(db.Integer, nullable=False)
 
     entry_price = db.Column(db.Float, nullable=False)
     entry_iv = db.Column(db.Float, nullable=True)
@@ -36,19 +133,50 @@ class Position(db.Model):
     close_price = db.Column(db.Float, nullable=True)
     status = db.Column(db.String(6), nullable=False, default="open")  # 'open' | 'closed'
 
+    instrument = db.relationship("Instrument")
+
+    # ---- passthroughs to the instrument, so routes/templates that used
+    # to read position.ticker/kind/strike/expiry directly keep working
+    # unchanged even though that data now lives on a separate row. ----
+    @property
+    def ticker(self) -> str:
+        return self.instrument.underlying_ticker
+
+    @property
+    def kind(self) -> str:
+        return self.instrument.instrument_type
+
+    @property
+    def strike(self) -> float | None:
+        return self.instrument.strike
+
+    @property
+    def expiry(self):
+        return self.instrument.expiry
+
     @property
     def is_option(self) -> bool:
-        return self.kind in ("call", "put")
+        return self.instrument.is_option
 
     @property
     def multiplier(self) -> int:
-        return 100 if self.is_option else 1
+        return self.instrument.contract_multiplier
+
+    @property
+    def signed_quantity(self) -> int:
+        """Quantity with direction applied -- what pricing.py's PnL/Greeks
+        math should actually be scaled by, once a short-selling UI exists.
+        Every leg booked today is 'buy', so this equals `quantity`."""
+        return self.quantity if self.side == "buy" else -self.quantity
 
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "strategy_id": self.strategy_id,
+            "instrument": self.instrument.to_dict(),
             "ticker": self.ticker,
             "kind": self.kind,
+            "side": self.side,
             "quantity": self.quantity,
             "strike": self.strike,
             "expiry": self.expiry.isoformat() if self.expiry else None,
@@ -72,3 +200,299 @@ class PriceCache(db.Model):
     ticker = db.Column(db.String(10), primary_key=True)
     price = db.Column(db.Float, nullable=False)
     fetched_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+
+
+class RiskRequest(db.Model):
+    """The middle step of position -> risk request -> report/live feed:
+    a real, persisted, queryable *ask* for risk on one Leg, rather than
+    risk just being recomputed silently and thrown away every time a
+    page happens to render. "Show me every risk request run against Leg
+    #12 today, and what each one found" is a real query against this
+    table (join to RiskResult), not something you'd have to reconstruct
+    from logs.
+
+    `scenario` is None for a plain as-of-now request, or a small shock
+    spec for a what-if request, e.g. {"spot_shock_pct": -0.05,
+    "vol_shock_pts": 0.05} -- see app/services/risk_engine.py.
+    """
+
+    __tablename__ = "risk_requests"
+
+    id = db.Column(db.Integer, primary_key=True)
+    leg_id = db.Column(db.Integer, db.ForeignKey("legs.id"), nullable=False, index=True)
+
+    requested_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+    # none_as_null=True: SQLAlchemy's JSON type otherwise stores a Python
+    # `None` as the *JSON literal* 'null' rather than a real SQL NULL --
+    # without this, a plain as-of-now request (scenario=None) would still
+    # read back as "not NULL" to a query like `.filter(scenario.isnot(None))`,
+    # making every request look like a scenario request.
+    scenario = db.Column(db.JSON(none_as_null=True), nullable=True)
+    status = db.Column(db.String(8), nullable=False, default="pending")  # 'pending' | 'complete' | 'failed'
+
+    leg = db.relationship("Leg")
+    results = db.relationship("RiskResult", backref="risk_request", order_by="RiskResult.id", lazy="dynamic")
+
+    def to_dict(self) -> dict:
+        result = self.results.order_by(RiskResult.id.desc()).first()
+        return {
+            "id": self.id,
+            "leg_id": self.leg_id,
+            "requested_at": self.requested_at.isoformat(),
+            "scenario": self.scenario,
+            "status": self.status,
+            "result": result.to_dict() if result else None,
+        }
+
+
+class RiskResult(db.Model):
+    """The "report" a RiskRequest produces -- what the risk actually was,
+    at the market state (live or scenario-shocked) the request asked
+    about, computed once and kept, not just displayed and discarded.
+
+    Two different kinds of gamma are carried on purpose:
+    - `gamma`: the closed-form Black-Scholes point-derivative (from
+      pricing.black_scholes_greeks) -- the textbook second derivative of
+      value with respect to spot, at a single point.
+    - `scenario_gamma`: an empirical bump-and-revalue convexity -- reprice
+      the position at spot+1% and spot-1% around this request's own base
+      spot and measure how much the *P&L itself* actually curves between
+      those two points. This is what a real scenario/stress risk run
+      reports, and is the actual meaning of "scenario gamma" on a risk
+      desk: the curvature the pricing model actually produces under a
+      real re-price, not just its formula's tangent at one point. The
+      two normally agree closely for vanilla Black-Scholes (no exotic
+      kinks), which is itself a useful sanity check.
+
+    `ir_delta` is Rho, relabeled the way a real risk book would: interest
+    rate delta, sensitivity to the flat discount rate.
+
+    `ir_vega` -- sensitivity to interest-rate *volatility* -- is real, not
+    a placeholder, but it's carried under a clearly separate model from
+    everything else here: pricing.py's flat RISK_FREE_RATE has no
+    volatility parameter at all, so ir_vega is computed via a small,
+    explicitly-labeled Hull-White stochastic-rate extension
+    (pricing.black_scholes_price_stochastic_rates / pricing.ir_vega) used
+    *only* for this one number -- price/PnL/every other Greek on this row
+    still come from the ordinary flat-rate Black-Scholes math. Both of
+    that extension's own parameters (mean reversion, rate volatility) are
+    assumed illustrative constants, not calibrated to real market data --
+    there's no cap/swaption vol surface in this app's data source
+    (yfinance) to calibrate them against, the same situation
+    RISK_FREE_RATE itself is already in.
+    """
+
+    __tablename__ = "risk_results"
+
+    id = db.Column(db.Integer, primary_key=True)
+    risk_request_id = db.Column(db.Integer, db.ForeignKey("risk_requests.id"), nullable=False, index=True)
+    leg_id = db.Column(db.Integer, db.ForeignKey("legs.id"), nullable=False, index=True)
+
+    computed_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+    underlying_price_used = db.Column(db.Float, nullable=False)
+
+    pv = db.Column(db.Float, nullable=False)  # position market value at underlying_price_used
+    pnl = db.Column(db.Float, nullable=True)
+    pnl_pct = db.Column(db.Float, nullable=True)
+
+    delta = db.Column(db.Float, nullable=True)
+    gamma = db.Column(db.Float, nullable=True)
+    theta = db.Column(db.Float, nullable=True)
+    vega = db.Column(db.Float, nullable=True)
+    ir_delta = db.Column(db.Float, nullable=True)  # = rho
+    scenario_gamma = db.Column(db.Float, nullable=True)
+    ir_vega = db.Column(db.Float, nullable=True)  # Hull-White bump-and-revalue -- see class docstring
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "risk_request_id": self.risk_request_id,
+            "leg_id": self.leg_id,
+            "computed_at": self.computed_at.isoformat(),
+            "underlying_price_used": self.underlying_price_used,
+            "pv": self.pv,
+            "pnl": self.pnl,
+            "pnl_pct": self.pnl_pct,
+            "delta": self.delta,
+            "gamma": self.gamma,
+            "theta": self.theta,
+            "vega": self.vega,
+            "ir_delta": self.ir_delta,
+            "scenario_gamma": self.scenario_gamma,
+            "ir_vega": self.ir_vega,
+        }
+
+
+# Pipeline stage names, in order -- shared by pipeline.py, analytics.py,
+# and the pipeline-tracker frontend, so this is the single source of
+# truth for "what stages exist and in what order." Each maps to one
+# concrete concern, not an arbitrary CI-flavored label:
+#   sanitize        -- input hygiene: format/length/charset. No DB reads.
+#   security_scan   -- explicit scan for injection patterns (HTML/script
+#                       tags, SQL metacharacters) -- belt-and-suspenders
+#                       on top of sanitize's whitelist, reported as its
+#                       own named check rather than folded silently in.
+#   test_uniqueness -- is this name already taken.
+#   test_profanity  -- does it contain a blocked word.
+#   build           -- assemble the spawn payload: world position +
+#                       appearance/icebreaker render data. No DB writes.
+#   deploy          -- actually apply the change: write the character
+#                       row as live.
+#   verify          -- read the row back and confirm it landed correctly
+#                       (a real read-after-write check, not assumed).
+PIPELINE_STAGES = (
+    "sanitize",
+    "security_scan",
+    "test_uniqueness",
+    "test_profanity",
+    "build",
+    "deploy",
+    "verify",
+)
+
+CHARACTER_STATUSES = (
+    "pending",
+    "sanitizing",
+    "scanning",
+    "testing_uniqueness",
+    "testing_profanity",
+    "building",
+    "deploying",
+    "live",
+    "failed",
+)
+# No separate "verifying" status: the Deploy stage's own action *is*
+# writing status="live" to the row -- that's what "deploy" means. Verify
+# runs after, as a read-after-write confirmation, without the character
+# passing through some other transient state first (it's already live,
+# genuinely, the moment deploy commits; verify just double-checks).
+
+
+class Character(db.Model):
+    """A visitor-submitted character working its way through (or living in)
+    Pipeline World. No accounts -- `session_id` is the same anonymous
+    cookie pattern as Strategy.session_id, used only so a visitor's own
+    in-flight submission can be identified back to them client-side.
+
+    Column types are kept portable (no Postgres-only types) so the ORM
+    side works against SQLite too if someone runs this app without
+    Docker -- only app/services/analytics.py's raw SQL is Postgres-only
+    (window functions, DATE_TRUNC), see that module's docstring.
+    """
+
+    __tablename__ = "characters"
+
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.String(36), nullable=False, index=True)
+
+    first_name = db.Column(db.String(40), nullable=False)
+    last_name = db.Column(db.String(40), nullable=False)
+
+    # Character customization -- outfit color (appearance_id, the
+    # original pick) plus head/body/hand type, all closed-list picks
+    # validated against validators.py's HEAD_TYPE_OPTIONS/BODY_TYPE_OPTIONS/
+    # HAND_TYPE_OPTIONS and rendered client-side by pipeline_town.js's
+    # drawPerson. Stored server-side (not left to per-viewer randomness)
+    # so every visitor sees the same look for a given character.
+    appearance_id = db.Column(db.String(20), nullable=False)
+    head_type_id = db.Column(db.String(20), nullable=False)
+    body_type_id = db.Column(db.String(20), nullable=False)
+    hand_type_id = db.Column(db.String(20), nullable=False)
+
+    # Every visitor answers the same fixed 4 icebreaker questions -- see
+    # validators.FIXED_ICEBREAKER_QUESTIONS, the single source of truth
+    # for which 4 questions exist, their order, and their column name
+    # (icebreaker_answer_<question id>). Not a pick-one-of-N choice: same
+    # 4 questions for everyone, shown together in Production Town as a
+    # speech bubble per topic ("Favorite food: tacos"). Each answer is
+    # meant to be a short sentence, not a single whitelisted word, so it
+    # gets its own, more permissive but still strict, sanitizer (see
+    # validators.py: sanitize_icebreaker_answer) and goes through the
+    # same Sanitize -> Security Scan -> Test:Profanity stages the name
+    # does. See app/services/validators.py's module docstring for the
+    # full reasoning.
+    icebreaker_answer_food = db.Column(db.String(80), nullable=True)
+    icebreaker_answer_movie = db.Column(db.String(80), nullable=True)
+    icebreaker_answer_hobby = db.Column(db.String(80), nullable=True)
+    icebreaker_answer_weekend = db.Column(db.String(80), nullable=True)
+
+    # Longest in-flight value is "testing_uniqueness" (18 chars) -- see
+    # CHARACTER_STATUSES above.
+    status = db.Column(db.String(24), nullable=False, default="pending", index=True)
+    failure_reason = db.Column(db.Text, nullable=True)
+
+    world_x = db.Column(db.Float, nullable=True)
+    world_y = db.Column(db.Float, nullable=True)
+
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+
+    pipeline_runs = db.relationship(
+        "PipelineRun", backref="character", order_by="PipelineRun.started_at", lazy="dynamic"
+    )
+
+    @property
+    def full_name(self) -> str:
+        return f"{self.first_name} {self.last_name}"
+
+    def to_dict(self) -> dict:
+        from app.services.validators import FIXED_ICEBREAKER_QUESTIONS  # local import: avoid a module-load cycle
+
+        icebreakers = []
+        for question in FIXED_ICEBREAKER_QUESTIONS:
+            answer = getattr(self, question["field_name"], None)
+            if answer:
+                icebreakers.append(
+                    {
+                        "question_id": question["id"],
+                        "prefix": question["prefix"],
+                        "answer": answer,
+                        "text": f"{question['prefix']}: {answer}",
+                    }
+                )
+
+        return {
+            "id": self.id,
+            "first_name": self.first_name,
+            "last_name": self.last_name,
+            "full_name": self.full_name,
+            "appearance_id": self.appearance_id,
+            "head_type_id": self.head_type_id,
+            "body_type_id": self.body_type_id,
+            "hand_type_id": self.hand_type_id,
+            "icebreakers": icebreakers,
+            "status": self.status,
+            "failure_reason": self.failure_reason,
+            "world_x": self.world_x,
+            "world_y": self.world_y,
+        }
+
+
+class PipelineRun(db.Model):
+    """One stage attempt for one character -- validate/test/build/deploy,
+    pass/fail, timestamped. This table is what app/services/analytics.py
+    queries for the SQL showcase page (success rates, MTBF, slowest
+    stage, rolling pass rate)."""
+
+    __tablename__ = "pipeline_runs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    character_id = db.Column(db.Integer, db.ForeignKey("characters.id"), nullable=False, index=True)
+
+    stage = db.Column(db.String(10), nullable=False)  # one of PIPELINE_STAGES
+    status = db.Column(db.String(4), nullable=False)  # 'pass' | 'fail'
+    detail = db.Column(db.Text, nullable=True)
+
+    started_at = db.Column(db.DateTime, nullable=False, default=utcnow, index=True)
+    ended_at = db.Column(db.DateTime, nullable=True)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "character_id": self.character_id,
+            "stage": self.stage,
+            "status": self.status,
+            "detail": self.detail,
+            "started_at": self.started_at.isoformat(),
+            "ended_at": self.ended_at.isoformat() if self.ended_at else None,
+        }

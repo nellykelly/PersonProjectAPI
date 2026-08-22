@@ -40,6 +40,13 @@ It never touches a visitor's actual browsing traffic. Static asset requests
   `threaded=True` (`wsgi.py`) and the Docker image runs gunicorn with
   `--worker-class gthread --threads 4` (`Dockerfile`) -- otherwise one open live-view tab
   would tie up an entire sync worker and stall every other request routed to it.
+- **Concurrency cap** (`app/services/sse_limits.py`, shared with the Trading Simulator's
+  watchlist/risk-feed streams): gunicorn's thread pool is small and fixed, so without a
+  cap, a handful of concurrent connections to this one stream could occupy every thread
+  in every worker and hang the *entire site* for everyone else -- found in a security
+  audit. `/api/stream` now checks a per-IP, per-category, and site-wide Redis-backed
+  counter before opening the stream, returning a plain `429` instead once any of them is
+  at its limit.
 
 ## Try it
 

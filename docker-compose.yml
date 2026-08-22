@@ -8,6 +8,58 @@ services:
       - .env
     environment:
       FLASK_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pipelineworld}:${POSTGRES_PASSWORD:-pipelineworld}@postgres:5432/${POSTGRES_DB:-pipelineworld}
+      REDIS_URL: redis://redis:6379/0
+      RATELIMIT_STORAGE_URI: redis://redis:6379/1
     volumes:
       - ./instance:/app/instance
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
+
+  worker:
+    build: .
+    image: personal-site:latest
+    env_file:
+      - .env
+    environment:
+      FLASK_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pipelineworld}:${POSTGRES_PASSWORD:-pipelineworld}@postgres:5432/${POSTGRES_DB:-pipelineworld}
+      REDIS_URL: redis://redis:6379/0
+    command: ["python", "worker.py"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pipelineworld}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pipelineworld}
+      POSTGRES_DB: ${POSTGRES_DB:-pipelineworld}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pipelineworld}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

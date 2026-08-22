@@ -42,6 +42,89 @@
     <p class="muted">Expiry: {{ position.expiry.isoformat() }}{% if position.entry_iv %} &middot; Entry IV: {{ "%.1f"|format(position.entry_iv * 100) }}%{% endif %}</p>
     {% endif %}
 
+    {% if position.is_option and greeks %}
+    <div class="section-title">
+        <h2>Risk (Greeks)</h2>
+        <span class="muted">Position-level -- per-share sensitivity &times; quantity &times; contract multiplier</span>
+    </div>
+    <div class="stat-grid">
+        <div class="stat-tile">
+            <div class="value mono">{{ "%.2f"|format(greeks.delta) }}</div>
+            <div class="label">Delta</div>
+        </div>
+        <div class="stat-tile">
+            <div class="value mono">{{ "%.3f"|format(greeks.gamma) }}</div>
+            <div class="label">Gamma</div>
+        </div>
+        <div class="stat-tile">
+            <div class="value mono">{{ "%.2f"|format(greeks.theta) }}</div>
+            <div class="label">Theta ($/day)</div>
+        </div>
+        <div class="stat-tile">
+            <div class="value mono">{{ "%.2f"|format(greeks.vega) }}</div>
+            <div class="label">Vega ($/vol pt)</div>
+        </div>
+        <div class="stat-tile">
+            <div class="value mono">{{ "%.2f"|format(greeks.rho) }}</div>
+            <div class="label">Rho ($/1% rate)</div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if position.is_option %}
+    <div class="section-title">
+        <h2>Risk requests</h2>
+        <span class="muted">position &rarr; risk request &rarr; report/live feed -- each run below is a real, persisted, queryable row</span>
+    </div>
+
+    <div id="risk-panel" data-position-id="{{ position.id }}">
+        <div class="fields">
+            <div class="field third">
+                <button type="button" class="button small" id="risk-request-now">Run risk request (as-of-now)</button>
+            </div>
+            <div class="field third">
+                <label for="spot-shock-pct">Spot shock (%)</label>
+                <input type="number" id="spot-shock-pct" step="1" placeholder="e.g. -10">
+            </div>
+            <div class="field third">
+                <label for="vol-shock-pts">Vol shock (IV points)</label>
+                <input type="number" id="vol-shock-pts" step="1" placeholder="e.g. 5">
+            </div>
+        </div>
+        <div class="fields">
+            <div class="field half">
+                <button type="button" class="button small" id="risk-request-scenario">Run scenario risk request</button>
+            </div>
+            <div class="field half">
+                <button type="button" class="button small" id="risk-feed-toggle">Start live risk feed</button>
+                <span class="muted" id="risk-feed-status"></span>
+            </div>
+        </div>
+
+        <div class="stat-grid" id="risk-result-grid" style="display:none; margin-top:1rem;">
+            <div class="stat-tile"><div class="value mono" id="risk-pv">-</div><div class="label">PV</div></div>
+            <div class="stat-tile"><div class="value mono" id="risk-pnl">-</div><div class="label">PnL</div></div>
+            <div class="stat-tile"><div class="value mono" id="risk-delta">-</div><div class="label">Delta</div></div>
+            <div class="stat-tile"><div class="value mono" id="risk-gamma">-</div><div class="label">Gamma</div></div>
+            <div class="stat-tile"><div class="value mono" id="risk-scenario-gamma">-</div><div class="label">Scenario Gamma</div></div>
+            <div class="stat-tile"><div class="value mono" id="risk-theta">-</div><div class="label">Theta</div></div>
+            <div class="stat-tile"><div class="value mono" id="risk-vega">-</div><div class="label">Vega</div></div>
+            <div class="stat-tile"><div class="value mono" id="risk-ir-delta">-</div><div class="label">IR Delta (Rho)</div></div>
+            <div class="stat-tile"><div class="value mono" id="risk-ir-vega">-</div><div class="label">IR Vega</div></div>
+        </div>
+
+        <div class="data-table-wrapper" style="margin-top:1rem;">
+            <div class="data-table-scroll">
+                <table class="traffic-table" id="risk-history-table">
+                    <thead><tr><th>#</th><th>Requested</th><th>Scenario</th><th>Spot used</th><th>PnL</th></tr></thead>
+                    <tbody id="risk-history-body"></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="empty-state" id="risk-history-empty">No risk requests run yet on this page load.</div>
+    </div>
+    {% endif %}
+
     {% if position.status == "open" %}
     <div class="chart-wrapper">
         <canvas id="pnl-chart" height="90"></canvas>

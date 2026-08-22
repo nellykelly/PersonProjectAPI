@@ -8,11 +8,7 @@
 
     <div class="section-title">
         <h1 class="major"><img class="page-icon" src="{{ url_for('static', filename='assets/img/icons/trading.svg') }}" alt="">Live Watchlist</h1>
-        {% if market_open %}
         <span class="badge badge-closed" id="live-indicator">○ Connecting...</span>
-        {% else %}
-        <span class="badge badge-closed">Market Closed</span>
-        {% endif %}
     </div>
 
     <div class="disclaimer-banner">
@@ -30,19 +26,30 @@
     </div>
     {% endif %}
 
+    <div class="section-title">
+        <h2>Chart</h2>
+        <button type="button" class="button small" id="chart-clear">Clear selection</button>
+    </div>
+    <p class="muted" id="chart-hint">Click up to 8 tickers below to plot their live price as it ticks in.</p>
+    <div class="chart-wrapper">
+        <canvas id="watchlist-chart" height="90"></canvas>
+    </div>
+
+    <h2>Tickers</h2>
     <div class="watchlist-grid" id="watchlist-grid" data-market-open="{{ 'true' if market_open else 'false' }}">
         {% for ticker in tickers %}
         {% set entry = snapshot.get(ticker) %}
-        <div class="watchlist-tile" id="tile-{{ ticker }}">
+        <button type="button" class="watchlist-tile" id="tile-{{ ticker }}" data-ticker="{{ ticker }}" aria-pressed="false">
             <div class="tile-ticker">{{ ticker }}</div>
             <div class="tile-price">{% if entry %}${{ "%.2f"|format(entry.price) }}{% else %}&mdash;{% endif %}</div>
             <div class="tile-time">{% if entry %}{{ entry.updated_at.split("T")[1].split(".")[0] }}{% else %}no data yet{% endif %}</div>
-        </div>
+        </button>
         {% endfor %}
     </div>
 </section>
 {% endblock %}
 
 {% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script src="{{ url_for('static', filename='js/watchlist.js') }}"></script>
 {% endblock %}

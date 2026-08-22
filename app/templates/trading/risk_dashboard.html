@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Risk Dashboard{% endblock %}
+{% block content_class %}wide{% endblock %}
+
+{% block content %}
+<section>
+    <p><a href="{{ url_for('trading.index') }}">&larr; Back to trade book</a></p>
+
+    <div class="section-title">
+        <h1 class="major">Risk Dashboard</h1>
+    </div>
+
+    <p class="muted">
+        The site-wide "report" view over <strong>position &rarr; risk request &rarr; report/live feed</strong> --
+        every risk request run against every position, not just the per-leg history panel on one
+        position's own detail page. Backed by real, persisted <code>RiskRequest</code>/<code>RiskResult</code>
+        rows (<code>app/services/risk_dashboard.py</code>), not a snapshot recomputed for this page load.
+    </p>
+
+    <div class="stat-grid">
+        <div class="stat-tile">
+            <div class="value">{{ stats.total_requests }}</div>
+            <div class="label">Total risk requests</div>
+        </div>
+        <div class="stat-tile">
+            <div class="value">{{ stats.requests_last_24h }}</div>
+            <div class="label">Last 24 hours</div>
+        </div>
+        <div class="stat-tile">
+            <div class="value">{{ stats.as_of_now_requests }} / {{ stats.scenario_requests }}</div>
+            <div class="label">As-of-now / scenario</div>
+        </div>
+        <div class="stat-tile">
+            <div class="value {{ 'pnl-negative' if stats.failed_requests else '' }}">{{ stats.failed_requests }}</div>
+            <div class="label">Failed requests</div>
+        </div>
+        <div class="stat-tile">
+            <div class="value mono">{{ stats.active_risk_feed_connections }}</div>
+            <div class="label">Live risk-feed connections now</div>
+        </div>
+        <div class="stat-tile">
+            <div class="value mono">{% if stats.avg_delta is not none %}{{ "%.2f"|format(stats.avg_delta) }}{% else %}n/a{% endif %}</div>
+            <div class="label">Avg delta ({{ stats.open_option_legs }} open option legs)</div>
+        </div>
+        <div class="stat-tile">
+            <div class="value mono">{% if stats.avg_ir_vega is not none %}{{ "%.3f"|format(stats.avg_ir_vega) }}{% else %}n/a{% endif %}</div>
+            <div class="label">Avg IR Vega</div>
+        </div>
+    </div>
+
+    <div class="section-title">
+        <h2>Recent risk requests</h2>
+        <span class="muted">Newest first, across every position -- {{ recent|length }} shown</span>
+    </div>
+
+    {% if recent %}
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Position</th>
+                    <th>Scenario</th>
+                    <th>Delta</th>
+                    <th>Scenario Gamma</th>
+                    <th>IR Vega</th>
+                    <th>PnL</th>
+                    <th>Requested</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in recent %}
+                <tr class="{{ 'row-failed' if row.status == 'failed' else '' }}">
+                    <td class="mono">{{ row.id }}</td>
+                    <td>{{ row.ticker }}{% if row.kind != 'stock' %} &middot; {{ row.kind }}{% if row.strike %} @{{ row.strike }}{% endif %}{% endif %}</td>
+                    <td class="muted">
+                        {% if row.scenario %}spot {{ "%+.0f"|format(row.scenario.spot_shock_pct * 100) }}%, vol {{ "%+.0f"|format(row.scenario.vol_shock_pts * 100) }}pt
+                        {% else %}as-of-now{% endif %}
+                    </td>
+                    <td class="mono">{% if row.result %}{{ "%.2f"|format(row.result.delta) }}{% else %}-{% endif %}</td>
+                    <td class="mono">{% if row.result %}{{ "%.3f"|format(row.result.scenario_gamma) }}{% else %}-{% endif %}</td>
+                    <td class="mono">{% if row.result and row.result.ir_vega is not none %}{{ "%.3f"|format(row.result.ir_vega) }}{% else %}-{% endif %}</td>
+                    <td class="mono {{ 'pnl-positive' if row.result and row.result.pnl >= 0 else 'pnl-negative' if row.result else '' }}">
+                        {% if row.result %}${{ "%.2f"|format(row.result.pnl) }}{% else %}-{% endif %}
+                    </td>
+                    <td class="muted">{{ row.requested_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+                    <td><a class="button small" href="{{ url_for('trading.position_detail', position_id=row.leg_id) }}">View</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">No risk requests run yet -- open a position and run one from its detail page.</div>
+    {% endif %}
+</section>
+{% endblock %}

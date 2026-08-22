@@ -11,7 +11,7 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
-COPY wsgi.py ./
+COPY wsgi.py worker.py ./
 
 RUN mkdir -p /app/instance && chown -R appuser:appuser /app
 USER appuser
