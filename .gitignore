@@ -1,0 +1,7 @@
+# Secrets -- never commit these (see docs/SECURITY-NOTE.md on the
+# flask-portfolio-rebuild branch for full context)
+credentials*.json
+token.pickle
+*.pyc
+__pycache__/
+venv/
