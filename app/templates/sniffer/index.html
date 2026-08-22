@@ -4,7 +4,10 @@
 
 {% block content %}
 <section>
-    <h1 class="major">Network Sniffer</h1>
+    <div class="section-title">
+        <h1 class="major"><img class="page-icon" src="{{ url_for('static', filename='assets/img/icons/sniffer.svg') }}" alt="">Network Sniffer</h1>
+        <span class="badge badge-closed" id="live-indicator">○ Connecting...</span>
+    </div>
 
     <div class="disclaimer-banner">
         This dashboard shows <strong>only this application's own network traffic</strong> --
@@ -22,25 +25,30 @@
     </div>
 
     <h2>Outbound calls by host</h2>
-    <div class="table-wrapper">
-        <table>
-            <thead><tr><th>Host</th><th>Calls</th></tr></thead>
-            <tbody id="hosts-body">
-                <tr><td colspan="2" class="muted">Loading&hellip;</td></tr>
-            </tbody>
-        </table>
+    <div class="data-table-wrapper">
+        <div class="data-table-scroll">
+            <table class="traffic-table">
+                <thead><tr><th>Host</th><th>Calls</th></tr></thead>
+                <tbody id="hosts-body">
+                    <tr><td colspan="2" class="muted">Loading&hellip;</td></tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 
     <h2>Live traffic (last 200, newest first)</h2>
-    <p class="muted">Auto-refreshes every 4 seconds. Try opening the Trading Simulator or QR Scorer in
-        another tab and watch their outbound calls show up here.</p>
-    <div class="table-wrapper">
-        <table>
-            <thead><tr><th>Time</th><th>Dir</th><th>Method</th><th>Target</th><th>Status</th><th>Duration</th></tr></thead>
-            <tbody id="log-body">
-                <tr><td colspan="6" class="muted">Loading&hellip;</td></tr>
-            </tbody>
-        </table>
+    <p class="muted">Streams in over Server-Sent Events as it happens -- no refresh needed. Try opening
+        the Trading Simulator or QR Scorer in another tab and watch their outbound calls show up here
+        instantly.</p>
+    <div class="data-table-wrapper">
+        <div class="data-table-scroll">
+            <table class="traffic-table">
+                <thead><tr><th>Time</th><th>Dir</th><th>Method</th><th>Target</th><th>Status</th><th class="duration-cell">Duration</th></tr></thead>
+                <tbody id="log-body">
+                    <tr><td colspan="6" class="muted">Loading&hellip;</td></tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 </section>
 {% endblock %}

@@ -16,6 +16,7 @@ resetting on restart is an acceptable, simpler trade-off at this scope.
 """
 from __future__ import annotations
 
+import queue
 import threading
 import time
 from collections import deque
@@ -25,10 +26,13 @@ from flask import Flask, g, request
 
 _lock = threading.Lock()
 _buffer: deque[dict] = deque(maxlen=500)
+_subscribers: set[queue.Queue] = set()
 
 # Endpoints excluded from the log: static asset requests are noise, not
-# meaningful "what is this app doing over the network" signal.
-_EXCLUDED_ENDPOINTS = {"static", "sniffer.api_log"}
+# meaningful "what is this app doing over the network" signal. The SSE
+# stream endpoint is excluded too, so an open live-view tab doesn't spam
+# its own feed with "you have an open connection to /api/stream" entries.
+_EXCLUDED_ENDPOINTS = {"static", "sniffer.api_log", "sniffer.api_stream"}
 
 
 def configure(buffer_size: int) -> None:
@@ -37,9 +41,31 @@ def configure(buffer_size: int) -> None:
         _buffer = deque(_buffer, maxlen=buffer_size)
 
 
+def subscribe() -> queue.Queue:
+    """Register a new live listener (one per open SSE connection) and
+    return the queue new entries get pushed onto. Call unsubscribe() with
+    the same queue when the connection closes."""
+    q: queue.Queue = queue.Queue(maxsize=100)
+    with _lock:
+        _subscribers.add(q)
+    return q
+
+
+def unsubscribe(q: queue.Queue) -> None:
+    with _lock:
+        _subscribers.discard(q)
+
+
 def _record(entry: dict) -> None:
     with _lock:
         _buffer.append(entry)
+        subscribers = list(_subscribers)
+
+    for q in subscribers:
+        try:
+            q.put_nowait(entry)
+        except queue.Full:
+            pass  # a slow/stalled listener shouldn't block or lose the buffer for everyone else
 
 
 def log_inbound(method: str, path: str, status_code: int, duration_ms: float | None) -> None:
@@ -76,6 +102,24 @@ def get_recent(limit: int = 200) -> list[dict]:
     return items
 
 
+def _host_of(target: str) -> str:
+    """Extract a grouping key for the 'outbound calls by host' breakdown.
+
+    Real http(s) URLs (edgar.py) group by their actual hostname. Synthetic
+    pseudo-URLs (market_data.py logs yfinance calls as e.g.
+    "yfinance://AAPL/info", since yfinance manages its own HTTP client
+    internally -- there's no real URL to point at) would otherwise have
+    the ticker land in the host slot via a naive `split("/")[2]` -- so
+    anything that isn't http(s) groups by its scheme name instead.
+    """
+    if target.startswith("http://") or target.startswith("https://"):
+        parts = target.split("/")
+        return parts[2] if len(parts) > 2 else target
+    if "://" in target:
+        return target.split("://", 1)[0]
+    return target
+
+
 def get_stats() -> dict:
     with _lock:
         items = list(_buffer)
@@ -86,7 +130,7 @@ def get_stats() -> dict:
 
     hosts: dict[str, int] = {}
     for i in outbound:
-        host = i["target"].split("/")[2] if "://" in i["target"] else i["target"]
+        host = _host_of(i["target"])
         hosts[host] = hosts.get(host, 0) + 1
 
     return {

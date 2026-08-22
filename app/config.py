@@ -86,6 +86,16 @@ class Config:
     QR_BACKTEST_CACHE_TTL_SECONDS = int(os.environ.get("QR_BACKTEST_CACHE_TTL_SECONDS", "3600"))
     QR_SCORE_CACHE_TTL_SECONDS = int(os.environ.get("QR_SCORE_CACHE_TTL_SECONDS", "900"))
 
+    # Live watchlist grid (trading simulator). The background poller only
+    # runs while at least one browser tab is actually watching (see
+    # app/services/watchlist.py) and only during market hours, to avoid
+    # burning yfinance's free-tier rate-limit budget for no one.
+    WATCHLIST_POLL_INTERVAL_SECONDS = int(os.environ.get("WATCHLIST_POLL_INTERVAL_SECONDS", "20"))
+    WATCHLIST_TICKER_DELAY_SECONDS = float(os.environ.get("WATCHLIST_TICKER_DELAY_SECONDS", "0.3"))
+    WATCHLIST_CLOSED_CHECK_INTERVAL_SECONDS = int(
+        os.environ.get("WATCHLIST_CLOSED_CHECK_INTERVAL_SECONDS", "60")
+    )
+
 
 class DevelopmentConfig(Config):
     DEBUG = True

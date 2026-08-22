@@ -1,12 +1,16 @@
+import json
+import queue
 from datetime import datetime
 
-from flask import current_app, flash, jsonify, redirect, render_template, request, session, url_for
+from flask import Response, current_app, flash, jsonify, redirect, render_template, request, session, url_for
 
 from app.blueprints.trading import bp
 from app.extensions import db, limiter
 from app.models import Position, utcnow
-from app.services import market_data, pricing
+from app.services import market_data, pricing, watchlist
 from app.services.market_data import MarketDataError
+
+SSE_KEEPALIVE_SECONDS = 15
 
 
 def _session_id() -> str:
@@ -238,3 +242,47 @@ def api_chain(ticker, expiry):
         return jsonify({"ok": True, **chain})
     except MarketDataError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 503
+
+
+@bp.route("/watchlist")
+def watchlist_view():
+    return render_template(
+        "trading/watchlist.html",
+        tickers=current_app.config["TICKER_WHITELIST"],
+        snapshot=watchlist.get_snapshot(),
+        market_open=watchlist.is_market_open(),
+    )
+
+
+@bp.route("/api/watchlist/stream")
+def api_watchlist_stream():
+    """Server-Sent Events: pushes each ticker's refreshed price the
+    instant the background poller fetches it (see
+    app/services/watchlist.py). The poller only runs while at least one
+    connection like this one is open and only during market hours --
+    this route starting it is what "at least one viewer" means."""
+
+    # Captured here, while the request context is still active -- by the
+    # time the generator body below actually runs (Werkzeug iterates it
+    # lazily, after this view function has already returned), the
+    # context is gone and current_app can't be resolved anymore.
+    app = current_app._get_current_object()
+
+    def stream():
+        q = watchlist.subscribe()
+        watchlist.ensure_poller_running(app)
+        try:
+            yield ": connected\n\n"
+            while True:
+                try:
+                    entry = q.get(timeout=SSE_KEEPALIVE_SECONDS)
+                    yield f"data: {json.dumps(entry)}\n\n"
+                except queue.Empty:
+                    yield ": keepalive\n\n"
+        finally:
+            watchlist.unsubscribe(q)
+
+    response = Response(stream(), mimetype="text/event-stream")
+    response.headers["Cache-Control"] = "no-cache"
+    response.headers["X-Accel-Buffering"] = "no"
+    return response

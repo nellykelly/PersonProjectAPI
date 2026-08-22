@@ -9,6 +9,7 @@
     <div class="card-grid">
         {% for project in projects %}
         <div class="card">
+            <img class="card-icon" src="{{ url_for('static', filename=project.icon) }}" alt="" width="48" height="48">
             <h3>{{ project.title }}</h3>
             <p>{{ project.blurb }}</p>
             <div class="tag-list">

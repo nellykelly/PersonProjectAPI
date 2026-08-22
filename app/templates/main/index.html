@@ -14,30 +14,4 @@
         <a class="button" href="{{ url_for('contact.index') }}">Contact</a>
     </div>
 </section>
-
-<section>
-    <h2 class="major">What's here</h2>
-    <p class="muted">
-        Three independent projects, built end-to-end (Flask, SQLite, Docker): a public trading
-        simulator with live-polled market data, a quant-style company scorer backed by SEC filings,
-        and a network sniffer that visualizes this very app's own traffic.
-    </p>
-    <div class="card-grid">
-        <div class="card">
-            <h3>Trading Simulator</h3>
-            <p>Open a simulated stock or option position and track PnL against real, delayed market data.</p>
-            <a class="button small" href="{{ url_for('trading.index') }}">Open Simulator</a>
-        </div>
-        <div class="card">
-            <h3>QR -- Quant Scorer</h3>
-            <p>Score any company on valuation, leverage, growth, and profitability -- then backtest it.</p>
-            <a class="button small" href="{{ url_for('qr.index') }}">Score a Company</a>
-        </div>
-        <div class="card">
-            <h3>Network Sniffer</h3>
-            <p>A live view of every request this app serves and every API call it makes, in real time.</p>
-            <a class="button small" href="{{ url_for('sniffer.index') }}">View Traffic</a>
-        </div>
-    </div>
-</section>
 {% endblock %}

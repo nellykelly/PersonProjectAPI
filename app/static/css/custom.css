@@ -251,9 +251,22 @@
   border-color: var(--accent);
 }
 
+.card-icon {
+  width: 48px;
+  height: 48px;
+  opacity: 0.95;
+}
+
 .card h3 {
   margin: 0;
   font-size: 1.1rem;
+}
+
+.page-icon {
+  width: 40px;
+  height: 40px;
+  vertical-align: middle;
+  margin-right: 0.75rem;
 }
 
 .card p {
@@ -404,4 +417,190 @@ section + section {
   padding: 2rem;
   text-align: center;
   color: var(--fg-light);
+}
+
+/* ---------- Live traffic table (Network Sniffer) ----------
+   Denser data-table treatment than the default table styling: pill
+   badges for direction/method/status instead of plain text, a scrollable
+   fixed-height body with a sticky header so 200 rows doesn't turn the
+   whole page into one long scroll, and a brief highlight flash on rows
+   as they arrive live via SSE. */
+
+.data-table-wrapper {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 1.5rem;
+}
+
+.data-table-scroll {
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.traffic-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.traffic-table th {
+  position: sticky;
+  top: 0;
+  background: #20252a;
+  color: var(--fg);
+  text-align: left;
+  padding: 0.65rem 0.9rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05rem;
+  border-bottom: 1px solid var(--border);
+  z-index: 1;
+}
+
+.traffic-table td {
+  padding: 0.55rem 0.9rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  vertical-align: middle;
+}
+
+.traffic-table tbody tr:nth-child(2n) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.traffic-table tbody tr:hover {
+  background: rgba(58, 160, 255, 0.06);
+}
+
+.traffic-table td.target-cell {
+  word-break: break-all;
+  max-width: 480px;
+}
+
+.traffic-table td.time-cell,
+.traffic-table td.duration-cell {
+  white-space: nowrap;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.pill {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.03rem;
+  text-transform: uppercase;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.pill-in { background: rgba(58, 160, 255, 0.15); color: var(--accent); border-color: rgba(58, 160, 255, 0.35); }
+.pill-out { background: rgba(255, 255, 255, 0.08); color: var(--fg-light); border-color: var(--border); }
+
+.pill-method-GET { background: rgba(74, 222, 128, 0.12); color: var(--good); border-color: rgba(74, 222, 128, 0.3); }
+.pill-method-POST { background: rgba(251, 191, 36, 0.12); color: var(--warn); border-color: rgba(251, 191, 36, 0.3); }
+.pill-method-other { background: rgba(255, 255, 255, 0.08); color: var(--fg-light); border-color: var(--border); }
+
+.pill-status-2 { background: rgba(74, 222, 128, 0.12); color: var(--good); border-color: rgba(74, 222, 128, 0.3); }
+.pill-status-3 { background: rgba(58, 160, 255, 0.12); color: var(--accent); border-color: rgba(58, 160, 255, 0.3); }
+.pill-status-4 { background: rgba(251, 191, 36, 0.12); color: var(--warn); border-color: rgba(251, 191, 36, 0.3); }
+.pill-status-5 { background: rgba(248, 113, 113, 0.12); color: var(--bad); border-color: rgba(248, 113, 113, 0.3); }
+.pill-status-none { background: rgba(255, 255, 255, 0.05); color: var(--fg-light); border-color: var(--border); }
+
+@keyframes row-flash-in {
+  from { background-color: rgba(58, 160, 255, 0.22); }
+  to { background-color: transparent; }
+}
+
+.row-flash-in {
+  animation: row-flash-in 1.4s ease-out;
+}
+
+/* In-cell proportional bar for the "outbound calls by host" table --
+   same idea as Great Tables' inline data bars, sized relative to the
+   busiest host in the current snapshot. */
+
+.host-bar-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.host-bar-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.host-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.3s ease-out;
+}
+
+.host-bar-count {
+  min-width: 1.5rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+}
+
+/* ---------- Watchlist live grid (Trading Simulator) ---------- */
+
+.watchlist-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 0.75rem;
+  margin: 1.5rem 0;
+}
+
+.watchlist-tile {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+  transition: background-color 0.3s ease-out, border-color 0.3s ease-out;
+}
+
+.watchlist-tile .tile-ticker {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04rem;
+  color: var(--fg-light);
+}
+
+.watchlist-tile .tile-price {
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+  margin-top: 0.15rem;
+}
+
+.watchlist-tile .tile-time {
+  font-size: 0.65rem;
+  color: var(--fg-light);
+  margin-top: 0.3rem;
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes tile-flash-up {
+  from { background-color: rgba(74, 222, 128, 0.25); border-color: var(--good); }
+  to { background-color: transparent; border-color: var(--border); }
+}
+
+@keyframes tile-flash-down {
+  from { background-color: rgba(248, 113, 113, 0.25); border-color: var(--bad); }
+  to { background-color: transparent; border-color: var(--border); }
+}
+
+.tile-flash-up {
+  animation: tile-flash-up 1.5s ease-out;
+}
+
+.tile-flash-down {
+  animation: tile-flash-down 1.5s ease-out;
 }

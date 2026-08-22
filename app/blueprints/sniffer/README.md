@@ -1,4 +1,4 @@
-# Network Sniffer
+# <img src="../../static/assets/img/icons/sniffer.svg" width="32" height="32" alt=""> Network Sniffer
 
 **Route:** `/projects/network-sniffer`
 
@@ -28,9 +28,18 @@ It never touches a visitor's actual browsing traffic. Static asset requests
 - A thread-safe, bounded in-memory ring buffer (`collections.deque`) -- not persisted to
   the database. This is a live view, not an audit trail; resetting on restart is an
   acceptable, simpler trade-off at this scope.
-- `/api/log` returns the last 200 entries (method, path/host, status, duration) plus
-  aggregate stats (counts by direction, average latency, outbound calls by host); the
-  dashboard polls it every 4 seconds.
+- `/api/log` returns the last 200 entries plus aggregate stats, for the initial snapshot
+  on page load.
+- `/api/stream` is a **Server-Sent Events** endpoint (`text/event-stream`) -- the page
+  opens one long-lived connection and each new entry is pushed the instant
+  `net_monitor` records it, instead of the client polling on a fixed interval. Each
+  subscriber gets its own bounded queue (`net_monitor.subscribe()`/`unsubscribe()`); a
+  slow/stalled viewer drops its own oldest updates rather than blocking the buffer for
+  everyone else.
+- Because an SSE connection is held open per viewer, the dev server runs with
+  `threaded=True` (`wsgi.py`) and the Docker image runs gunicorn with
+  `--worker-class gthread --threads 4` (`Dockerfile`) -- otherwise one open live-view tab
+  would tie up an entire sync worker and stall every other request routed to it.
 
 ## Try it
 
@@ -47,4 +56,8 @@ the pages you're browsing.
 ## Tests
 
 `tests/test_sniffer.py` -- confirms inbound requests get logged, outbound calls carry
-their source/timing, and the host-breakdown stats aggregate correctly.
+their source/timing, the host-breakdown stats aggregate correctly, and the pub/sub layer
+behind `/api/stream` delivers to subscribers, stops after `unsubscribe`, and doesn't
+block on a full queue. (The SSE route itself isn't hit through the HTTP test client --
+it's an intentionally infinite generator, which would hang the test runner trying to
+fully consume it.)

@@ -1,3 +1,7 @@
+# Ensures zoneinfo("America/New_York") resolves on any platform/container
+# (Windows and slim Linux images don't reliably ship IANA tz data).
+tzdata>=2024.1
+
 Flask>=3.0,<4.0
 Flask-SQLAlchemy>=3.1,<4.0
 Flask-Limiter>=3.8,<4.0

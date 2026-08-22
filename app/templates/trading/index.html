@@ -4,13 +4,15 @@
 
 {% block content %}
 <section data-auto-refresh="true">
-    <h1 class="major">Trading Simulator / PnL Tracker</h1>
+    <h1 class="major"><img class="page-icon" src="{{ url_for('static', filename='assets/img/icons/trading.svg') }}" alt="">Trading Simulator / PnL Tracker</h1>
 
     <div class="disclaimer-banner">
         <strong>Simulation only.</strong> This is a shared, anonymous public trade book -- anyone can
         open a position, and every position is visible to every visitor. No real money is involved.
         Prices come from yfinance and are typically delayed ~15 minutes. Nothing here is financial advice.
     </div>
+
+    <p><a class="button small" href="{{ url_for('trading.watchlist_view') }}">Live Watchlist &rarr;</a></p>
 
     <div class="section-title">
         <h2>Open a position</h2>

@@ -1,4 +1,4 @@
-# Trading Simulator / PnL Tracker
+# <img src="../../static/assets/img/icons/trading.svg" width="32" height="32" alt=""> Trading Simulator / PnL Tracker
 
 **Route:** `/projects/trading-simulator`
 
@@ -29,6 +29,17 @@ ticker and watch its PnL update against real (delayed, free-tier) market data.
   page polls a JSON quote endpoint every 15s and renders a PnL/price chart (Chart.js via
   CDN) built from `yfinance` history. Free-tier `yfinance` is rate-limited, so this is
   polling, not a true stream -- by design, per the build spec.
+- **Live watchlist grid** (`/watchlist`, `app/services/watchlist.py`): there's no free
+  real-time market *stream* to plug into -- `yfinance` is pull-only, and genuine
+  real-time streaming from an exchange is normally a paid-provider integration (Polygon,
+  IEX, Alpaca, etc.) needing its own API key. Instead, a server-side background poller
+  refreshes all whitelisted tickers on an interval and pushes each update to the browser
+  instantly over **Server-Sent Events** -- same live-push pattern as the Network
+  Sniffer -- so the grid feels live even though the underlying quotes are still
+  yfinance's normal delayed data. Two things keep it from burning rate-limit budget for
+  nothing: the poller only runs while at least one browser tab is actually connected
+  (lazy start/stop), and only during NYSE market hours (a plain Mon-Fri 9:30-16:00
+  America/New_York check -- no holiday calendar, a documented simplification).
 - **Failure handling:** every `yfinance` call goes through a retry-with-backoff and a
   short TTL cache (`PriceCache`); on persistent failure, routes show a clean
   "market data temporarily unavailable" state instead of a 500.
@@ -38,10 +49,15 @@ ticker and watch its PnL update against real (delayed, free-tier) market data.
 - `app/blueprints/trading/routes.py` -- routes
 - `app/services/market_data.py` -- yfinance wrapper (whitelist, cache, retries)
 - `app/services/pricing.py` -- Black-Scholes + PnL math (pure functions, unit tested)
+- `app/services/watchlist.py` -- market-hours check, pub/sub, background poller
 - `app/models.py` -- `Position`, `PriceCache`
-- `app/templates/trading/`, `app/static/js/trading.js`
+- `app/templates/trading/`, `app/static/js/trading.js`, `app/static/js/watchlist.js`
 
 ## Tests
 
-`tests/test_trading.py` -- pricing math (Black-Scholes edge cases, PnL calc) plus route
-smoke tests with `market_data` monkeypatched (no live network in CI).
+- `tests/test_trading.py` -- pricing math (Black-Scholes edge cases, PnL calc) plus route
+  smoke tests with `market_data` monkeypatched (no live network in CI).
+- `tests/test_watchlist.py` -- market-hours boundary cases, the pub/sub layer, direction
+  tracking across successive polls, and that a poll sweep stops early once the last
+  subscriber disconnects. (The SSE route itself isn't hit through the HTTP test client,
+  same reasoning as the Network Sniffer's -- it's an intentionally infinite generator.)

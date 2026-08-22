@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Watchlist{% endblock %}
+{% block content_class %}wide{% endblock %}
+
+{% block content %}
+<section>
+    <p><a href="{{ url_for('trading.index') }}">&larr; Back to trade book</a></p>
+
+    <div class="section-title">
+        <h1 class="major"><img class="page-icon" src="{{ url_for('static', filename='assets/img/icons/trading.svg') }}" alt="">Live Watchlist</h1>
+        {% if market_open %}
+        <span class="badge badge-closed" id="live-indicator">○ Connecting...</span>
+        {% else %}
+        <span class="badge badge-closed">Market Closed</span>
+        {% endif %}
+    </div>
+
+    <div class="disclaimer-banner">
+        Not a real exchange data stream -- there's no free real-time market feed to plug into (that's
+        normally a paid provider integration). This is yfinance's usual delayed data, refreshed on the
+        server every {{ config.WATCHLIST_POLL_INTERVAL_SECONDS }}s during market hours and pushed to
+        this page instantly over Server-Sent Events, so it <em>feels</em> live even though the
+        underlying quotes aren't. Simulated/delayed data, not financial advice.
+    </div>
+
+    {% if not market_open %}
+    <div class="empty-state">
+        Market is closed. Live updates run Mon&ndash;Fri, 9:30am&ndash;4:00pm ET (a plain hours check,
+        not a real trading-holiday calendar). Showing the last known prices below, if any.
+    </div>
+    {% endif %}
+
+    <div class="watchlist-grid" id="watchlist-grid" data-market-open="{{ 'true' if market_open else 'false' }}">
+        {% for ticker in tickers %}
+        {% set entry = snapshot.get(ticker) %}
+        <div class="watchlist-tile" id="tile-{{ ticker }}">
+            <div class="tile-ticker">{{ ticker }}</div>
+            <div class="tile-price">{% if entry %}${{ "%.2f"|format(entry.price) }}{% else %}&mdash;{% endif %}</div>
+            <div class="tile-time">{% if entry %}{{ entry.updated_at.split("T")[1].split(".")[0] }}{% else %}no data yet{% endif %}</div>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/watchlist.js') }}"></script>
+{% endblock %}
