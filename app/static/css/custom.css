@@ -1,0 +1,407 @@
+/* Site-specific styling layered on top of the Dimension theme
+   (assets/css/main.css). Multi-page nav/footer/cards/tables/forms that
+   the original one-page template didn't need, kept in the same dark
+   palette (#1b1f22 / #000 / #fff) with a single accent color added. */
+
+:root {
+  --bg: #1b1f22;
+  --bg-alt: #000000;
+  --fg: #ffffff;
+  --fg-light: rgba(255, 255, 255, 0.6);
+  --border: rgba(255, 255, 255, 0.15);
+  --border-strong: rgba(255, 255, 255, 0.3);
+  --accent: #3aa0ff;
+  --accent-dim: rgba(58, 160, 255, 0.15);
+  --good: #4ade80;
+  --bad: #f87171;
+  --warn: #fbbf24;
+}
+
+/* ---------- Page wrapper stacking ----------
+   main.css's #bg layer is `position: fixed; z-index: 1/2` (see
+   assets/sass/layout/_bg.scss) -- Dimension's own #wrapper sits above it
+   via `position: relative; z-index: 3`. This site uses a different DOM
+   shape (top nav instead of one big hero + #main), so it needs its own
+   rule doing the same job rather than reusing #wrapper's centered flex
+   layout, which assumes Dimension's original one-pager structure. */
+
+#page-wrapper {
+  position: relative;
+  z-index: 3;
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- Header / nav ---------- */
+
+.site-header {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 1rem 2rem;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(27, 31, 34, 0.92);
+  backdrop-filter: blur(6px);
+  flex-wrap: wrap;
+}
+
+.site-header .brand {
+  font-weight: 600;
+  letter-spacing: 0.1rem;
+  text-transform: uppercase;
+  font-size: 0.95rem;
+  border-bottom: none;
+  color: var(--fg);
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-right: auto;
+}
+
+.site-nav {
+  display: flex;
+  gap: 1.5rem;
+}
+
+.site-nav a {
+  font-size: 0.8rem;
+  letter-spacing: 0.15rem;
+  text-transform: uppercase;
+  border-bottom: none;
+  color: var(--fg-light);
+}
+
+.site-nav a:hover,
+.site-nav a.is-active {
+  color: var(--accent);
+}
+
+.site-header-links {
+  display: flex;
+  gap: 1rem;
+}
+
+.site-header-links .icon {
+  font-size: 1rem;
+  color: var(--fg-light);
+}
+
+.site-header-links .icon:hover {
+  color: var(--accent);
+}
+
+.nav-toggle {
+  display: none;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--fg);
+  border-radius: 4px;
+  padding: 0.4rem 0.7rem;
+  cursor: pointer;
+}
+
+@media screen and (max-width: 736px) {
+  .site-nav {
+    display: none;
+    width: 100%;
+    flex-direction: column;
+    gap: 0.75rem;
+    order: 3;
+  }
+  .site-nav.is-open {
+    display: flex;
+  }
+  .nav-toggle {
+    display: inline-block;
+  }
+}
+
+/* ---------- Flash messages ---------- */
+
+.flash-container {
+  max-width: 960px;
+  margin: 1rem auto 0;
+  padding: 0 2rem;
+}
+
+.flash {
+  border-radius: 4px;
+  padding: 0.75rem 1.1rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+  border: 1px solid var(--border);
+}
+
+.flash-success {
+  border-color: var(--good);
+  color: var(--good);
+}
+
+.flash-error {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+/* ---------- Page shell ---------- */
+
+#content {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2.5rem 2rem 4rem;
+  width: 100%;
+  flex: 1 0 auto;
+}
+
+#content.wide {
+  max-width: 1200px;
+}
+
+/* ---------- Disclaimer banner ---------- */
+
+.disclaimer-banner {
+  border: 1px solid var(--warn);
+  color: var(--warn);
+  border-radius: 4px;
+  padding: 0.85rem 1.1rem;
+  font-size: 0.85rem;
+  margin-bottom: 2rem;
+  line-height: 1.5;
+}
+
+.site-footer .disclaimer {
+  font-size: 0.75rem;
+  color: var(--fg-light);
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 2rem;
+  line-height: 1.6;
+}
+
+.site-footer {
+  border-top: 1px solid var(--border);
+  padding: 2rem 0;
+  margin-top: 3rem;
+}
+
+.site-footer .footer-links {
+  display: flex;
+  gap: 1.5rem;
+  justify-content: center;
+  margin: 1rem 0 0.5rem;
+  font-size: 0.8rem;
+}
+
+.site-footer .footer-credit {
+  text-align: center;
+  font-size: 0.7rem;
+  color: var(--fg-light);
+  margin-top: 0.75rem;
+}
+
+/* ---------- Hero (home page) ---------- */
+
+.hero {
+  text-align: center;
+  padding: 3rem 0 2rem;
+}
+
+.hero h1 {
+  font-size: 2.2rem;
+  margin-bottom: 0.5rem;
+}
+
+.hero .tagline {
+  color: var(--fg-light);
+  font-size: 1.05rem;
+  margin-bottom: 2rem;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* ---------- Cards ---------- */
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  transition: border-color 0.2s ease-in-out;
+}
+
+.card:hover {
+  border-color: var(--accent);
+}
+
+.card h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.card p {
+  color: var(--fg-light);
+  font-size: 0.9rem;
+  flex-grow: 1;
+}
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.tag {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05rem;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.2rem 0.5rem;
+  color: var(--fg-light);
+}
+
+/* ---------- Stat tiles ---------- */
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.stat-tile {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1rem;
+  text-align: center;
+}
+
+.stat-tile .value {
+  font-size: 1.6rem;
+  font-weight: 600;
+}
+
+.stat-tile .label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08rem;
+  color: var(--fg-light);
+}
+
+/* ---------- Badges / PnL coloring ---------- */
+
+.badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+}
+
+.badge-open {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.badge-closed {
+  color: var(--fg-light);
+}
+
+.pnl-positive {
+  color: var(--good);
+}
+
+.pnl-negative {
+  color: var(--bad);
+}
+
+/* ---------- Forms ---------- */
+
+input[type="number"],
+input[type="date"] {
+  appearance: none;
+  background-color: transparent;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  color: inherit;
+  display: block;
+  outline: 0;
+  padding: 0 1rem;
+  width: 100%;
+  height: 2.75rem;
+}
+
+input[type="number"]:focus,
+input[type="date"]:focus {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+}
+
+.field-hint {
+  font-size: 0.7rem;
+  color: var(--fg-light);
+  margin-top: -1.25rem;
+  margin-bottom: 1rem;
+}
+
+/* ---------- Charts / tables ---------- */
+
+.chart-wrapper {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1rem;
+  margin: 1.5rem 0;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.table-wrapper {
+  margin-bottom: 1.5rem;
+}
+
+section + section {
+  margin-top: 2.5rem;
+}
+
+.section-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.muted {
+  color: var(--fg-light);
+}
+
+.mono {
+  font-family: 'Courier New', monospace;
+}
+
+.empty-state {
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 2rem;
+  text-align: center;
+  color: var(--fg-light);
+}

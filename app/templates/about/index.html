@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}About{% endblock %}
+
+{% block content %}
+<section>
+    <h1 class="major">About</h1>
+
+    <p>
+        I'm a Software Engineer at <strong>JPMorgan Chase &amp; Co.</strong> in Houston, TX, where I've
+        worked since July 2022 after starting as a Software Engineering Program (SEP) intern in 2021.
+    </p>
+    <p>
+        I hold a B.S. in Computer Science from Cogswell University of Silicon Valley, after starting my
+        undergraduate studies at Howard University. Before that, I trained in classical vocal performance
+        at the Ruth Asawa School of the Arts -- a background that still shapes how I think about craft,
+        precision, and performing under pressure, even in an engineering context.
+    </p>
+    <p>
+        Outside of work, I build independent projects spanning trading systems, financial data pipelines,
+        and network diagnostics -- the three you'll find under <a href="{{ url_for('projects.index') }}">Projects</a>
+        on this site. I like combining a technical and creative background: rigorous where it counts,
+        expressive where it helps.
+    </p>
+
+    <a class="button primary" href="{{ url_for('static', filename=RESUME_PATH) }}" target="_blank" rel="noopener">
+        View Resume
+    </a>
+    <a class="button" href="{{ url_for('static', filename=RESUME_PATH) }}" download>
+        Download Resume
+    </a>
+</section>
+{% endblock %}

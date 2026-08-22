@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Trading Simulator{% endblock %}
+{% block content_class %}wide{% endblock %}
+
+{% block content %}
+<section data-auto-refresh="true">
+    <h1 class="major">Trading Simulator / PnL Tracker</h1>
+
+    <div class="disclaimer-banner">
+        <strong>Simulation only.</strong> This is a shared, anonymous public trade book -- anyone can
+        open a position, and every position is visible to every visitor. No real money is involved.
+        Prices come from yfinance and are typically delayed ~15 minutes. Nothing here is financial advice.
+    </div>
+
+    <div class="section-title">
+        <h2>Open a position</h2>
+        <span class="muted">{{ open_count }} / {{ max_open }} open positions used this session</span>
+    </div>
+
+    <form method="post" action="{{ url_for('trading.open_position') }}">
+        <div class="fields">
+            <div class="field third">
+                <label for="ticker">Ticker</label>
+                <select id="ticker" name="ticker" required>
+                    {% for t in whitelist %}
+                    <option value="{{ t }}">{{ t }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="field third">
+                <label for="kind">Position type</label>
+                <select id="kind" name="kind">
+                    <option value="stock">Stock</option>
+                    <option value="call">Call option</option>
+                    <option value="put">Put option</option>
+                </select>
+            </div>
+            <div class="field third">
+                <label for="quantity">Quantity</label>
+                <input type="number" id="quantity" name="quantity" value="1" min="1" max="1000" required>
+                <div class="field-hint">Shares for stock, contracts for options (1 contract = 100 shares)</div>
+            </div>
+        </div>
+
+        <div id="option-fields" style="display:none;">
+            <div class="fields">
+                <div class="field half">
+                    <label for="expiry-select">Expiry</label>
+                    <select id="expiry-select"></select>
+                    <input type="hidden" id="expiry" name="expiry">
+                </div>
+                <div class="field half">
+                    <label for="strike-select">Strike</label>
+                    <select id="strike-select"></select>
+                    <input type="hidden" id="strike" name="strike">
+                </div>
+            </div>
+        </div>
+
+        <button type="submit" class="button primary">Open Position</button>
+    </form>
+
+    <div class="section-title">
+        <h2>Open positions (shared book)</h2>
+    </div>
+
+    {% if rows %}
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>Ticker</th>
+                    <th>Type</th>
+                    <th>Qty</th>
+                    <th>Entry Price</th>
+                    <th>Current Price</th>
+                    <th>PnL</th>
+                    <th>Opened</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                {% set p = row.position %}
+                <tr>
+                    <td>{{ p.ticker }}</td>
+                    <td>{{ p.kind }}{% if p.strike %} @{{ p.strike }}{% endif %}</td>
+                    <td>{{ p.quantity }}</td>
+                    <td class="mono">${{ "%.2f"|format(p.entry_price) }}</td>
+                    <td class="mono">
+                        {% if row.underlying_price is not none %}${{ "%.2f"|format(row.underlying_price) }}{% else %}<span class="muted">n/a</span>{% endif %}
+                    </td>
+                    <td class="mono {{ 'pnl-positive' if row.pnl and row.pnl.pnl >= 0 else 'pnl-negative' if row.pnl else '' }}">
+                        {% if row.pnl %}${{ "%.2f"|format(row.pnl.pnl) }} ({{ "%.1f"|format(row.pnl.pnl_pct) }}%){% else %}<span class="muted">n/a</span>{% endif %}
+                    </td>
+                    <td class="muted">{{ p.opened_at.strftime("%Y-%m-%d %H:%M") }}</td>
+                    <td><a class="button small" href="{{ url_for('trading.position_detail', position_id=p.id) }}">View</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">No open positions yet -- open the first one above.</div>
+    {% endif %}
+
+    {% if closed_positions %}
+    <div class="section-title">
+        <h2>Recently closed</h2>
+    </div>
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr><th>Ticker</th><th>Type</th><th>Qty</th><th>Entry</th><th>Close</th><th>Closed</th></tr>
+            </thead>
+            <tbody>
+                {% for p in closed_positions %}
+                <tr>
+                    <td>{{ p.ticker }}</td>
+                    <td>{{ p.kind }}{% if p.strike %} @{{ p.strike }}{% endif %}</td>
+                    <td>{{ p.quantity }}</td>
+                    <td class="mono">${{ "%.2f"|format(p.entry_price) }}</td>
+                    <td class="mono">{% if p.close_price %}${{ "%.2f"|format(p.close_price) }}{% endif %}</td>
+                    <td class="muted">{{ p.closed_at.strftime("%Y-%m-%d %H:%M") if p.closed_at else "" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/trading.js') }}"></script>
+{% endblock %}

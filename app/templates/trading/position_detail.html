@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}{{ position.ticker }} Position{% endblock %}
+{% block content_class %}wide{% endblock %}
+
+{% block content %}
+<section {% if position.status == "open" %}data-quote-ticker="{{ position.ticker }}" data-position-id="{{ position.id }}"{% endif %}>
+    <p><a href="{{ url_for('trading.index') }}">&larr; Back to trade book</a></p>
+
+    <div class="section-title">
+        <h1 class="major">{{ position.ticker }} &middot; {{ position.kind }}{% if position.strike %} @ {{ position.strike }}{% endif %}</h1>
+        <span class="badge {{ 'badge-open' if position.status == 'open' else 'badge-closed' }}">{{ position.status }}</span>
+    </div>
+
+    <div class="disclaimer-banner">
+        Simulated position, delayed market data, not financial advice.
+    </div>
+
+    <div class="stat-grid">
+        <div class="stat-tile">
+            <div class="value">{{ position.quantity }}</div>
+            <div class="label">Quantity</div>
+        </div>
+        <div class="stat-tile">
+            <div class="value mono">${{ "%.2f"|format(position.entry_price) }}</div>
+            <div class="label">Entry Price</div>
+        </div>
+        <div class="stat-tile">
+            <div class="value mono" id="live-price">
+                {% if underlying_price is not none %}${{ "%.2f"|format(underlying_price) }}{% else %}n/a{% endif %}
+            </div>
+            <div class="label">{{ "Close Price" if position.status == "closed" else "Live Price" }}</div>
+        </div>
+        <div class="stat-tile">
+            <div class="value {{ 'pnl-positive' if pnl and pnl.pnl >= 0 else 'pnl-negative' if pnl else '' }}">
+                {% if pnl %}${{ "%.2f"|format(pnl.pnl) }}{% else %}n/a{% endif %}
+            </div>
+            <div class="label">PnL</div>
+        </div>
+    </div>
+
+    {% if position.expiry %}
+    <p class="muted">Expiry: {{ position.expiry.isoformat() }}{% if position.entry_iv %} &middot; Entry IV: {{ "%.1f"|format(position.entry_iv * 100) }}%{% endif %}</p>
+    {% endif %}
+
+    {% if position.status == "open" %}
+    <div class="chart-wrapper">
+        <canvas id="pnl-chart" height="90"></canvas>
+    </div>
+
+    <form method="post" action="{{ url_for('trading.close_position', position_id=position.id) }}">
+        <button type="submit" class="button primary">Close Position</button>
+    </form>
+    {% else %}
+    <p class="muted">Closed {{ position.closed_at.strftime("%Y-%m-%d %H:%M") }} UTC.</p>
+    {% endif %}
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="{{ url_for('static', filename='js/trading.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}QR Backtest{% endblock %}
+{% block content_class %}wide{% endblock %}
+
+{% block content %}
+<section>
+    <p><a href="{{ url_for('qr.index') }}">&larr; Back to scorer</a></p>
+    <h1 class="major">Backtest: does a higher score predict better returns?</h1>
+
+    <div class="disclaimer-banner">
+        A demo-scale validation over a small basket of tickers and one lookback window --
+        not a rigorous research backtest, and not investment advice.
+    </div>
+
+    <p class="muted">
+        For each ticker, the composite score is computed using only fundamentals that were
+        <em>actually filed</em> with the SEC on or before {{ result.as_of_date }} ({{ result.years_ago }}
+        year(s) ago) -- avoiding look-ahead bias -- then compared to the real price return from that date
+        to today.
+    </p>
+
+    <form method="get" class="fields">
+        <div class="field third">
+            <label for="years_ago">Lookback (years)</label>
+            <select id="years_ago" name="years_ago" onchange="this.form.submit()">
+                {% for y in range(1, 6) %}
+                <option value="{{ y }}" {% if y == years_ago %}selected{% endif %}>{{ y }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </form>
+
+    <div class="stat-grid">
+        <div class="stat-tile">
+            <div class="value">{{ result.n_valid }}/{{ result.n_total }}</div>
+            <div class="label">Tickers scored</div>
+        </div>
+        <div class="stat-tile">
+            <div class="value">{{ result.correlation if result.correlation is not none else "n/a" }}</div>
+            <div class="label">Score &harr; Return Correlation</div>
+        </div>
+    </div>
+
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr><th>Ticker</th><th>Score ({{ result.as_of_date }})</th><th>Price Then</th><th>Price Now</th><th>Forward Return</th></tr>
+            </thead>
+            <tbody>
+                {% for row in result.rows %}
+                <tr>
+                    <td>{{ row.ticker }}</td>
+                    {% if row.error %}
+                    <td colspan="4" class="muted">{{ row.error }}</td>
+                    {% else %}
+                    <td class="mono">{{ row.score }}</td>
+                    <td class="mono">${{ row.price_then }}</td>
+                    <td class="mono">${{ row.price_now }}</td>
+                    <td class="mono {{ 'pnl-positive' if row.forward_return_pct >= 0 else 'pnl-negative' }}">{{ row.forward_return_pct }}%</td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

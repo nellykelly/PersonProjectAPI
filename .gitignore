@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+
+# Flask / this app
+instance/
+.env
+*.db
+
+# Secrets -- see docs/SECURITY-NOTE.md. These should never be committed.
+credentials*.json
+token.pickle
+
+# Kept on disk for local history (not deleted), but this is ~74MB of a
+# third-party *licensed* template's assets (see legacy/README-colorlib-license.txt)
+# that isn't ours to redistribute in bulk on a public repo, and isn't used by
+# the running app either way.
+legacy/static_colorlib_backup/
+
+# Tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

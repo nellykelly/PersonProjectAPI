@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Network Sniffer{% endblock %}
+{% block content_class %}wide{% endblock %}
+
+{% block content %}
+<section>
+    <h1 class="major">Network Sniffer</h1>
+
+    <div class="disclaimer-banner">
+        This dashboard shows <strong>only this application's own network traffic</strong> --
+        inbound requests it receives on its own routes, and outbound API calls it makes itself
+        (to yfinance / SEC EDGAR for the other two projects). It never captures a visitor's actual
+        browsing traffic: doing that would be a wiretapping/privacy problem on almost any host,
+        regardless of intent. See the project README for the full reasoning.
+    </div>
+
+    <div class="stat-grid" id="stats">
+        <div class="stat-tile"><div class="value" data-stat="total">{{ stats.total }}</div><div class="label">Total logged</div></div>
+        <div class="stat-tile"><div class="value" data-stat="inbound">{{ stats.inbound }}</div><div class="label">Inbound</div></div>
+        <div class="stat-tile"><div class="value" data-stat="outbound">{{ stats.outbound }}</div><div class="label">Outbound</div></div>
+        <div class="stat-tile"><div class="value" data-stat="avg_duration_ms">{{ stats.avg_duration_ms if stats.avg_duration_ms is not none else "n/a" }}</div><div class="label">Avg Duration</div></div>
+    </div>
+
+    <h2>Outbound calls by host</h2>
+    <div class="table-wrapper">
+        <table>
+            <thead><tr><th>Host</th><th>Calls</th></tr></thead>
+            <tbody id="hosts-body">
+                <tr><td colspan="2" class="muted">Loading&hellip;</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2>Live traffic (last 200, newest first)</h2>
+    <p class="muted">Auto-refreshes every 4 seconds. Try opening the Trading Simulator or QR Scorer in
+        another tab and watch their outbound calls show up here.</p>
+    <div class="table-wrapper">
+        <table>
+            <thead><tr><th>Time</th><th>Dir</th><th>Method</th><th>Target</th><th>Status</th><th>Duration</th></tr></thead>
+            <tbody id="log-body">
+                <tr><td colspan="6" class="muted">Loading&hellip;</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/sniffer.js') }}"></script>
+{% endblock %}

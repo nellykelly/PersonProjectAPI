@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Nelson Koskela{% endblock %} | Software Engineer</title>
+    <meta name="description" content="Nelson Koskela -- Software Engineer at JPMorgan Chase &amp; Co. Personal portfolio site with independent trading, quant scoring, and network monitoring projects.">
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='assets/img/favicon.ico') }}">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='assets/css/main.css') }}">
+    <noscript><link rel="stylesheet" href="{{ url_for('static', filename='assets/css/noscript.css') }}"></noscript>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="is-preload">
+<div id="page-wrapper">
+
+    <header class="site-header">
+        <a class="brand" href="{{ url_for('main.index') }}">
+            <span class="icon fa-code"></span> Nelson Koskela
+        </a>
+
+        <button class="nav-toggle" aria-label="Toggle navigation">&#9776;</button>
+
+        <nav class="site-nav">
+            <a href="{{ url_for('main.index') }}">Home</a>
+            <a href="{{ url_for('about.index') }}">About</a>
+            <a href="{{ url_for('projects.index') }}">Projects</a>
+            <a href="{{ url_for('contact.index') }}">Contact</a>
+        </nav>
+
+        <div class="site-header-links">
+            <a class="icon brands fa-github" href="{{ GITHUB_URL }}" target="_blank" rel="noopener" title="GitHub" aria-label="GitHub"><span class="label">GitHub</span></a>
+            <a class="icon brands fa-linkedin" href="{{ LINKEDIN_URL }}" target="_blank" rel="noopener" title="LinkedIn" aria-label="LinkedIn"><span class="label">LinkedIn</span></a>
+            <a class="icon solid fa-file-alt" href="{{ url_for('static', filename=RESUME_PATH) }}" target="_blank" rel="noopener" title="Resume" aria-label="Resume"><span class="label">Resume</span></a>
+            <a class="icon solid fa-envelope" href="mailto:{{ EMAIL }}" title="Email" aria-label="Email"><span class="label">Email</span></a>
+        </div>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="flash-container">
+            {% for category, message in messages %}
+            <div class="flash flash-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    {% endwith %}
+
+    <main id="content" class="{% block content_class %}{% endblock %}">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="site-footer">
+        <div class="disclaimer">
+            This is a personal portfolio site. The Trading Simulator uses simulated positions with
+            delayed, real market data pulled from yfinance -- no real money changes hands and nothing
+            here is financial advice. The QR company scores are an educational demo, not investment
+            advice. The Network Sniffer only logs this application's own inbound requests and
+            outbound API calls, never a visitor's browsing traffic.
+        </div>
+        <div class="footer-links">
+            <a href="{{ GITHUB_URL }}" target="_blank" rel="noopener">GitHub</a>
+            <a href="{{ LINKEDIN_URL }}" target="_blank" rel="noopener">LinkedIn</a>
+            <a href="mailto:{{ EMAIL }}">{{ EMAIL }}</a>
+        </div>
+        <div class="footer-credit">
+            &copy; {{ CURRENT_YEAR }} Nelson Koskela &middot; Built with Flask &middot;
+            Design derived from <a href="https://html5up.net" target="_blank" rel="noopener">HTML5 UP</a>
+            (Dimension, CCA 3.0) &middot;
+            <a href="https://github.com/nellykelly/PersonProjectAPI" target="_blank" rel="noopener">Source on GitHub</a>
+        </div>
+    </footer>
+
+</div>
+<div id="bg"></div>
+
+<script src="{{ url_for('static', filename='js/base.js') }}"></script>
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

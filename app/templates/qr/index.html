@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}QR -- Quant Company Scorer{% endblock %}
+{% block content_class %}wide{% endblock %}
+
+{% block content %}
+<section>
+    <h1 class="major">QR -- Quant Company Scorer</h1>
+
+    <div class="disclaimer-banner">
+        Scores are an educational demo, computed from public SEC EDGAR filings and market data.
+        <strong>This is not investment advice.</strong>
+    </div>
+
+    <p class="muted">
+        Each company gets a 0-100 score in four categories -- valuation, leverage/solvency, growth, and
+        profitability -- combined into an overall score using configurable weights (currently equal-weight
+        by default: {% for name, w in weights.items() %}{{ name }} {{ "%.0f"|format(w*100) }}%{{ ", " if not loop.last }}{% endfor %}).
+        See the <a href="{{ url_for('qr.backtest_view') }}">backtest</a> for whether a high score has
+        historically correlated with better forward returns.
+    </p>
+
+    <form method="get">
+        <div class="fields">
+            <div class="field third">
+                <label for="ticker-select">Ticker</label>
+                <select id="ticker-select" name="ticker" required>
+                    <option value="">Select a ticker&hellip;</option>
+                    {% for t in whitelist %}
+                    <option value="{{ t }}" {% if t == ticker %}selected{% endif %}>{{ t }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <button type="submit" class="button primary">Score Company</button>
+    </form>
+
+    {% if error %}
+    <div class="flash flash-error">{{ error }}</div>
+    {% endif %}
+
+    {% if report %}
+    <div class="section-title">
+        <h2>{{ report.ticker }} -- overall score</h2>
+        <span class="stat-tile" style="display:inline-block;">
+            <span class="value">{{ report.overall_score if report.overall_score is not none else "n/a" }}</span>
+            <span class="label">/ 100</span>
+        </span>
+    </div>
+    <p class="muted">As of {{ report.as_of_date }}. Category weight shown is the renormalized weight actually
+        used (categories with no available data are dropped and the rest renormalize).</p>
+
+    {% for cat in categories %}
+    <h3>{{ cat.name | capitalize }}
+        <span class="muted">
+            -- score: {{ cat.score if cat.score is not none else "n/a" }}
+            &middot; weight: {{ "%.0f"|format(cat.weight*100) if cat.weight else "0" }}%
+            (configured {{ "%.0f"|format(cat.configured_weight*100) }}%)
+        </span>
+    </h3>
+    <div class="table-wrapper">
+        <table>
+            <thead><tr><th>Metric</th><th>Raw Value</th><th>Sub-score</th></tr></thead>
+            <tbody>
+                {% for m in cat.metrics %}
+                <tr>
+                    <td>{{ m.label }}</td>
+                    <td class="mono">
+                        {% if m.raw is none %}<span class="muted">n/a</span>
+                        {% elif m.is_pct %}{{ "%.1f"|format(m.raw * 100) }}%
+                        {% else %}{{ "%.2f"|format(m.raw) }}
+                        {% endif %}
+                    </td>
+                    <td class="mono">{{ m.score if m.score is not none else "n/a" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endfor %}
+    {% endif %}
+</section>
+{% endblock %}
