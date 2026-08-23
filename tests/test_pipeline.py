@@ -278,3 +278,88 @@ def test_emit_stage_update_includes_commands_only_on_start(app, db, monkeypatch)
     assert "commands" in payloads[0]
     assert len(payloads[0]["commands"]) > 0
     assert "commands" not in payloads[1]
+
+
+# ---------- a stage crashing with something other than ValidationError ----------
+#
+# _run_stage used to only catch validators.ValidationError -- any other
+# exception (a real bug, a DB hiccup, the worker getting killed mid-job)
+# escaped the whole pipeline: no PipelineRun row, no fail event, and for
+# Verify specifically (which runs after Deploy already committed
+# status='live') a character left stranded live in the world with a
+# blank, invisible gap in its own pipeline history. Found live in
+# production.
+
+
+def test_unexpected_exception_in_verify_unlives_the_character(app, db, monkeypatch, capture_socketio_emits):
+    character = _make_character()
+
+    real_refresh = db.session.refresh
+
+    def _crash_on_refresh(obj):
+        if isinstance(obj, Character):
+            raise RuntimeError("simulated worker crash mid-verify")
+        return real_refresh(obj)
+
+    monkeypatch.setattr(db.session, "refresh", _crash_on_refresh)
+
+    pipeline.run_pipeline(character.id)
+
+    db.session.refresh = real_refresh
+    db.session.refresh(character)
+
+    # Deploy still ran and committed 'live' -- Verify crashing afterward
+    # must not leave that standing; the character has to come back down.
+    assert character.status == "failed"
+    assert character.failure_reason == "internal error -- this stage did not complete"
+
+
+def test_unexpected_exception_in_verify_still_records_a_pipeline_run(app, db, monkeypatch):
+    character = _make_character()
+
+    real_refresh = db.session.refresh
+
+    def _crash_on_refresh(obj):
+        if isinstance(obj, Character):
+            raise RuntimeError("simulated worker crash mid-verify")
+        return real_refresh(obj)
+
+    monkeypatch.setattr(db.session, "refresh", _crash_on_refresh)
+    pipeline.run_pipeline(character.id)
+    db.session.refresh = real_refresh
+
+    verify_run = PipelineRun.query.filter_by(character_id=character.id, stage="verify").first()
+    assert verify_run is not None, "a crashed stage must still leave a real PipelineRun row, not a blank gap"
+    assert verify_run.status == "fail"
+
+
+def test_unexpected_exception_in_verify_emits_a_fail_event_not_silence(app, db, monkeypatch, capture_socketio_emits):
+    character = _make_character()
+
+    real_refresh = db.session.refresh
+
+    def _crash_on_refresh(obj):
+        if isinstance(obj, Character):
+            raise RuntimeError("simulated worker crash mid-verify")
+        return real_refresh(obj)
+
+    monkeypatch.setattr(db.session, "refresh", _crash_on_refresh)
+    pipeline.run_pipeline(character.id)
+    db.session.refresh = real_refresh
+
+    verify_events = [e for e in capture_socketio_emits if e["stage"] == "verify"]
+    assert any(e["status"] == "fail" for e in verify_events)
+
+
+def test_unexpected_exception_at_an_earlier_stage_also_fails_cleanly(app, db, monkeypatch):
+    # Not just Verify -- any stage crashing should behave the same way.
+    character = _make_character()
+    monkeypatch.setattr(
+        pipeline.validators, "check_no_injection_patterns", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom"))
+    )
+    pipeline.run_pipeline(character.id)
+
+    assert character.status == "failed"
+    run = PipelineRun.query.filter_by(character_id=character.id, stage="security_scan").first()
+    assert run is not None
+    assert run.status == "fail"

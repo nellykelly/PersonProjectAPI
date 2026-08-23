@@ -239,7 +239,23 @@ def _run_stage(
     sleeps the stage's delay (0 in fast mode, otherwise a fresh random
     1-10s roll), runs `check_fn` (which raises ValidationError on
     failure), then emits pass/fail. Returns True to continue to the next
-    stage, False if the pipeline should stop here."""
+    stage, False if the pipeline should stop here.
+
+    Every stage has to end in a real, visible pass or fail -- there's no
+    third option. Originally only `ValidationError` was caught here, on
+    the assumption that's the only way a check function fails; in
+    practice a stage can also just crash (a real bug, a DB hiccup, the
+    worker process itself getting killed mid-job by a redeploy). That
+    bypassed this function's except clause entirely: no PipelineRun row
+    got written, no 'fail' event fired, and -- worse -- for Verify
+    specifically, which runs *after* Deploy already committed
+    status='live', a crashed Verify left a character stranded live in
+    the world with a blank, un-investigable gap in its own pipeline
+    history instead of a visible failure. Caught live in production.
+    Any exception, not just ValidationError, now ends the stage the
+    same way: failed, visibly, with the character un-lived if Deploy
+    had already gotten that far (see _fail's world_cache invalidation).
+    """
     delay = _stage_delay(fast_mode)
     emit_stage_update(character, stage, "start")
     started_at = utcnow()
@@ -248,6 +264,18 @@ def _run_stage(
         check_fn()
     except validators.ValidationError as exc:
         _fail(character, stage, str(exc), started_at, fast_mode)
+        return False
+    except Exception:
+        # Deliberately generic, not the raw exception text: a visitor-
+        # facing pipeline log is not the place to leak internal
+        # tracebacks. The real detail goes to the app logger instead.
+        current_app.logger.exception(
+            "Pipeline stage %r crashed for character %s -- recording as a failure instead of "
+            "leaving no PipelineRun row at all",
+            stage,
+            character.id,
+        )
+        _fail(character, stage, "internal error -- this stage did not complete", started_at, fast_mode)
         return False
     _pass_stage(character, stage, next_status, started_at, fast_mode, pass_detail)
     return True
