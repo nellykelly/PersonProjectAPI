@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Interview Question Bank | Nelson Koskela</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="{{ url_for('static', filename='assets/img/favicon.ico') }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,600;1,400&display=swap">
+
+<link rel="stylesheet" href="{{ url_for('static', filename='css/docs.css') }}">
+
+
+<div class="backbar">
+  <a href="{{ url_for('main.index') }}">&larr; nelsonkoskela.dev</a>
+  <span>Engineering reference</span>
+  <a href="{{ url_for('projects.index') }}">Projects &rarr;</a>
+</div>
+
+<div class="backbar">
+  <a href="{{ url_for('documentation.index') }}">&larr; Engineering reference</a>
+  <span>Private &middot; interview prep</span>
+  <a href="{{ url_for('documentation.logout') }}">Lock again</a>
+</div>
+
+<div class="shell">
+  <header class="masthead">
+    <p class="kicker">Private section &middot; not linked publicly</p>
+    <h1>Interview Question Bank</h1>
+    <p class="standfirst">Twenty-five questions grouped by what the interviewer is actually probing, each with the shape of a strong answer and a pointer back into the reference. Plus questions worth asking them.</p>
+  </header>
+
+  <main style="grid-column: 1 / -1;">
+<div class="part">
+  <span class="part-label">Part VIII</span>
+  <h2>Interview question bank</h2>
+</div>
+
+<section class="chunk" id="s30">
+  <h3><i>30</i><span>Questions and what a strong answer covers</span></h3>
+
+  <p class="lede">Grouped by what the interviewer is actually probing. Each answer sketch is the shape of a good response, not a script &mdash; the section reference points back at the detail.</p>
+
+  <h4>Opening &mdash; describe the project</h4>
+  <div class="qa">
+    <details class="q">
+      <summary>Walk me through this project.</summary>
+      <div class="answer">
+        <p>Lead with structure, not a feature list. One Flask app, ten blueprints, six substantial projects sharing one Postgres, one Redis, one worker pool, deployed as five containers on a VPS. Routes are thin; logic lives in a service layer; models hold state.</p>
+        <p>Then pick <b>one</b> project and go deep rather than skimming all six. Pipeline World is the strongest choice because it exercises the most: a queue, a separate worker process, WebSocket push, cache-aside, and real SQL over the data it produces.</p>
+        <p>Close with the constraint that shaped the deployment: gunicorn runs a single process because Socket.IO sessions live in process memory, which makes the eight-thread pool a real budget and explains the SSE caps and the static-file split. <span class="pill p-info">&sect;1 &sect;2</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>What was the hardest part?</summary>
+      <div class="answer">
+        <p>Good candidates, in rough order of how well they demonstrate systems thinking:</p>
+        <ul>
+          <li><b>Moving risk pricing to a separate process.</b> The interesting part is not "I added a queue" &mdash; it is that exceptions stop working as a communication channel across a process boundary, and the shared database row has to carry both the result and the failure. <span class="pill p-info">&sect;10</span></li>
+          <li><b>Realising the upfront validation was the bug.</b> A correct-looking guard was deleting the observability the project existed to demonstrate. <span class="pill p-info">&sect;18</span></li>
+          <li><b>The static-asset bottleneck.</b> A resource limit that was correct for its own reason was still a bug everywhere else that resource got used. <span class="pill p-info">&sect;29</span></li>
+        </ul>
+      </div>
+    </details>
+  </div>
+
+  <h4>Architecture and design</h4>
+  <div class="qa">
+    <details class="q">
+      <summary>Why a separate worker process instead of doing the work in the request?</summary>
+      <div class="answer">
+        <p>Two different reasons for the two job types, and saying so shows you did not just apply a pattern uniformly:</p>
+        <ul>
+          <li><b>Pipeline World</b> is genuinely fire-and-forget. The request returns immediately, and progress reaches the browser over WebSockets. Stages take 1&ndash;10 s each by design; holding a thread for a minute would be indefensible.</li>
+          <li><b>Risk pricing</b> is submitted and then <i>awaited</i> &mdash; the caller still gets a finished report back synchronously. The win there is that the compute happens off the web process, echoing how a desk distributes to a grid, while callers keep a simple synchronous contract.</li>
+        </ul>
+        <p>Be ready for the follow-up: the wait polls the row's status every 50 ms with a 20 s ceiling, and must use a column query rather than <code>session.get()</code>, which would be served from the identity map and never re-read. <span class="pill p-info">&sect;10</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>You have two risk models. Why, and how is that structured?</summary>
+      <div class="answer">
+        <p>Strategy pattern with a registry. <code>RiskModel</code> defines <code>run(ctx) -&gt; ModelRun</code> plus self-describing metadata; the request stores which key answered.</p>
+        <p>The models answer genuinely different questions: closed-form Greeks are local derivatives around today's spot and cannot tell you what a 20% gap does; full revalue reprices across a ladder and measures the P&amp;L it observes. A desk runs both and treats a disagreement as a signal.</p>
+        <p>The key design point: the <b>engine owns all side effects</b> &mdash; market fetch, scenario shock, DB writes &mdash; and hands the model a frozen <code>PricingContext</code>. So two models see byte-identical inputs, and a model is testable with no network and no database. <span class="pill p-info">&sect;11</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Why one market snapshot per request instead of pricing each leg as you reach it?</summary>
+      <div class="answer">
+        <p>This is the single best correctness answer in the project. Pricing legs one at a time marks a multi-leg position against several different instants, so the net Greeks describe a position that never existed at any one moment. A spread's two legs offsetting each other is only meaningful if both were marked against the same market.</p>
+        <p>So <code>take_market_snapshot()</code> fetches one price per <i>distinct</i> ticker up front, and the snapshot is stored in <code>totals</code> so the report can prove what it was marked against. <span class="pill p-info">&sect;10</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Why keyword-only arguments on <code>submit_risk_request</code>?</summary>
+      <div class="answer">
+        <p>It previously took a leg id positionally. Adding a <code>strategy_id</code> parameter meant a stale <code>submit_risk_request(42)</code> would be silently reinterpreted as "price position 42" &mdash; a wrong answer with no error and nothing to notice.</p>
+        <p>The general principle: a signature change that silently changes an existing positional argument's <i>meaning</i> is exactly the case worth making unrepresentable. It turned into an immediate <code>TypeError</code>, and 11 stale call sites in the suite failed loudly instead of quietly pricing the wrong thing. <span class="pill p-info">&sect;10</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Why is <code>Instrument</code> separate from <code>Leg</code>?</summary>
+      <div class="answer">
+        <p>Reference data versus transaction data. A hundred visitors trading the same AAPL $230 call should point at one instrument row, not each embed a private copy of the strike, expiry, exercise style and multiplier. That is how real booking systems separate the concerns, and it is what makes the instrument catalogue &mdash; "show me every leg across every position that has ever traded this contract" &mdash; a real query rather than a scan.</p>
+        <p>Enforced by a unique constraint on the natural key plus a single <code>get_or_create_instrument()</code> entry point. Passthrough properties on <code>Leg</code> meant the refactor did not touch the routes and templates. <span class="pill p-info">&sect;7 &sect;8</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Why SSE in some places and WebSockets in others?</summary>
+      <div class="answer">
+        <p>Use the simpler tool wherever it suffices. SSE is one-way server&rarr;client over plain HTTP, needs no client library and reconnects on its own &mdash; correct for the watchlist, which only ever pushes prices down.</p>
+        <p>Pipeline World uses Socket.IO because the spec asked for it and because a bidirectional protocol is defensible once client-originated events are plausible. Say plainly that the current version is push-only in practice. The answer to avoid is "WebSockets because they are more impressive". <span class="pill p-info">&sect;13 &sect;18</span></p>
+      </div>
+    </details>
+  </div>
+
+  <h4>Databases and SQL</h4>
+  <div class="qa">
+    <details class="q">
+      <summary>Walk me through the rolling 7-day pass rate query.</summary>
+      <div class="answer">
+        <p>A CTE aggregates runs into one row per day using <code>DATE_TRUNC('day', started_at)</code> and <code>COUNT(*) FILTER (WHERE status='pass')::float / COUNT(*)</code> &mdash; the cast matters or integer division floors it to zero.</p>
+        <p>The outer query applies <code>AVG(...) OVER (ORDER BY day ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)</code>. Be ready to explain that the explicit frame is what makes it a trailing seven-row window; the default frame would give a running average over all prior rows.</p>
+        <p>Also be ready for <code>ROWS</code> vs <code>RANGE</code>: <code>ROWS</code> counts rows, so a day with no runs is skipped rather than counted as a gap &mdash; acceptable here, and worth naming as a known property. <span class="pill p-info">&sect;20</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Why does one page require Postgres when everything else runs on SQLite?</summary>
+      <div class="answer">
+        <p>The page exists to demonstrate real SQL. <code>DATE_TRUNC</code>, <code>FILTER</code> and window frames are Postgres dialect; rewriting them in a portable subset would mean dropping the window functions or reimplementing them as Python loops, which would undercut the exact thing being shown.</p>
+        <p>The engineering answer is what surrounds it: every ORM model stays on portable types so the rest of the app works either way, the module checks the dialect and raises a clear message telling you how to point <code>DATABASE_URL</code> at Postgres, and the tests <b>skip with a reason</b> rather than silently passing on fake data. <span class="pill p-info">&sect;20 &sect;28</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Tell me about a migration that went wrong.</summary>
+      <div class="answer">
+        <p>Adding a <code>nullable=False</code> column to a populated table &mdash; hit four separate times. Alembic's autogenerated SQL fails immediately because Postgres backfills existing rows with NULL before checking the constraint.</p>
+        <p>The fix is always the same shape: add nullable, backfill in the same migration, then tighten. Distinguish the two backfill flavours: a single constant works via <code>server_default</code>; a value that varies per row &mdash; each instrument's own OCC code &mdash; needs a real loop, which <code>server_default</code> cannot express. <span class="pill p-info">&sect;28</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>How do you prevent SQL injection?</summary>
+      <div class="answer">
+        <p>Parametrised queries &mdash; SQLAlchemy bound parameters everywhere, including the raw SQL in the analytics module, which takes no user input at all.</p>
+        <p>Then the important qualifier: the input whitelists and the injection scan are defence-in-depth <i>on top of</i> that, not the mechanism. Claiming the whitelist is what stops injection would be the wrong answer even though it is real and does reject those characters. <span class="pill p-info">&sect;25</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>You tested on SQLite and deployed on Postgres. What broke?</summary>
+      <div class="answer">
+        <p>Column widths. SQLite ignores VARCHAR limits entirely; Postgres enforces them. So a too-narrow column is invisible to a green test suite and appears only as a production 500. It happened twice &mdash; <code>PipelineRun.stage</code> at <code>String(10)</code> against the 15-character <code>'test_uniqueness'</code>, and <code>Instrument.instrument_type</code> at <code>String(4)</code> against <code>'stock'</code>.</p>
+        <p>The response is the good part: rather than fixing them one outage at a time, a test now audits <b>every</b> string column's declared width against the widest value the code can write, reading from the real constants. It touches no database, so it catches the class of bug under SQLite. It later caught a bug it was not written for. <span class="pill p-info">&sect;28</span></p>
+      </div>
+    </details>
+  </div>
+
+  <h4>Concurrency, caching, infrastructure</h4>
+  <div class="qa">
+    <details class="q">
+      <summary>Explain your caching strategy.</summary>
+      <div class="answer">
+        <p>Name the pattern &mdash; cache-aside &mdash; and then explain why <b>both</b> mechanisms are present. Reads try Redis, fall back to Postgres on a miss, repopulate. The cache is explicitly invalidated the moment a character clears Deploy.</p>
+        <p>TTL alone would mean a newly-live character might not appear for up to 30 s, which is fine for many caches and wrong here, where "does this feel live" is the product requirement. Explicit invalidation handles the common case; the TTL is the safety net if an invalidation is ever missed. Either alone is a weaker version of the pattern.</p>
+        <p>Separately, <code>PriceCache</code> is a plain read-through TTL cache in Postgres &mdash; different problem (third-party rate limits), different solution. <span class="pill p-info">&sect;12 &sect;19</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>How do you stop one visitor degrading the site for everyone?</summary>
+      <div class="answer">
+        <p>Three mechanisms protecting different resources, and the distinction is the answer:</p>
+        <ul>
+          <li><b>Rate limits</b> bound request frequency per IP, sized to what each call costs downstream &mdash; 5/hour for a backtest that makes four API calls per ticker, 300/hour for a cached read.</li>
+          <li><b>SSE concurrency caps</b> bound something a rate limit cannot express: a connection that holds a thread indefinitely. Global 4, per-category 3, per-client 2, against an eight-thread pool.</li>
+          <li><b>Per-session caps</b> bound accumulated state &mdash; ten open positions &mdash; which a rolling window cannot.</li>
+        </ul>
+        <p>Follow-up worth pre-empting: the counters are in Redis, not process memory, because an in-process semaphore only caps one process's share and would not survive scaling out. And the TTL is set only on first creation, or continued traffic would push the expiry out forever and a leaked count would never self-heal. <span class="pill p-info">&sect;26</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Why one gunicorn worker? That seems wrong.</summary>
+      <div class="answer">
+        <p>Agree that it looks wrong, then give the reason. Flask-SocketIO's threading mode keeps each client's Engine.IO session in the memory of the process that created it. With multiple worker processes, consecutive polling requests for one session get round-robined to a process that has never seen it and return <code>400 unknown session</code> &mdash; live updates break silently while the pipeline itself still completes, because that part only depends on Postgres and Redis.</p>
+        <p>So concurrency comes from eight threads instead, and the threads are then treated as a real budget: SSE caps sized against it, and static files moved off it entirely. The honest scaling answer is that a Redis message-queue backend for Socket.IO is what would allow multiple processes. <span class="pill p-info">&sect;2 &sect;26 &sect;29</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Your dev machine has no Redis. How do tests and local dev work?</summary>
+      <div class="answer">
+        <p>Three environments, three behaviours: real Redis with a separate worker container in Docker; <code>fakeredis</code> with a worker <b>thread</b> locally; <code>fakeredis</code> with RQ synchronous in tests.</p>
+        <p>The point to make is about the middle one: the fallback <b>preserves the property under test</b>. Running the pipeline inline when Redis is absent would demo identically and lie about the architecture. A real worker in a background thread means the request still returns immediately and stages still progress over wall-clock time.</p>
+        <p>Two portability findings came out of it: RQ's default worker forks per job and <code>os.fork()</code> does not exist on Windows, so <code>SimpleWorker</code> is used everywhere &mdash; one tested path, not two, one of which would only run in production; and signal handlers only install on a main thread, needing a one-method override. <span class="pill p-info">&sect;22</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>How does a failure travel from the worker back to the web process?</summary>
+      <div class="answer">
+        <p>Through the database row, because an exception cannot cross a process boundary &mdash; there is no shared call stack to unwind and no in-memory future to await.</p>
+        <p>The worker catches its own exceptions and writes a plain-text reason onto <code>RiskRequest.error</code>. The waiting web process re-derives the same exception type from that string once the row stops reading <code>pending</code>, so every existing <code>except MarketDataError</code> handler keeps working without knowing pricing moved processes. The shared state carries both the result and the failure. <span class="pill p-info">&sect;10</span></p>
+      </div>
+    </details>
+  </div>
+
+  <h4>Quantitative and domain</h4>
+  <div class="qa">
+    <details class="q">
+      <summary>Where do your Greeks come from?</summary>
+      <div class="answer">
+        <p>Computed locally from Black-Scholes closed forms &mdash; yfinance exposes an option chain but no Greeks. Be able to write <code>d1</code> and <code>d2</code> and say the CDF is <code>0.5*(1+erf(x/sqrt(2)))</code>, no SciPy for one function.</p>
+        <p>The part that shows domain awareness is the <b>quoting conventions</b>: theta divided by 365 so it reads per calendar day, vega and rho divided by 100 so they read per one point. Raw annualised numbers are correct and useless to a trader.</p>
+        <p>Then the honest limitation, unprompted: implied vol is captured at entry and held constant, because there is no live vol surface available. A real desk reprices off a fresh surface. <span class="pill p-info">&sect;9</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>You report gamma twice. Why?</summary>
+      <div class="answer">
+        <p>They are different computations. Analytic <code>gamma</code> is the closed-form second derivative &mdash; the formula's curvature at a point. <code>scenario_gamma</code> is empirical: reprice at spot &plusmn;1% around the run's own base and measure how much the P&amp;L actually curves, which is what "scenario gamma" means on a risk desk.</p>
+        <p>For a vanilla option with no exotic kinks they should agree closely, which makes the comparison a free self-check &mdash; a disagreement is a real signal that something is wrong. <span class="pill p-info">&sect;11</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>What is IR Vega and how can you compute it under a flat rate?</summary>
+      <div class="answer">
+        <p>You cannot &mdash; that is the honest opening. A constant rate has no volatility to be sensitive to, so IR Vega is structurally impossible under the model everything else uses.</p>
+        <p>So a minimal Hull-White one-factor short-rate extension is added <b>only</b> for this measure. Assuming zero correlation between rate and equity Brownian motions, the standard result is to price with ordinary Black-Scholes but replace the equity variance with an adjusted total variance that adds the rate process's contribution; that integral has a closed form. IR Vega is then a central finite difference on the rate-vol parameter.</p>
+        <p>State the limitation plainly: both parameters are assumed illustrative constants, not calibrated, because yfinance has no cap or swaption vol surface to calibrate against &mdash; the same situation the flat risk-free rate is already in. Every other number on the row still uses the flat-rate maths. <span class="pill p-info">&sect;9</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>How does your backtest avoid look-ahead bias?</summary>
+      <div class="answer">
+        <p>By filtering SEC facts on <b>filing date</b>, not period-end date. A fiscal year ending in December is not filed until February or March; scoring "as of a year ago" with period-end data would hand the model information nobody had at the time, and any correlation found would be an artefact of that leak.</p>
+        <p>Be honest about scope: a handful of tickers and one lookback window is demo-scale validation, not research-grade. Naming that limitation is stronger than overselling it. <span class="pill p-info">&sect;14 &sect;16</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>A company is missing a metric. What does your score do?</summary>
+      <div class="answer">
+        <p>Drops the metric and renormalises the remaining weights over what is actually available. Walk through why the alternatives are worse: erroring out makes the tool useless against real filings, and treating missing as zero is actively wrong &mdash; it scores the company as terrible at something that was simply not measured.</p>
+        <p>The response returns both <code>weights_configured</code> and <code>weights_used</code>, so the page can show the composite was computed over three categories rather than four. Weights are config, overridable per category by environment variable, not hardcoded. <span class="pill p-info">&sect;15</span></p>
+      </div>
+    </details>
+  </div>
+
+  <h4>Debugging and judgement</h4>
+  <div class="qa">
+    <details class="q">
+      <summary>Tell me about a bug that only appeared in production.</summary>
+      <div class="answer">
+        <p>The strongest one: a pipeline stage crashed for a reason unrelated to validation &mdash; most likely the worker container being killed mid-job by a redeploy. <code>_run_stage</code> only caught <code>ValidationError</code>, so nothing handled it: no run row, no fail event. Because Verify runs <i>after</i> Deploy already committed <code>status='live'</code>, a character was left live with a blank gap in its own history &mdash; not failed, not passed, missing, which the UI could not render as an error because nothing had raised one it was watching for.</p>
+        <p>Found from a screenshot of a blank cell, not a log. Fixed with a catch-all at the orchestration boundary, and the already-broken row was corrected directly in production. The lesson: a <code>try/except</code> scoped to the errors you expect is a statement about the happy path, not a safety net. <span class="pill p-info">&sect;17 &sect;27</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Tell me about a time your tests passed but the code was wrong.</summary>
+      <div class="answer">
+        <p>The profanity filter. The hashed blocklist mechanism worked exactly as designed and tested &mdash; but it shipped seeded with three placeholder words, so real profanity passed the stage and went live. No test could have caught it, because the tests only ever asserted the mechanism worked against whatever list was configured.</p>
+        <p>The generalisable point: <b>a mechanism test is not an effectiveness test.</b> "Defence-in-depth" and "tested" mean little if the data behind the check was never filled in. Remediation had two halves &mdash; fix the list, and fix the row that was already wrong, since production data that is already incorrect needs correcting directly rather than just the code fixed for next time. <span class="pill p-info">&sect;25</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Describe a time you removed a check rather than adding one.</summary>
+      <div class="answer">
+        <p>Pipeline World validated at the join route: charset, injection and profanity ran upfront so bad submissions never became jobs. Sensible-looking, and it broke the product &mdash; a visitor who typed a blocked word got a red message and <b>no pipeline run at all</b>, so the most interesting thing the system does was the one thing nobody could watch.</p>
+        <p>Every check moved into the stage that owns it; the route now only strips and truncates. This also required raising the storage caps above the validated limits, or an over-long entry would be truncated into a passing value and the stage would approve something never submitted.</p>
+        <p>The point: <b>"fail fast" and "fail visibly" are different goals</b>, and validating early can delete the observability that was the reason for building the thing. <span class="pill p-info">&sect;18 &sect;25</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Tell me about a debugging session where the obvious cause was wrong.</summary>
+      <div class="answer">
+        <p>Two good ones:</p>
+        <ul>
+          <li><b>NaN in JSON.</b> An option chain failed in the browser but looked perfect through <code>curl | python -m json.tool</code> &mdash; because Python's <code>json</code> accepts a bare <code>NaN</code> as a non-standard extension and the browser's <code>JSON.parse</code> correctly does not. Two tools disagreeing about what "valid JSON" means. The regression test uses a strict parser, plus a second test proving that parser would reject NaN &mdash; otherwise the guard could quietly stop testing anything.</li>
+          <li><b>Characters not talking.</b> Reported as a broken conversation feature. The seek logic, notice radius and trigger distance were all correct; the map was a grid of buildings, and direct steering with wall-bounce cannot route around an obstacle, so two characters who had noticed each other bounced against the wall between them forever. The fix was an open field, not a smarter algorithm. An agent-interaction bug that was really environment design.</li>
+        </ul>
+        <span class="pill p-info">&sect;12 &sect;21</span>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>How did you handle finding secrets in the repository?</summary>
+      <div class="answer">
+        <p>In stages, each matched to its blast radius. First remove from the working tree with an ordinary commit &mdash; non-destructive and safe immediately. Then, when clearing history was authorised, clone into an isolated directory and run <code>git-filter-repo</code>.</p>
+        <p>Two details that show rigour: diffing which paths had <i>ever</i> existed found a second, older exposure at a path that predated a reorganisation; and verification grepped every blob in history for the actual client ID string, not just paths, because a rename would defeat a path-only check. Force-push only after that passed.</p>
+        <p>Close with the part people forget: <b>rewriting history does not rotate the secret.</b> It stops future clones finding it; it does not invalidate anything that already saw it. Rotation is still required. <span class="pill p-info">&sect;25</span></p>
+      </div>
+    </details>
+  </div>
+
+  <h4>Trade-offs and self-critique</h4>
+  <div class="qa">
+    <details class="q">
+      <summary>What would you do differently, or what does not scale?</summary>
+      <div class="answer">
+        <p>Have several ready and be specific:</p>
+        <ul>
+          <li><b>Single gunicorn process.</b> The Socket.IO constraint that forces it is solvable with a Redis message-queue backend; until then horizontal scaling is blocked.</li>
+          <li><b>Traffic buffer is in-memory and per-process.</b> Fine for a rollup, wrong for an audit trail, and it would fragment across replicas.</li>
+          <li><b>Synchronous wait on risk requests.</b> Simple contract, but it still ties up a request thread. A job-id-plus-poll or push-on-complete API would free it.</li>
+          <li><b>Entry IV held constant.</b> The right fix is a vol surface, which needs a paid data source.</li>
+          <li><b>No replay validation on game scores.</b> Deliberate at this scope and openly documented.</li>
+          <li><b>Scoring bounds are broad heuristics,</b> not sector-tuned &mdash; a P/E of 12 means different things for a bank and a software company.</li>
+        </ul>
+        <p>Naming these unprompted reads as judgement. Waiting to be caught on them does not.</p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Is the pipeline's "test stage" actually running tests?</summary>
+      <div class="answer">
+        <p>Answer directly: no, it does not shell out to pytest. It calls the same validator functions that <code>tests/test_validators.py</code> covers.</p>
+        <p>The reasoning: invoking <code>pytest.main()</code> per character inside a worker loop is slow, fragile, and awkward to feed per-character data into, since test functions are designed for pytest's collection mechanism. The choice is genuinely tested code running live rather than a parallel fake implementation.</p>
+        <p>It is a documented trade-off, not a free lunch &mdash; and saying that is much stronger than overclaiming "it is literally pytest under the hood". <span class="pill p-info">&sect;17</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Why does the traffic project only log your own traffic?</summary>
+      <div class="answer">
+        <p>Because capturing arbitrary visitors' browsing is treated as wiretapping in most jurisdictions regardless of intent, and would violate essentially any host's terms of service. The scope was set by that constraint first, then built to it: inbound requests to the app's own routes, and outbound calls the app itself makes.</p>
+        <p>This is a "how do you think about constraints" question more than a technical one. The good version shows the limit was designed around deliberately, not discovered late. <span class="pill p-info">&sect;23</span></p>
+      </div>
+    </details>
+  </div>
+
+  <hr class="rule">
+
+  <h4>Questions worth asking them</h4>
+  <p>Drawn from problems this project actually raised, so they lead somewhere real rather than sounding rehearsed:</p>
+  <ul>
+    <li>How do you handle schema migrations against large populated tables &mdash; is there a standard pattern, or is it per-team?</li>
+    <li>When something only reproduces in production, what does the path from symptom to root cause usually look like here?</li>
+    <li>Where does the boundary sit between what runs in a request and what gets queued?</li>
+    <li>How much of the risk or pricing logic is shared across teams versus reimplemented, and how do you keep numbers consistent between systems that price the same thing?</li>
+    <li>What does code review optimise for on this team &mdash; correctness, readability, or knowledge spread?</li>
+  </ul>
+</section>
+
+
+
+
+
+  </main>
+</div>
+</body>
+</html>

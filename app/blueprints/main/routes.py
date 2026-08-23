@@ -29,7 +29,12 @@ def favicon():
 def robots():
     # Search engines request this at the domain root, not under /static/
     # -- same reason favicon.ico gets its own route above rather than
-    # relying on url_for('static', ...). Fully permissive: nothing on
-    # this site is private or admin-only, and the entire point of a
-    # portfolio site is to be found.
-    return Response("User-agent: *\nAllow: /\n", mimetype="text/plain")
+    # relying on url_for('static', ...). Permissive everywhere except the
+    # password-gated interview section: a crawler can't read it anyway
+    # (the gate is server-side), but there's no reason to advertise the
+    # URL or have the unlock form show up in results. This is a hint to
+    # well-behaved crawlers, not the access control -- that's the gate.
+    return Response(
+        "User-agent: *\nAllow: /\nDisallow: /documentation/interview\n",
+        mimetype="text/plain",
+    )

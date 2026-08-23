@@ -112,6 +112,19 @@ class Config:
 
     NET_MONITOR_BUFFER_SIZE = int(os.environ.get("NET_MONITOR_BUFFER_SIZE", "500"))
 
+    # Password gate on /documentation/interview. A *hash* (Werkzeug's
+    # PBKDF2 format), never the password itself -- this repo is public, so
+    # a plaintext value here would be readable by anyone, and a hash is
+    # useless to them. Generate one with:
+    #   python -c "from werkzeug.security import generate_password_hash as g; print(g(input()))"
+    # Unset means the section is closed entirely (see the route): failing
+    # closed, rather than defaulting to open or to a checked-in fallback
+    # that would then be the real password on every deployment.
+    DOCS_PASSWORD_HASH = os.environ.get("DOCS_PASSWORD_HASH")
+    # Deliberately tighter than every other limit on the site: this is the
+    # one endpoint where repeated guessing is the entire attack.
+    DOCS_UNLOCK_RATE_LIMIT = os.environ.get("DOCS_UNLOCK_RATE_LIMIT", "10 per hour")
+
     # Kept smaller than the full trading whitelist -- the backtest makes
     # 2 EDGAR calls + 2 yfinance calls per ticker, and both sources are
     # rate-limited on free/unauthenticated use.
