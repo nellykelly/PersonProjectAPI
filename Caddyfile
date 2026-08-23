@@ -4,6 +4,13 @@
 # `web` container by its compose service name, over the internal Docker
 # network (not the public internet), on the port it actually listens on.
 
-nelsonkoskela.dev, www.nelsonkoskela.dev {
+# www.nelsonkoskela.dev is deliberately left out: it currently falls
+# through a wildcard CNAME (*.nelsonkoskela.dev -> pixie.porkbun.com,
+# Porkbun's parking page) since there's no dedicated `www` A record --
+# requesting a cert covering both domains in one order meant www's
+# failure dragged the whole order down and tripped Caddy's Let's
+# Encrypt staging-CA fallback. Add www back here once a real `www` A
+# record pointing at this server exists.
+nelsonkoskela.dev {
     reverse_proxy web:8000
 }
