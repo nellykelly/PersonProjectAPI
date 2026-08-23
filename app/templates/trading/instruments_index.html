@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Instrument Catalog{% endblock %}
+{% block content_class %}wide{% endblock %}
+
+{% block content %}
+<section>
+    <p><a href="{{ url_for('trading.index') }}">&larr; Back to trade book</a></p>
+
+    <div class="section-title">
+        <h1 class="major">Instrument Catalog</h1>
+        <span class="muted">{{ instruments|length }} shown</span>
+    </div>
+
+    <p class="muted">
+        One master row per distinct contract -- every position that trades AAPL's $300 call expiring
+        2027-01-15 points at the same row here instead of each embedding its own copy of its strike,
+        expiry, and exercise style. Each one has a stable, lookupable code: the standard OCC option
+        symbol (root ticker + expiry + call/put + strike) for options, or just the ticker for stock.
+    </p>
+
+    <form method="get" class="fields" style="margin-bottom:1.5rem;">
+        <div class="field">
+            <label for="instrument-search">Search by code or ticker</label>
+            <input type="text" id="instrument-search" name="q" value="{{ query }}" placeholder="e.g. AAPL or AAPL270115C00300000">
+        </div>
+    </form>
+
+    {% if instruments %}
+    <div class="data-table-wrapper">
+        <div class="data-table-scroll">
+            <table class="traffic-table">
+                <thead>
+                    <tr><th>Code</th><th>Underlying</th><th>Type</th><th>Strike</th><th>Expiry</th><th>Traded</th><th></th></tr>
+                </thead>
+                <tbody>
+                    {% for instrument in instruments %}
+                    <tr>
+                        <td class="mono"><code>{{ instrument.code }}</code></td>
+                        <td>{{ instrument.underlying_ticker }}</td>
+                        <td>{{ instrument.instrument_type }}</td>
+                        <td class="mono">{% if instrument.strike %}${{ "%.2f"|format(instrument.strike) }}{% else %}&mdash;{% endif %}</td>
+                        <td class="muted">{{ instrument.expiry.strftime("%Y-%m-%d") if instrument.expiry else "&mdash;" }}</td>
+                        <td class="mono">{{ leg_counts.get(instrument.id, 0) }}</td>
+                        <td><a class="button small" href="{{ url_for('trading.instrument_detail', code=instrument.code) }}">Open</a></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        {% if query %}No instrument matches "{{ query }}".{% else %}No instruments have been booked yet.{% endif %}
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

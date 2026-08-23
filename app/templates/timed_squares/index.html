@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Timed-Squares{% endblock %}
+{% block content_class %}wide ts-page{% endblock %}
+
+{% block content %}
+<section>
+    <div class="section-title">
+        <h1 class="major"><img class="page-icon" src="{{ url_for('static', filename='assets/img/icons/timed-squares.svg') }}" alt="">Timed-Squares</h1>
+    </div>
+
+    <div class="disclaimer-banner">
+        Turn-based, not real-time: you move exactly one square per key press, then every obstacle takes
+        its own move. Every obstacle shows an arrow (or a knight glyph, for the L-mover) for what it's
+        about to do <em>before</em> it does it -- watch the arrows, not just the squares.
+    </div>
+
+    <div class="ts-hud">
+        <div class="ts-hud-item"><span class="ts-hud-label">Turns survived</span><span class="ts-hud-value" id="ts-score">0</span></div>
+        <div class="ts-hud-item"><span class="ts-hud-label">Best (this device)</span><span class="ts-hud-value" id="ts-best">0</span></div>
+        <button type="button" class="button small" id="ts-restart">Restart</button>
+        <span class="muted">Arrow keys or WASD. Desktop/keyboard only.</span>
+    </div>
+
+    <div class="ts-board-wrapper">
+        <canvas id="ts-canvas" width="800" height="800"></canvas>
+        <div class="ts-overlay" id="ts-overlay" hidden>
+            <div class="ts-overlay-card">
+                <h2>Game Over</h2>
+                <p>You survived <strong id="ts-final-score">0</strong> turns.</p>
+                <div id="ts-submit-form">
+                    <label for="ts-name-input">Name for the leaderboard (optional)</label>
+                    <input type="text" id="ts-name-input" maxlength="12" placeholder="ANON" autocomplete="off">
+                    <div class="ts-overlay-actions">
+                        <button type="button" class="button primary" id="ts-submit-score">Submit score</button>
+                        <button type="button" class="button" id="ts-skip-submit">Skip</button>
+                    </div>
+                    <p class="muted" id="ts-submit-status"></p>
+                </div>
+                <button type="button" class="button primary" id="ts-play-again" hidden>Play again</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="ts-layout">
+        <div class="ts-side-col">
+            <h2>How to read the board</h2>
+            <ul class="ts-legend">
+                <li><span class="ts-legend-swatch" style="background:var(--accent);"></span> You</li>
+                <li><span class="ts-legend-swatch" style="background:#f87171;"></span> Standard mover -- 1 cell/turn, straight line</li>
+                <li><span class="ts-legend-swatch" style="background:#fbbf24;"></span> Jumper -- 2 cells/turn, can jump over a cell</li>
+                <li><span class="ts-legend-swatch" style="background:#c084fc;"></span> L-mover -- knight-style hop each turn</li>
+                <li><span class="ts-legend-swatch" style="background:#2dd4bf;"></span> Diagonal mover -- 1 cell/turn, diagonally</li>
+                <li><span class="ts-legend-swatch" style="background:#818cf8;"></span> Bouncer -- straight line, reverses off edges</li>
+            </ul>
+            <p class="muted">
+                Difficulty rises with turns survived: spawn rate increases, more edges become active at
+                once, and harder movement patterns unlock over time.
+            </p>
+        </div>
+
+        <div class="ts-side-col">
+            <h2>Leaderboard</h2>
+            <div class="data-table-wrapper">
+                <div class="data-table-scroll">
+                    <table class="traffic-table">
+                        <thead><tr><th>#</th><th>Name</th><th>Turns</th></tr></thead>
+                        <tbody id="ts-leaderboard-body">
+                            {% for s in top_scores %}
+                            <tr>
+                                <td class="mono">{{ loop.index }}</td>
+                                <td class="mono">{{ s.player_name }}</td>
+                                <td class="mono">{{ s.turns_survived }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="3" class="muted">No scores yet -- be the first.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/timed_squares.js') }}"></script>
+{% endblock %}

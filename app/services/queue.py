@@ -1,7 +1,17 @@
-"""Redis connection + RQ queue for Pipeline World's async character-join
-processing -- the actual "async processing story" from the spec: a join
-request enqueues a job and returns immediately, while a worker runs the
-real validate/test/build/deploy pipeline in the background (see
+"""Redis connection + RQ queues, shared by Pipeline World's async
+character-join processing and the Trading Simulator's risk engine.
+
+Two named queues, one worker pool: `worker.py` (its own container in
+docker-compose) listens on both, so risk pricing genuinely runs on that
+separate process/container rather than inline in the web request --
+"distribute the compute, then return the result" -- the same
+infrastructure Pipeline World's join pipeline already used, just handed
+a second kind of job (see app/services/risk_engine.run_risk_request_job).
+
+Pipeline World's async character-join processing -- the actual "async
+processing story" from the spec: a join request enqueues a job and
+returns immediately, while a worker runs the real
+validate/test/build/deploy pipeline in the background (see
 app/services/pipeline.py).
 
 Three environments, three behaviors:
@@ -35,6 +45,8 @@ from flask import Flask, current_app
 from rq import Queue, SimpleWorker
 
 QUEUE_NAME = "pipeline_world"
+RISK_QUEUE_NAME = "risk_engine"
+QUEUE_NAMES = (QUEUE_NAME, RISK_QUEUE_NAME)
 
 
 class _ThreadSafeSimpleWorker(SimpleWorker):
@@ -64,6 +76,7 @@ def init_app(app: Flask) -> None:
 
     app.extensions["pipeline_redis"] = connection
     app.extensions["pipeline_queue"] = Queue(QUEUE_NAME, connection=connection, is_async=is_async)
+    app.extensions["risk_queue"] = Queue(RISK_QUEUE_NAME, connection=connection, is_async=is_async)
 
     if is_async and not redis_url:
         _start_inprocess_worker(app, connection)
@@ -72,7 +85,7 @@ def init_app(app: Flask) -> None:
 def _start_inprocess_worker(app: Flask, connection) -> None:
     def _run():
         with app.app_context():
-            worker = _ThreadSafeSimpleWorker([QUEUE_NAME], connection=connection)
+            worker = _ThreadSafeSimpleWorker(list(QUEUE_NAMES), connection=connection)
             worker.work(burst=False, with_scheduler=False)
 
     thread = threading.Thread(target=_run, daemon=True, name="pipeline-inprocess-worker")
@@ -87,7 +100,17 @@ def get_queue() -> Queue:
     return current_app.extensions["pipeline_queue"]
 
 
+def get_risk_queue() -> Queue:
+    return current_app.extensions["risk_queue"]
+
+
 def enqueue_character_join(character_id: int):
     from app.services.pipeline import run_pipeline
 
     return get_queue().enqueue(run_pipeline, character_id)
+
+
+def enqueue_risk_pricing(risk_request_id: int):
+    from app.services.risk_engine import run_risk_request_job
+
+    return get_risk_queue().enqueue(run_risk_request_job, risk_request_id)

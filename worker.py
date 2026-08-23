@@ -1,8 +1,12 @@
-"""RQ worker entrypoint for Pipeline World (see app/services/queue.py).
+"""RQ worker entrypoint (see app/services/queue.py).
 
 Runs as its own process -- a dedicated `worker` service in
-docker-compose -- consuming the same Redis queue the web process
-enqueues jobs onto (app.services.pipeline.run_pipeline).
+docker-compose -- consuming both Redis queues the web process enqueues
+jobs onto: Pipeline World's character-join pipeline
+(app.services.pipeline.run_pipeline) and the Trading Simulator's risk
+pricing (app.services.risk_engine.run_risk_request_job). One worker pool,
+two kinds of job -- a risk request is genuinely computed here, in a
+separate container, not inline in the web process that asked for it.
 
 Uses RQ's `SimpleWorker` (no forking) rather than the default `Worker`,
 for the same reason queue.py's local-dev-without-Docker fallback has
@@ -17,11 +21,11 @@ import os
 from rq import SimpleWorker
 
 from app import create_app
-from app.services.queue import QUEUE_NAME, get_redis_connection
+from app.services.queue import QUEUE_NAMES, get_redis_connection
 
 app = create_app(os.environ.get("FLASK_ENV", "production"))
 
 if __name__ == "__main__":
     with app.app_context():
-        worker = SimpleWorker([QUEUE_NAME], connection=get_redis_connection())
+        worker = SimpleWorker(list(QUEUE_NAMES), connection=get_redis_connection())
         worker.work()

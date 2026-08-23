@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}All Positions{% endblock %}
+{% block content_class %}wide{% endblock %}
+
+{% block content %}
+<section>
+    <p>
+        <a href="{{ url_for('trading.index') }}">&larr; Back to trade book</a>
+        &middot;
+        <a href="{{ url_for('trading.instruments_index') }}">Instrument catalog</a>
+    </p>
+
+    <div class="section-title">
+        <h1 class="major">All Positions</h1>
+        <span class="muted">{{ rows|length }} shown, newest first</span>
+    </div>
+
+    <p class="muted">
+        A position is the thing you actually run risk against. It holds one or more legs, and every
+        leg in it is priced together off a single market snapshot. Open one to see its legs, run risk
+        across the whole thing, and read the reports it has produced.
+    </p>
+
+    <h2>Run risk on this report</h2>
+    <p class="muted">
+        Prices every open instrument across every position shown below in one run, all off a single
+        market snapshot, and bounds the results into one report you can query per instrument.
+    </p>
+    <div id="book-risk-panel">
+        <div class="fields">
+            <div class="field">
+                <label for="book-risk-model">Quantitative model</label>
+                <select id="book-risk-model">
+                    {% for m in risk_model_options %}
+                    <option value="{{ m.key }}">{{ m.name }} &mdash; {{ m.summary }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="fields">
+            <div class="field third">
+                <label for="book-spot-shock">Spot shock (%)</label>
+                <input type="number" id="book-spot-shock" step="1" placeholder="e.g. -10">
+            </div>
+            <div class="field third">
+                <label for="book-vol-shock">Vol shock (IV points)</label>
+                <input type="number" id="book-vol-shock" step="1" placeholder="e.g. 5">
+            </div>
+            <div class="field third">
+                <button type="button" class="button primary" id="book-run-risk">Run risk on the whole book</button>
+            </div>
+        </div>
+        <p class="muted" id="book-risk-status"></p>
+    </div>
+
+    {% if rows %}
+    <div class="data-table-wrapper">
+        <div class="data-table-scroll">
+            <table class="traffic-table">
+                <thead>
+                    <tr>
+                        <th>Position</th>
+                        <th>Name</th>
+                        <th>Underlyings</th>
+                        <th>Legs</th>
+                        <th>Net PnL</th>
+                        <th>Opened</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    <tr class="{{ 'row-live' if row.strategy.status == 'open' }}">
+                        <td class="mono">#{{ row.strategy.id }}</td>
+                        <td>{{ row.strategy.name }}</td>
+                        <td>{{ row.tickers | join(", ") }}</td>
+                        <td class="mono">
+                            {{ row.leg_count }}{% if row.open_legs != row.leg_count %}
+                            <span class="muted">({{ row.open_legs }} open)</span>{% endif %}
+                        </td>
+                        <td class="mono {{ 'pnl-positive' if row.net_pnl is not none and row.net_pnl >= 0 else 'pnl-negative' if row.net_pnl is not none else '' }}">
+                            {% if row.net_pnl is not none %}${{ "%.2f"|format(row.net_pnl) }}{% else %}<span class="muted">n/a</span>{% endif %}
+                        </td>
+                        <td class="muted">{{ row.strategy.opened_at.strftime("%Y-%m-%d %H:%M") }}</td>
+                        <td>
+                            <span class="badge {{ 'badge-open' if row.strategy.status == 'open' else 'badge-closed' }}">
+                                {{ row.strategy.status }}
+                            </span>
+                        </td>
+                        <td>
+                            <a class="button small" href="{{ url_for('trading.strategy_detail', strategy_id=row.strategy.id) }}">Open</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="empty-state">No positions have been opened yet. Open one from the trade book.</div>
+    {% endif %}
+</section>
+{% endblock %}

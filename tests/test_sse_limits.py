@@ -116,10 +116,8 @@ def test_risk_feed_returns_429_once_at_cap(client, app, db):
     assert resp.status_code == 429
 
 
-def test_sniffer_stream_returns_429_once_at_cap(client, app):
-    with app.app_context():
-        for i in range(sse_limits.CATEGORY_SSE_CAP):
-            sse_limits.acquire_sse_slot("sniffer", f"9.9.9.{i}")
-
-    resp = client.get("/projects/network-sniffer/api/stream")
-    assert resp.status_code == 429
+# There used to be a third SSE consumer here (the Network Sniffer's live
+# stream). It's now a polled analytics board instead (see net_monitor.py),
+# with no open connection and so nothing for this module's concurrency
+# cap to protect -- removed along with that route rather than kept
+# testing a stream that no longer exists.

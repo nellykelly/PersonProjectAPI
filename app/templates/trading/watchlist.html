@@ -12,11 +12,11 @@
     </div>
 
     <div class="disclaimer-banner">
-        Not a real exchange data stream -- there's no free real-time market feed to plug into (that's
-        normally a paid provider integration). This is yfinance's usual delayed data, refreshed on the
-        server every {{ config.WATCHLIST_POLL_INTERVAL_SECONDS }}s during market hours and pushed to
-        this page instantly over Server-Sent Events, so it <em>feels</em> live even though the
-        underlying quotes aren't. Simulated/delayed data, not financial advice.
+        This isn't an exchange feed. Real-time market data means paying a provider, so what you're seeing is
+        yfinance's usual delayed quotes. The server re-polls them every
+        {{ config.WATCHLIST_POLL_INTERVAL_SECONDS }}s during market hours and pushes updates straight to
+        this page over Server-Sent Events, which makes it <em>feel</em> live even though the quotes behind
+        it aren't. Delayed data, and not financial advice.
     </div>
 
     {% if not market_open %}

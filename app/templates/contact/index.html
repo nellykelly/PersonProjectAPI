@@ -4,7 +4,7 @@
 {% block content %}
 <section>
     <h1 class="major">Contact</h1>
-    <p class="muted">The fastest ways to reach me:</p>
+    <p class="muted">Best ways to reach me.</p>
 
     <div class="card-grid">
         <div class="card">
@@ -13,11 +13,15 @@
         </div>
         <div class="card">
             <h3><span class="icon brands fa-linkedin"></span> LinkedIn</h3>
-            <p><a href="{{ LINKEDIN_URL }}" target="_blank" rel="noopener">{{ LINKEDIN_URL }}</a></p>
+            {# A full profile URL is long enough to wrap mid-word inside this
+               card at most widths (e.g. breaking after a hyphen), which reads
+               like a cut-off link rather than a wrapped one. A short label
+               sidesteps that regardless of how long the real URL is. #}
+            <p><a href="{{ LINKEDIN_URL }}" target="_blank" rel="noopener">View LinkedIn profile &rarr;</a></p>
         </div>
         <div class="card">
             <h3><span class="icon brands fa-github"></span> GitHub</h3>
-            <p><a href="{{ GITHUB_URL }}" target="_blank" rel="noopener">{{ GITHUB_URL }}</a></p>
+            <p><a href="{{ GITHUB_URL }}" target="_blank" rel="noopener">View GitHub profile &rarr;</a></p>
         </div>
     </div>
 </section>

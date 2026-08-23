@@ -1,22 +1,21 @@
 {% extends "base.html" %}
-{% block title %}QR -- Quant Company Scorer{% endblock %}
+{% block title %}QR Quant Company Scorer{% endblock %}
 {% block content_class %}wide{% endblock %}
 
 {% block content %}
 <section>
-    <h1 class="major"><img class="page-icon" src="{{ url_for('static', filename='assets/img/icons/qr-scorer.svg') }}" alt="">QR -- Quant Company Scorer</h1>
+    <h1 class="major"><img class="page-icon" src="{{ url_for('static', filename='assets/img/icons/qr-scorer.svg') }}" alt="">QR Quant Company Scorer</h1>
 
     <div class="disclaimer-banner">
-        Scores are an educational demo, computed from public SEC EDGAR filings and market data.
+        Scores are a demo, built from public SEC EDGAR filings and market data.
         <strong>This is not investment advice.</strong>
     </div>
 
     <p class="muted">
-        Each company gets a 0-100 score in four categories -- valuation, leverage/solvency, growth, and
-        profitability -- combined into an overall score using configurable weights (currently equal-weight
-        by default: {% for name, w in weights.items() %}{{ name }} {{ "%.0f"|format(w*100) }}%{{ ", " if not loop.last }}{% endfor %}).
-        See the <a href="{{ url_for('qr.backtest_view') }}">backtest</a> for whether a high score has
-        historically correlated with better forward returns.
+        Every company gets a 0-100 score in four categories: valuation, leverage, growth, and profitability.
+        Those combine into one overall number using weights you can configure. Right now they're equal ( {% for name, w in weights.items() %}{{ name }} {{ "%.0f"|format(w*100) }}%{{ ", " if not loop.last }}{% endfor %}).
+        The <a href="{{ url_for('qr.backtest_view') }}">backtest</a> checks whether a high score actually
+        predicted anything.
     </p>
 
     <form method="get">
@@ -46,8 +45,8 @@
             <span class="label">/ 100</span>
         </span>
     </div>
-    <p class="muted">As of {{ report.as_of_date }}. Category weight shown is the renormalized weight actually
-        used (categories with no available data are dropped and the rest renormalize).</p>
+    <p class="muted">As of {{ report.as_of_date }}. The weight shown is what was actually used. Categories
+        with no data get dropped and the rest are renormalized to fill the gap.</p>
 
     {% for cat in categories %}
     <h3>{{ cat.name | capitalize }}

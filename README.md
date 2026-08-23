@@ -19,21 +19,28 @@ and [`docs/build-spec-pipeline-world.md`](docs/build-spec-pipeline-world.md).
 |---|---|---|
 | Home | `/` | Intro + links to the rest of the site |
 | About | `/about` | Bio, resume download |
-| Projects | `/projects` | Landing page for the five projects below + an "Earlier Projects" archive |
-| [Trading Simulator](app/blueprints/trading/README.md) | `/projects/trading-simulator` | Shared, anonymous public trade book -- open a simulated stock/option position and track PnL against live-polled `yfinance` data; a live watchlist grid with a click-to-plot multi-stock chart |
+| Projects | `/projects` | Landing page for the six projects below + an "Earlier Projects" archive |
+| [Trading Simulator](app/blueprints/trading/README.md) | `/projects/trading-simulator` | Shared, anonymous public trade book -- open a simulated stock/option position and track PnL against live-polled `yfinance` data; run risk (pluggable quant models) against one leg, a whole position, or the whole book, priced on a separate worker via Redis/RQ; an instrument catalog lookupable by OCC option code; a live watchlist grid with a click-to-plot multi-stock chart |
 | [QR -- Quant Company Scorer](app/blueprints/qr/README.md) | `/projects/qr-quant-scraper` | Scores a company on valuation/leverage/growth/profitability from SEC EDGAR + market data, with a backtest module |
 | [Pipeline World](app/blueprints/pipeline_world/README.md) | `/projects/pipeline-world` | Submit a character, watch it move through a real, queued CI/CD-style pipeline live in a top-down world; a Postgres SQL analytics page over every run |
 | [SRE Infra Layer](app/blueprints/sre_infra/README.md) | `/projects/sre-infra` | The Redis queue/cache-aside/rate-limit infrastructure underneath Pipeline World, dashboarded |
-| [Network Sniffer](app/blueprints/sniffer/README.md) | `/projects/network-sniffer` | Live dashboard of this app's own inbound requests and outbound API calls |
+| [Site Traffic Analytics](app/blueprints/sniffer/README.md) | `/projects/network-sniffer` | An analytics board over this app's own inbound requests and outbound API calls -- volume over time, latency percentiles, error rate, busiest endpoints/hosts |
+| [Timed-Squares](app/blueprints/timed_squares/README.md) | `/projects/timed-squares` | A turn-based survival game on a 10x10 grid, playable in-browser (HTML5 Canvas) -- dodge obstacles that telegraph their next move before they make it, with a public leaderboard |
 | Contact | `/contact` | Email / LinkedIn / GitHub |
 
 ## Tech stack
 
 Flask 3 (application-factory + blueprints), Flask-SQLAlchemy, Flask-Limiter, Flask-SocketIO,
-RQ + Redis, Postgres (Pipeline World) / SQLite (everything else works against either),
-`yfinance`, SEC EDGAR's public `data.sec.gov` API, vanilla JS + Chart.js (CDN) + Socket.IO
-client (CDN) on the frontend, gunicorn + Docker for deployment. See
-[`requirements.txt`](requirements.txt).
+RQ + Redis, Postgres (Pipeline World; Trading Simulator's position/risk data works against
+either) / SQLite (everything else works against either), `yfinance`, SEC EDGAR's public
+`data.sec.gov` API, vanilla JS + Chart.js (CDN) + Socket.IO client (CDN) on the frontend,
+gunicorn + Docker for deployment. See [`requirements.txt`](requirements.txt).
+
+One RQ worker pool (`worker.py`, its own container) now does two jobs: Pipeline World's
+character-join pipeline, and the Trading Simulator's risk pricing -- a risk request is
+priced on that separate worker process, not inline in the web request that asked for it
+(see [SRE Infra Layer](app/blueprints/sre_infra/README.md) and
+[Trading Simulator](app/blueprints/trading/README.md)).
 
 ## Running it
 
@@ -60,13 +67,13 @@ flask --app wsgi run
 `gunicorn` (used by the Dockerfile) doesn't run on Windows -- use `flask --app wsgi run`
 or `python wsgi.py` for local Windows development instead.
 
-Without Docker, `REDIS_URL`/`DATABASE_URL` are unset, so Pipeline World falls back to an
-in-memory `fakeredis` instance with a worker thread inside the web process (still
-genuinely asynchronous -- see [`app/services/queue.py`](app/services/queue.py)) and
-SQLite. Everything works this way **except** `/projects/pipeline-world/pipeline-analytics`,
-which specifically requires a live Postgres connection (its SQL uses `DATE_TRUNC` and
-window functions) -- point `DATABASE_URL` at your own Postgres to exercise it locally, or
-just use Docker.
+Without Docker, `REDIS_URL`/`DATABASE_URL` are unset, so both Pipeline World's pipeline
+and the Trading Simulator's risk pricing fall back to an in-memory `fakeredis` instance
+with a worker thread inside the web process (still genuinely asynchronous -- see
+[`app/services/queue.py`](app/services/queue.py)) and SQLite. Everything works this way
+**except** `/projects/pipeline-world/pipeline-analytics`, which specifically requires a
+live Postgres connection (its SQL uses `DATE_TRUNC` and window functions) -- point
+`DATABASE_URL` at your own Postgres to exercise it locally, or just use Docker.
 
 ### Tests
 
@@ -85,10 +92,11 @@ pointed at a live Postgres (i.e. via `docker-compose`).
 ```
 app/                  Flask package (application factory in app/__init__.py)
   blueprints/          main, about, contact, projects, trading, qr, sniffer,
-                       pipeline_world, sre_infra
-  services/            market_data.py, pricing.py, edgar.py, quant_score.py, backtest.py,
-                       net_monitor.py, watchlist.py, validators.py, pipeline.py, queue.py,
-                       world_cache.py, analytics.py
+                       pipeline_world, sre_infra, timed_squares
+  services/            market_data.py, pricing.py, instruments.py, risk_engine.py,
+                       risk_models/, risk_dashboard.py, edgar.py, quant_score.py,
+                       backtest.py, net_monitor.py, watchlist.py, validators.py,
+                       pipeline.py, queue.py, world_cache.py, analytics.py
   static/ templates/    Dark theme (HTML5 UP "Dimension", see below) + custom CSS/JS
 tests/                 pytest, one file per blueprint/service
 docs/                  build-spec.md, build-spec-pipeline-world.md (original specs), SECURITY-NOTE.md,

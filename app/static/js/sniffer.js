@@ -1,14 +1,13 @@
-// Network Sniffer: a genuinely live view. Loads the current snapshot once
-// on page load, then opens a Server-Sent Events connection and appends
-// each new traffic entry the instant net_monitor records it -- no
-// polling delay. See net_monitor.py / sniffer/routes.py (api_stream) for
-// what is (and deliberately isn't) captured, and how the SSE side works.
+// Site Traffic Analytics: polls the aggregate rollup every few seconds
+// and re-renders stats/charts/tables. An aggregate board doesn't need a
+// push per raw entry the way a live log did, so a plain polled JSON
+// endpoint replaces what used to be an SSE stream -- see net_monitor.py /
+// sniffer/routes.py for what is (and deliberately isn't) captured.
 (function () {
   "use strict";
 
-  var MAX_ROWS = 200;
-  var rowCount = 0;
-  var stats = { total: 0, inbound: 0, outbound: 0, durationSum: 0, durationCount: 0, outboundByHost: {} };
+  var POLL_INTERVAL_MS = 5000;
+  var ENDPOINT = "/projects/network-sniffer/api/analytics";
 
   function escapeHtml(str) {
     var div = document.createElement("div");
@@ -16,165 +15,126 @@
     return div.innerHTML;
   }
 
-  function methodPillClass(method) {
-    return method === "GET" || method === "POST" ? "pill-method-" + method : "pill-method-other";
+  function setStat(key, value) {
+    var el = document.querySelector("[data-stat='" + key + "']");
+    if (el) el.textContent = value;
   }
 
-  function statusPillClass(status) {
-    if (status == null) return "pill-status-none";
-    var digit = Math.floor(status / 100);
-    return digit >= 2 && digit <= 5 ? "pill-status-" + digit : "pill-status-none";
+  function renderStats(data) {
+    setStat("total", data.total);
+    setStat("inbound", data.inbound);
+    setStat("outbound", data.outbound);
+    setStat("p50", data.inbound_latency.p50 != null ? data.inbound_latency.p50 + " ms" : "n/a");
+    setStat("p99", data.inbound_latency.p99 != null ? data.inbound_latency.p99 + " ms" : "n/a");
+
+    var errRate = data.server_error_rate_pct != null ? data.server_error_rate_pct : 0;
+    setStat("server_error_rate_pct", errRate + "%");
+    var errTile = document.querySelector(".error-rate-tile");
+    if (errTile) errTile.classList.toggle("has-errors", errRate > 0);
   }
 
-  function rowHtml(entry, isLive) {
-    var time = (entry.ts || "").split("T")[1] || entry.ts;
-    time = time ? time.split(".")[0] : "";
-    var directionPill = entry.direction === "in"
-      ? "<span class='pill pill-in'>IN</span>"
-      : "<span class='pill pill-out'>OUT</span>";
-    var methodPill = "<span class='pill " + methodPillClass(entry.method) + "'>" + escapeHtml(entry.method) + "</span>";
-    var statusPill = "<span class='pill " + statusPillClass(entry.status) + "'>" + escapeHtml(entry.status != null ? entry.status : "-") + "</span>";
-
-    return (
-      "<tr" + (isLive ? " class='row-flash-in'" : "") + ">" +
-      "<td class='time-cell mono'>" + escapeHtml(time) + "</td>" +
-      "<td>" + directionPill + "</td>" +
-      "<td>" + methodPill + "</td>" +
-      "<td class='target-cell mono' title='" + escapeHtml(entry.target) + "'>" + escapeHtml(entry.target) + "</td>" +
-      "<td>" + statusPill + "</td>" +
-      "<td class='duration-cell mono'>" + escapeHtml(entry.duration_ms != null ? entry.duration_ms + " ms" : "-") + "</td>" +
-      "</tr>"
-    );
-  }
-
-  function renderStats() {
-    var map = {
-      total: stats.total,
-      inbound: stats.inbound,
-      outbound: stats.outbound,
-      avg_duration_ms: stats.durationCount ? (stats.durationSum / stats.durationCount).toFixed(1) + " ms" : "n/a",
-    };
-    Object.keys(map).forEach(function (key) {
-      var el = document.querySelector("[data-stat='" + key + "']");
-      if (el) el.textContent = map[key];
-    });
-
-    var hostsEl = document.getElementById("hosts-body");
-    if (hostsEl) {
-      var hosts = Object.keys(stats.outboundByHost);
-      if (!hosts.length) {
-        hostsEl.innerHTML = "<tr><td colspan='2' class='muted'>No outbound calls logged yet</td></tr>";
-      } else {
-        var maxCount = Math.max.apply(null, hosts.map(function (h) { return stats.outboundByHost[h]; }));
-        hostsEl.innerHTML = hosts
-          .sort(function (a, b) { return stats.outboundByHost[b] - stats.outboundByHost[a]; })
-          .map(function (host) {
-            var count = stats.outboundByHost[host];
-            var pct = maxCount ? Math.max(6, Math.round((count / maxCount) * 100)) : 0;
-            return (
-              "<tr><td class='mono'>" + escapeHtml(host) + "</td>" +
-              "<td><div class='host-bar-cell'>" +
-              "<div class='host-bar-track'><div class='host-bar-fill' style='width:" + pct + "%'></div></div>" +
-              "<span class='host-bar-count'>" + count + "</span>" +
-              "</div></td></tr>"
-            );
-          })
-          .join("");
-      }
-    }
-  }
-
-  function hostOf(target) {
-    // Mirrors net_monitor.py's _host_of(): real http(s) URLs group by
-    // hostname; synthetic pseudo-URLs (e.g. "yfinance://AAPL/info" --
-    // yfinance manages its own HTTP client, so there's no real URL to
-    // log) group by scheme name instead of misreading the ticker as a host.
-    if (target.indexOf("http://") === 0 || target.indexOf("https://") === 0) {
-      var parts = target.split("/");
-      return parts.length > 2 ? parts[2] : target;
-    }
-    var schemeIdx = target.indexOf("://");
-    return schemeIdx !== -1 ? target.slice(0, schemeIdx) : target;
-  }
-
-  function absorb(entry) {
-    stats.total += 1;
-    if (entry.direction === "in") {
-      stats.inbound += 1;
-    } else {
-      stats.outbound += 1;
-      var host = hostOf(entry.target);
-      stats.outboundByHost[host] = (stats.outboundByHost[host] || 0) + 1;
-    }
-    if (entry.duration_ms != null) {
-      stats.durationSum += entry.duration_ms;
-      stats.durationCount += 1;
-    }
-  }
-
-  function prependRow(entry) {
-    var body = document.getElementById("log-body");
+  function renderBarTable(bodyId, rows, keyField, labelFn) {
+    var body = document.getElementById(bodyId);
     if (!body) return;
-    if (rowCount === 0) body.innerHTML = "";
-    body.insertAdjacentHTML("afterbegin", rowHtml(entry, true));
-    rowCount += 1;
-    while (body.rows && body.rows.length > MAX_ROWS) {
-      body.deleteRow(body.rows.length - 1);
+    if (!rows.length) {
+      body.innerHTML = "<tr><td colspan='2' class='muted'>Nothing logged yet</td></tr>";
+      return;
+    }
+    var maxCount = Math.max.apply(null, rows.map(function (r) { return r.count; }));
+    body.innerHTML = rows
+      .map(function (r) {
+        var pct = maxCount ? Math.max(6, Math.round((r.count / maxCount) * 100)) : 0;
+        return (
+          "<tr><td class='mono'>" + escapeHtml(labelFn(r)) + "</td>" +
+          "<td><div class='host-bar-cell'>" +
+          "<div class='host-bar-track'><div class='host-bar-fill' style='width:" + pct + "%'></div></div>" +
+          "<span class='host-bar-count'>" + r.count + "</span>" +
+          "</div></td></tr>"
+        );
+      })
+      .join("");
+  }
+
+  function renderEndpoints(rows) {
+    var body = document.getElementById("endpoints-body");
+    if (!body) return;
+    if (!rows.length) {
+      body.innerHTML = "<tr><td colspan='3' class='muted'>Nothing logged yet</td></tr>";
+      return;
+    }
+    body.innerHTML = rows
+      .map(function (r) {
+        return (
+          "<tr><td class='mono'>" + escapeHtml(r.endpoint || "(unknown)") + "</td>" +
+          "<td class='mono'>" + r.count + "</td>" +
+          "<td class='mono'>" + (r.avg_duration_ms != null ? r.avg_duration_ms + " ms" : "-") + "</td></tr>"
+        );
+      })
+      .join("");
+  }
+
+  function renderVolumeChart(buckets) {
+    var chart = document.getElementById("volume-chart");
+    var labels = document.getElementById("volume-chart-labels");
+    if (!chart) return;
+    if (!buckets.length) {
+      chart.innerHTML = "<p class='muted' style='padding:1rem 0;'>Not enough traffic yet to bucket over time.</p>";
+      if (labels) labels.innerHTML = "";
+      return;
+    }
+    var maxCount = Math.max.apply(null, buckets.map(function (b) { return b.inbound + b.outbound; }), 1);
+    chart.innerHTML = buckets
+      .map(function (b) {
+        var total = b.inbound + b.outbound;
+        var totalPct = Math.round((total / maxCount) * 100);
+        var inPct = total ? Math.round((b.inbound / total) * 100) : 0;
+        var outPct = total ? 100 - inPct : 0;
+        var title = b.inbound + " in, " + b.outbound + " out";
+        return (
+          "<div class='volume-bar-col' style='height:" + Math.max(totalPct, total ? 3 : 0) + "%' title='" + escapeHtml(title) + "'>" +
+          (b.outbound ? "<div class='volume-bar-out' style='height:" + outPct + "%'></div>" : "") +
+          (b.inbound ? "<div class='volume-bar-in' style='height:" + inPct + "%'></div>" : "") +
+          "</div>"
+        );
+      })
+      .join("");
+    if (labels) {
+      var first = buckets[0].start.split("T")[1] || buckets[0].start;
+      var last = buckets[buckets.length - 1].start.split("T")[1] || buckets[buckets.length - 1].start;
+      labels.innerHTML =
+        "<span>" + escapeHtml(first.split(".")[0]) + "</span><span>" + escapeHtml(last.split(".")[0]) + "</span>";
     }
   }
 
-  function setLiveIndicator(state) {
-    var el = document.getElementById("live-indicator");
+  function setRefreshIndicator(state) {
+    var el = document.getElementById("refresh-indicator");
     if (!el) return;
-    el.textContent = state === "connected" ? "● LIVE" : "○ Reconnecting...";
-    el.className = state === "connected" ? "badge badge-open" : "badge badge-closed";
+    if (state === "ok") {
+      el.textContent = "Updated " + new Date().toLocaleTimeString();
+      el.className = "badge badge-open";
+    } else {
+      el.textContent = "Could not refresh";
+      el.className = "badge badge-closed";
+    }
   }
 
-  function loadInitialSnapshot(onDone) {
-    fetch("/projects/network-sniffer/api/log")
+  function refresh() {
+    fetch(ENDPOINT)
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        var body = document.getElementById("log-body");
-        if (body) {
-          body.innerHTML = data.entries.length
-            ? data.entries.map(function (e) { return rowHtml(e, false); }).join("")
-            : "<tr><td colspan='6' class='muted'>No traffic logged yet -- browse the site in another tab.</td></tr>";
-          rowCount = data.entries.length;
-        }
-        stats.total = data.stats.total;
-        stats.inbound = data.stats.inbound;
-        stats.outbound = data.stats.outbound;
-        stats.outboundByHost = data.stats.outbound_by_host || {};
-        if (data.stats.avg_duration_ms != null) {
-          // seed the running average so it doesn't reset to "n/a" on load
-          stats.durationSum = data.stats.avg_duration_ms * data.stats.total;
-          stats.durationCount = data.stats.total;
-        }
-        renderStats();
+        renderStats(data);
+        renderVolumeChart(data.volume_buckets);
+        renderEndpoints(data.top_endpoints);
+        renderBarTable("hosts-body", data.top_outbound_hosts, "host", function (r) { return r.host; });
+        setRefreshIndicator("ok");
       })
-      .catch(function () {})
-      .then(onDone);
-  }
-
-  function connectStream() {
-    if (!window.EventSource) return; // graceful no-op on very old browsers
-    var source = new EventSource("/projects/network-sniffer/api/stream");
-
-    source.onopen = function () {
-      setLiveIndicator("connected");
-    };
-    source.onerror = function () {
-      setLiveIndicator("reconnecting");
-    };
-    source.onmessage = function (event) {
-      var entry = JSON.parse(event.data);
-      absorb(entry);
-      prependRow(entry);
-      renderStats();
-    };
+      .catch(function () {
+        setRefreshIndicator("error");
+      });
   }
 
   document.addEventListener("DOMContentLoaded", function () {
-    loadInitialSnapshot(connectStream);
+    refresh();
+    setInterval(refresh, POLL_INTERVAL_MS);
   });
 })();

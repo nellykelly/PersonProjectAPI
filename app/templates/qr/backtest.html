@@ -13,10 +13,9 @@
     </div>
 
     <p class="muted">
-        For each ticker, the composite score is computed using only fundamentals that were
-        <em>actually filed</em> with the SEC on or before {{ result.as_of_date }} ({{ result.years_ago }}
-        year(s) ago) -- avoiding look-ahead bias -- then compared to the real price return from that date
-        to today.
+        Each ticker is scored using only fundamentals that were <em>actually filed</em> with the SEC on or
+        before {{ result.as_of_date }}, {{ result.years_ago }} year(s) back, so nothing leaks in from the
+        future. That score is then held up against the real price return from that date to today.
     </p>
 
     <form method="get" class="fields">

@@ -12,10 +12,9 @@
     </div>
 
     <p class="muted">
-        Every character that has cleared all 7 pipeline stages (Sanitize, Security Scan, Test: Uniqueness,
-        Test: Profanity, Build, Deploy, Verify) lives here. New arrivals appear the instant their Deploy
-        stage passes -- watch this page while someone joins from
-        <a href="{{ url_for('pipeline_world.index') }}">Pipeline World</a> to see it happen live.
+        Everyone who cleared all seven stages lives here. New arrivals show up the moment their Deploy stage
+        passes, so leave this open while someone joins from
+        <a href="{{ url_for('pipeline_world.index') }}">Pipeline World</a> and you'll see it happen.
         <span id="population-count">{{ live_world | length }}</span> character(s) currently live.
     </p>
 

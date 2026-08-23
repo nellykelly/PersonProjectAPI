@@ -6,19 +6,19 @@
 <section>
     <h1 class="major"><img class="page-icon" src="{{ url_for('static', filename='assets/img/icons/sre-infra.svg') }}" alt="">SRE Infra Layer</h1>
     <p class="muted">
-        The Redis-backed queueing, caching, and rate-limiting infrastructure underneath
-        <a href="{{ url_for('pipeline_world.index') }}">Pipeline World</a> -- written up here on its own because
-        it demonstrates a distinct skill set (async processing, cache invalidation, abuse protection under load)
-        worth speaking to separately from Pipeline World's application-engineering pitch.
+        <a href="{{ url_for('pipeline_world.index') }}">Pipeline World</a> runs on Redis. This page covers that
+        half of it: the job queue, the cache, and the rate limiter.
     </p>
 
     <h2>Queue</h2>
     <p>
-        Every character-join event is enqueued (RQ + Redis) rather than processed synchronously in the
-        request/response cycle -- the HTTP request returns immediately ("your character is joining"), while a
-        worker runs the actual validate/test/build/deploy pipeline in the background. This is the standard
-        answer to "why doesn't synchronous processing scale for anything resource-intensive or bursty": a slow
-        or spiky workload can queue up without blocking web requests or timing visitors out.
+        Joining doesn't run the pipeline inline. The request drops a job on an RQ queue and returns straight
+        away, so the browser is done in milliseconds while a separate worker process does the validate, test,
+        build and deploy work.
+    </p>
+    <p>
+        That matters when joins arrive in bursts. They pile up in the queue instead of holding web requests
+        open until they time out.
     </p>
     <div class="stat-grid">
         <div class="stat-tile"><div class="value">{{ queue_stats.queued }}</div><div class="label">Jobs Queued</div></div>
@@ -27,20 +27,22 @@
     </div>
     {% if not redis_url_configured %}
     <p class="muted">
-        No <code>REDIS_URL</code> configured, so this is currently running against an in-memory
-        <code>fakeredis</code> instance with a worker thread inside the web process itself -- a local-dev
-        fallback so there's still something to demo without a real Redis server. Real deployment
-        (<code>docker-compose</code>) runs a genuine Redis service and a separate <code>worker.py</code> process.
+        There's no <code>REDIS_URL</code> set, so this is running on an in-memory <code>fakeredis</code>
+        instance with the worker in a thread inside the web process. That's the fallback for local dev without
+        a Redis server. Under <code>docker-compose</code> it's a real Redis service and a separate
+        <code>worker.py</code> process.
     </p>
     {% endif %}
 
     <h2>Cache</h2>
     <p>
-        The live world state (which characters are currently spawned, and where) is cached in Redis using the
-        <strong>cache-aside pattern</strong>: a read tries the cache first, and only queries the database on a
-        miss, repopulating the cache afterward. The cache is explicitly invalidated the moment a character
-        clears the Deploy stage, rather than left to expire on a timer -- so newly-live characters show up
-        immediately rather than waiting out a stale TTL.
+        The live world state answers one question: who is spawned, and where. It's cached in Redis,
+        <strong>cache-aside</strong>. A read checks the cache, drops through to Postgres on a miss, then writes
+        what it found back.
+    </p>
+    <p>
+        Deploy clears the entry itself instead of leaving it to a TTL, so a new character shows up the moment
+        it goes live and not whenever the timer happens to run out.
     </p>
     <div class="stat-grid">
         <div class="stat-tile"><div class="value">{{ cache_stats.hits }}</div><div class="label">Cache Hits</div></div>
@@ -50,9 +52,9 @@
 
     <h2>Rate Limiting</h2>
     <p>
-        The character-submission endpoint is public and anonymous, so it needs abuse protection the same way
-        the Trading Simulator's position-opening endpoint does: <code>Flask-Limiter</code>, keyed by IP,
-        backed by the same Redis instance so the limit holds across every app process/worker, not just one.
+        The join endpoint is public and takes anonymous input, so <code>Flask-Limiter</code> caps it per IP.
+        The counters sit in the same Redis, which means one limit covers every worker instead of each process
+        keeping its own count.
     </p>
     <div class="stat-grid">
         <div class="stat-tile"><div class="value mono">{{ rate_limit }}</div><div class="label">Join Endpoint Limit</div></div>

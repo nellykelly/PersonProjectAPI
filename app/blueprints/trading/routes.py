@@ -3,12 +3,14 @@ import queue
 import time
 from datetime import datetime
 
-from flask import Response, current_app, flash, jsonify, redirect, render_template, request, session, url_for
+from flask import Response, abort, current_app, flash, jsonify, redirect, render_template, request, session, url_for
 
 from app.blueprints.trading import bp
 from app.extensions import db, limiter
 from app.models import Leg, RiskRequest, Strategy, utcnow
-from app.services import instruments, market_data, pricing, risk_dashboard, risk_engine, sse_limits, watchlist
+from app.services import (
+    instruments, market_data, pricing, risk_dashboard, risk_engine, risk_models, sse_limits, watchlist,
+)
 from app.services.market_data import MarketDataError
 
 SSE_KEEPALIVE_SECONDS = 15
@@ -17,6 +19,22 @@ RISK_FEED_INTERVAL_SECONDS = 10
 
 def _session_id() -> str:
     return session.get("session_id") or "anonymous"
+
+
+def _scenario_from_form(form) -> dict | None:
+    """The what-if shock, shared by every risk-request route (leg,
+    position, and book scope all accept the same two fields)."""
+    spot_shock_raw = form.get("spot_shock_pct")
+    vol_shock_raw = form.get("vol_shock_pts")
+    if not spot_shock_raw and not vol_shock_raw:
+        return None
+    try:
+        return {
+            "spot_shock_pct": float(spot_shock_raw or 0),
+            "vol_shock_pts": float(vol_shock_raw or 0),
+        }
+    except ValueError:
+        raise ValueError("spot_shock_pct/vol_shock_pts must be numbers") from None
 
 
 def _open_strategies_count(session_id: str) -> int:
@@ -180,7 +198,9 @@ def position_detail(position_id):
         "pnl": None,
         "greeks": None,
     }
-    return render_template("trading/position_detail.html", **priced)
+    return render_template(
+        "trading/position_detail.html", risk_model_options=risk_models.list_models(), **priced
+    )
 
 
 @bp.route("/positions/<int:position_id>/close", methods=["POST"])
@@ -272,24 +292,248 @@ def submit_risk_request_route(position_id):
     fetches that same report again later."""
     db.get_or_404(Leg, position_id)  # 404 before bothering to build a scenario
 
-    scenario = None
-    spot_shock_raw = request.form.get("spot_shock_pct")
-    vol_shock_raw = request.form.get("vol_shock_pts")
-    if spot_shock_raw or vol_shock_raw:
-        try:
-            scenario = {
-                "spot_shock_pct": float(spot_shock_raw or 0),
-                "vol_shock_pts": float(vol_shock_raw or 0),
-            }
-        except ValueError:
-            return jsonify({"ok": False, "error": "spot_shock_pct/vol_shock_pts must be numbers"}), 400
+    try:
+        scenario = _scenario_from_form(request.form)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
 
     try:
-        risk_request = risk_engine.submit_risk_request(position_id, scenario=scenario)
+        risk_request = risk_engine.submit_risk_request(
+            leg_id=position_id, scenario=scenario, model_key=request.form.get("model_key")
+        )
+    except risk_models.UnknownModelError as exc:
+        # A bad model name is the caller's mistake, not a server fault.
+        return jsonify({"ok": False, "error": str(exc)}), 400
     except MarketDataError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 503
 
-    return jsonify({"ok": True, "risk_request": risk_request.to_dict()})
+    payload = risk_request.to_dict()
+    payload["report_url"] = url_for("trading.risk_report", risk_request_id=risk_request.id)
+    return jsonify({"ok": True, "risk_request": payload})
+
+
+@bp.route("/strategies")
+def strategies_index():
+    """Every position in the shared book, newest first.
+
+    Legs are priced through one shared quote map (see _price_positions),
+    so a page listing many positions on the same underlying still makes a
+    single market call per distinct ticker rather than one per leg."""
+    strategies = Strategy.query.order_by(Strategy.opened_at.desc()).limit(100).all()
+
+    # Price every leg across every position in one pass, so the per-ticker
+    # quote is fetched once for the whole page.
+    all_legs = [leg for s in strategies for leg in s.legs]
+    priced_by_leg = {row["position"].id: row for row in _price_positions(all_legs)}
+
+    rows = []
+    for strategy in strategies:
+        legs = list(strategy.legs)
+        net_pnl = 0.0
+        priced_count = 0
+        for leg in legs:
+            priced = priced_by_leg.get(leg.id)
+            if priced and priced["pnl"]:
+                net_pnl += priced["pnl"]["pnl"]
+                priced_count += 1
+        rows.append(
+            {
+                "strategy": strategy,
+                "leg_count": len(legs),
+                "tickers": sorted({leg.ticker for leg in legs}),
+                # None rather than 0 when nothing could be priced, so the
+                # template can say "n/a" instead of implying a flat book.
+                "net_pnl": net_pnl if priced_count else None,
+                "open_legs": sum(1 for leg in legs if leg.status == "open"),
+            }
+        )
+
+    return render_template(
+        "trading/strategies_index.html", rows=rows, risk_model_options=risk_models.list_models()
+    )
+
+
+@bp.route("/strategies/<int:strategy_id>")
+def strategy_detail(strategy_id):
+    """A position as its own entity: what it holds, what each leg is
+    doing, and every risk request ever run against it."""
+    strategy = db.get_or_404(Strategy, strategy_id)
+    legs = list(strategy.legs)
+    requests = (
+        RiskRequest.query.filter_by(strategy_id=strategy_id)
+        .order_by(RiskRequest.id.desc())
+        .limit(25)
+        .all()
+    )
+    return render_template(
+        "trading/strategy_detail.html",
+        strategy=strategy,
+        rows=_price_positions(legs),
+        risk_requests=requests,
+        risk_model_options=risk_models.list_models(),
+    )
+
+
+@bp.route("/api/strategies/<int:strategy_id>")
+def api_strategy(strategy_id):
+    """The position as queryable JSON: its legs and its risk history."""
+    strategy = db.get_or_404(Strategy, strategy_id)
+    requests = (
+        RiskRequest.query.filter_by(strategy_id=strategy_id)
+        .order_by(RiskRequest.id.desc())
+        .limit(25)
+        .all()
+    )
+    return jsonify(
+        {
+            "ok": True,
+            "position": strategy.to_dict(),
+            "risk_requests": [r.to_dict() for r in requests],
+        }
+    )
+
+
+@bp.route("/strategies/<int:strategy_id>/risk-requests", methods=["POST"])
+@limiter.limit(lambda: current_app.config["TRADING_RISK_REQUEST_RATE_LIMIT"])
+def submit_position_risk_request(strategy_id):
+    """Runs one risk request across every leg in the position, all priced
+    off a single market snapshot, and returns the persisted request with
+    its aggregated totals."""
+    db.get_or_404(Strategy, strategy_id)
+
+    try:
+        scenario = _scenario_from_form(request.form)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    try:
+        risk_request = risk_engine.submit_risk_request(
+            strategy_id=strategy_id, scenario=scenario, model_key=request.form.get("model_key")
+        )
+    except risk_models.UnknownModelError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except ValueError as exc:
+        # e.g. a position with no legs to price.
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except MarketDataError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 503
+
+    payload = risk_request.to_dict()
+    payload["report_url"] = url_for("trading.risk_report", risk_request_id=risk_request.id)
+    return jsonify({"ok": True, "risk_request": payload})
+
+
+@bp.route("/risk-requests", methods=["POST"])
+@limiter.limit(lambda: current_app.config["TRADING_RISK_REQUEST_RATE_LIMIT"])
+def submit_book_risk_request():
+    """Runs one risk request across every open leg in the whole book --
+    the "run risk on this report" action from the all-positions page.
+    Every instrument is priced off one shared market snapshot, exactly
+    like a position-level run, just scoped to everything at once instead
+    of one Strategy."""
+    try:
+        scenario = _scenario_from_form(request.form)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    try:
+        risk_request = risk_engine.submit_risk_request(
+            book=True, scenario=scenario, model_key=request.form.get("model_key")
+        )
+    except risk_models.UnknownModelError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except ValueError as exc:
+        # e.g. no open legs anywhere in the book to price.
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except MarketDataError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 503
+
+    payload = risk_request.to_dict()
+    payload["report_url"] = url_for("trading.risk_report", risk_request_id=risk_request.id)
+    return jsonify({"ok": True, "risk_request": payload})
+
+
+@bp.route("/instruments")
+def instruments_index():
+    """The instrument catalog: every distinct contract ever booked,
+    lookupable by its OCC-style code or underlying ticker."""
+    query = request.args.get("q", "").strip()
+    results = instruments.search_instruments(query)
+    leg_counts = dict(
+        db.session.query(Leg.instrument_id, db.func.count(Leg.id))
+        .filter(Leg.instrument_id.in_([i.id for i in results]))
+        .group_by(Leg.instrument_id)
+        .all()
+    ) if results else {}
+    return render_template(
+        "trading/instruments_index.html",
+        instruments=results,
+        leg_counts=leg_counts,
+        query=query,
+    )
+
+
+@bp.route("/instruments/<code>")
+def instrument_detail(code):
+    """One instrument's reference data plus every leg (across every
+    position, anyone's) that has ever traded it -- the point of keeping
+    one master row per contract instead of each trade embedding its own
+    copy."""
+    instrument = instruments.find_instrument(code)
+    if instrument is None:
+        abort(404)
+    legs = (
+        Leg.query.filter_by(instrument_id=instrument.id)
+        .order_by(Leg.id.desc())
+        .all()
+    )
+    return render_template("trading/instrument_detail.html", instrument=instrument, legs=legs)
+
+
+@bp.route("/api/instruments/<code>")
+def api_instrument(code):
+    instrument = instruments.find_instrument(code)
+    if instrument is None:
+        return jsonify({"ok": False, "error": f"no instrument with code {code!r}"}), 404
+    legs = Leg.query.filter_by(instrument_id=instrument.id).order_by(Leg.id.desc()).all()
+    return jsonify(
+        {
+            "ok": True,
+            "instrument": instrument.to_dict(),
+            "legs": [{"id": leg.id, "strategy_id": leg.strategy_id, "status": leg.status} for leg in legs],
+        }
+    )
+
+
+@bp.route("/risk-reports/<int:risk_request_id>")
+def risk_report(risk_request_id):
+    """The report a risk request produces, on its own page.
+
+    Generated per request rather than stored: the RiskRequest and its
+    RiskResult are the durable record, and this renders them. That means
+    an old report can always be reopened at a stable URL and will show
+    exactly the numbers that run produced, including which model answered
+    and what inputs it saw."""
+    risk_request = db.get_or_404(RiskRequest, risk_request_id)
+    results = risk_request.results.all()
+    # The single-result detail block is only meaningful for a one-leg run;
+    # a multi-leg report leads with the totals and per-leg table instead.
+    result = results[0] if results else None
+    try:
+        model = risk_models.get_model(risk_request.model_key)
+    except risk_models.UnknownModelError:
+        # A model that has since been removed from the registry shouldn't
+        # make its historical reports unopenable.
+        model = None
+    return render_template(
+        "trading/risk_report.html",
+        risk_request=risk_request,
+        result=result,
+        results=results,
+        model=model,
+        # None for a position-level run, which the template handles.
+        leg=risk_request.leg,
+    )
 
 
 @bp.route("/api/risk-requests/<int:risk_request_id>")
@@ -343,7 +587,7 @@ def api_risk_feed(position_id):
                 yield ": connected\n\n"
                 while True:
                     try:
-                        risk_request = risk_engine.submit_risk_request(position_id)
+                        risk_request = risk_engine.submit_risk_request(leg_id=position_id)
                         payload = risk_request.to_dict()
                     except Exception as exc:
                         payload = {"error": str(exc)}

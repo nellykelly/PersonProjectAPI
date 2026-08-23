@@ -16,16 +16,93 @@ process) is responsible for pushing -- see queue.py's module docstring.
 """
 from __future__ import annotations
 
+import random
 import time
 
 from flask import current_app
 
 from app.extensions import db, socketio
-from app.models import Character, PipelineRun, utcnow
+from app.models import PIPELINE_STAGES, Character, PipelineRun, utcnow
+from app.services import queue as queue_service
 from app.services import validators, world_cache
 
 SOCKETIO_NAMESPACE = "/pipeline-world"
 SOCKETIO_EVENT = "pipeline_update"
+MODE_EVENT = "pipeline_mode_update"
+BENCHMARKS_EVENT = "pipeline_benchmarks_update"
+
+FAST_MODE_REDIS_KEY = "pipeline_world:fast_mode"
+
+# When fast mode is off, each stage gets its own randomly-rolled delay in
+# this range (re-rolled fresh per stage, per flow) so the demo is
+# watchable -- a fixed delay made every run look identical and robotic.
+SLOW_MODE_DELAY_RANGE = (1.0, 10.0)
+
+
+def is_fast_mode() -> bool:
+    # Tests must never depend on incidental Redis state (fakeredis is
+    # shared across the whole test session) -- always fast under TESTING,
+    # same guarantee TestingConfig's PIPELINE_STAGE_DELAY_SECONDS=0 gave
+    # before this toggle existed.
+    if current_app.config.get("TESTING"):
+        return True
+    conn = queue_service.get_redis_connection()
+    return conn.get(FAST_MODE_REDIS_KEY) == b"1"
+
+
+def set_fast_mode(enabled: bool) -> None:
+    conn = queue_service.get_redis_connection()
+    conn.set(FAST_MODE_REDIS_KEY, "1" if enabled else "0")
+
+
+def format_duration_seconds(seconds: float | None) -> str | None:
+    if seconds is None:
+        return None
+    if seconds < 1:
+        return f"{round(seconds * 1000)}ms"
+    return f"{seconds:.2f}s"
+
+
+def fast_mode_benchmarks() -> list[dict]:
+    """Real per-stage timing, averaged across every stage that has ever
+    actually run with the artificial delay disabled -- deliberately
+    excludes slow-mode runs, whose recorded duration includes that
+    artificial sleep and would make the numbers meaningless as a
+    benchmark of real processing time."""
+    runs = PipelineRun.query.filter_by(fast_mode=True).all()
+    samples_by_stage: dict[str, list[float]] = {stage: [] for stage in PIPELINE_STAGES}
+    for run in runs:
+        duration = run.duration_seconds
+        if duration is not None and run.stage in samples_by_stage:
+            samples_by_stage[run.stage].append(duration)
+
+    benchmarks = []
+    for stage in PIPELINE_STAGES:
+        samples = samples_by_stage[stage]
+        avg_seconds = (sum(samples) / len(samples)) if samples else None
+        min_seconds = min(samples) if samples else None
+        max_seconds = max(samples) if samples else None
+        benchmarks.append(
+            {
+                "stage": stage,
+                "samples": len(samples),
+                "avg_seconds": avg_seconds,
+                "min_seconds": min_seconds,
+                "max_seconds": max_seconds,
+                "avg_display": format_duration_seconds(avg_seconds),
+                "min_display": format_duration_seconds(min_seconds),
+                "max_display": format_duration_seconds(max_seconds),
+            }
+        )
+    return benchmarks
+
+
+def emit_benchmarks_update() -> None:
+    """Split out from run_pipeline's finally block for the same reason
+    emit_stage_update is its own function -- tests can monkeypatch this
+    one call instead of needing a real Socket.IO client."""
+    socketio.emit(BENCHMARKS_EVENT, {"benchmarks": fast_mode_benchmarks()}, namespace=SOCKETIO_NAMESPACE)
+
 
 # What each stage "runs," shown in the live build-log feed the instant a
 # stage starts. These are illustrative of the real check being performed
@@ -69,45 +146,62 @@ STAGE_COMMANDS = {
 }
 
 
-def emit_stage_update(character: Character, stage: str, status: str, detail: str | None = None) -> None:
+def emit_stage_update(
+    character: Character, stage: str, status: str, detail: str | None = None, duration_seconds: float | None = None
+) -> None:
     """status is one of 'start' | 'pass' | 'fail'. Split into its own
     function (rather than inlined per call site) so tests can monkeypatch
     or assert on it without needing a real Socket.IO client."""
-    payload = {"character": character.to_dict(), "stage": stage, "status": status, "detail": detail}
+    payload = {
+        "character": character.to_dict(),
+        "stage": stage,
+        "status": status,
+        "detail": detail,
+        "duration_seconds": duration_seconds,
+    }
     if status == "start":
         payload["commands"] = STAGE_COMMANDS.get(stage, [])
     socketio.emit(SOCKETIO_EVENT, payload, namespace=SOCKETIO_NAMESPACE)
 
 
-def _record_stage(character_id: int, stage: str, status: str, detail: str | None, started_at) -> PipelineRun:
+def _record_stage(
+    character_id: int, stage: str, status: str, detail: str | None, started_at, fast_mode: bool
+) -> PipelineRun:
+    ended_at = utcnow()
     run = PipelineRun(
         character_id=character_id,
         stage=stage,
         status=status,
         detail=detail,
         started_at=started_at,
-        ended_at=utcnow(),
+        ended_at=ended_at,
+        fast_mode=fast_mode,
     )
     db.session.add(run)
     db.session.commit()
     return run
 
 
-def _fail(character: Character, stage: str, reason: str, started_at) -> None:
+def _fail(character: Character, stage: str, reason: str, started_at, fast_mode: bool) -> None:
     character.status = "failed"
     character.failure_reason = reason
     db.session.commit()
-    _record_stage(character.id, stage, "fail", reason, started_at)
+    run = _record_stage(character.id, stage, "fail", reason, started_at, fast_mode)
     # Defensive, not just for stages before Deploy: if Verify is ever the
     # one that fails, Deploy already wrote this character live and
     # invalidated the cache once -- make sure a stale "live" snapshot
     # doesn't linger after we just un-lived them.
     world_cache.invalidate_world_cache()
-    emit_stage_update(character, stage, "fail", reason)
+    emit_stage_update(character, stage, "fail", reason, run.duration_seconds)
 
 
 def _pass_stage(
-    character: Character, stage: str, next_status: str | None, started_at, detail: str | None = None
+    character: Character,
+    stage: str,
+    next_status: str | None,
+    started_at,
+    fast_mode: bool,
+    detail: str | None = None,
 ) -> None:
     """`next_status=None` means "this stage already managed
     character.status itself" (Deploy writes 'live' directly, Verify
@@ -115,8 +209,8 @@ def _pass_stage(
     if next_status is not None:
         character.status = next_status
         db.session.commit()
-    _record_stage(character.id, stage, "pass", detail, started_at)
-    emit_stage_update(character, stage, "pass", detail)
+    run = _record_stage(character.id, stage, "pass", detail, started_at, fast_mode)
+    emit_stage_update(character, stage, "pass", detail, run.duration_seconds)
 
 
 def _spawn_position() -> tuple[float, float]:
@@ -128,22 +222,34 @@ def _spawn_position() -> tuple[float, float]:
     return round(random.uniform(x0, x1), 1), round(random.uniform(y0, y1), 1)
 
 
-def _run_stage(character: Character, stage: str, next_status: str | None, check_fn, pass_detail: str) -> bool:
+def _stage_delay(fast_mode: bool) -> float:
+    # Escape hatch, not the normal path: an explicit env override still
+    # wins if set (TestingConfig uses this to force 0 independently of
+    # is_fast_mode()'s own TESTING check). Normal operation never sets it.
+    override = current_app.config.get("PIPELINE_STAGE_DELAY_SECONDS")
+    if override is not None:
+        return float(override)
+    return 0.0 if fast_mode else random.uniform(*SLOW_MODE_DELAY_RANGE)
+
+
+def _run_stage(
+    character: Character, stage: str, next_status: str | None, check_fn, pass_detail: str, fast_mode: bool
+) -> bool:
     """Runs one stage's check(s): emits 'start' (with its commands),
-    sleeps the configured artificial delay, runs `check_fn` (which
-    raises ValidationError on failure), then emits pass/fail. Returns
-    True to continue to the next stage, False if the pipeline should
-    stop here."""
-    delay = current_app.config.get("PIPELINE_STAGE_DELAY_SECONDS", 1.2)
+    sleeps the stage's delay (0 in fast mode, otherwise a fresh random
+    1-10s roll), runs `check_fn` (which raises ValidationError on
+    failure), then emits pass/fail. Returns True to continue to the next
+    stage, False if the pipeline should stop here."""
+    delay = _stage_delay(fast_mode)
     emit_stage_update(character, stage, "start")
     started_at = utcnow()
     time.sleep(delay)
     try:
         check_fn()
     except validators.ValidationError as exc:
-        _fail(character, stage, str(exc), started_at)
+        _fail(character, stage, str(exc), started_at, fast_mode)
         return False
-    _pass_stage(character, stage, next_status, started_at, pass_detail)
+    _pass_stage(character, stage, next_status, started_at, fast_mode, pass_detail)
     return True
 
 
@@ -152,71 +258,92 @@ def run_pipeline(character_id: int) -> None:
     if character is None:
         return  # deleted/bad id shouldn't crash the worker
 
+    # Decided once per flow, not re-checked stage-by-stage -- a toggle
+    # flipped mid-run shouldn't change behavior partway through a run
+    # that's already in flight.
+    fast_mode = is_fast_mode()
+
     character.status = "sanitizing"
     db.session.commit()
 
-    def _sanitize():
-        validators.sanitize_name_part(character.first_name, "First name")
-        validators.sanitize_name_part(character.last_name, "Last name")
-        validators.validate_appearance_id(character.appearance_id)
-        validators.validate_head_type_id(character.head_type_id)
-        validators.validate_body_type_id(character.body_type_id)
-        validators.validate_hand_type_id(character.hand_type_id)
-        for question in validators.FIXED_ICEBREAKER_QUESTIONS:
-            validators.sanitize_icebreaker_answer(getattr(character, question["field_name"]))
+    try:
+        def _sanitize():
+            validators.sanitize_name_part(character.first_name, "First name")
+            validators.sanitize_name_part(character.last_name, "Last name")
+            validators.validate_appearance_id(character.appearance_id)
+            validators.validate_head_type_id(character.head_type_id)
+            validators.validate_body_type_id(character.body_type_id)
+            validators.validate_hand_type_id(character.hand_type_id)
+            for question in validators.FIXED_ICEBREAKER_QUESTIONS:
+                validators.sanitize_icebreaker_answer(getattr(character, question["field_name"]))
 
-    if not _run_stage(character, "sanitize", "scanning", _sanitize, "format/length/charset OK"):
-        return
+        if not _run_stage(character, "sanitize", "scanning", _sanitize, "format/length/charset OK", fast_mode):
+            return
 
-    def _security_scan():
-        validators.check_no_injection_patterns(character.first_name, "First name")
-        validators.check_no_injection_patterns(character.last_name, "Last name")
-        for question in validators.FIXED_ICEBREAKER_QUESTIONS:
-            validators.check_no_injection_patterns(getattr(character, question["field_name"]) or "", "Icebreaker answer")
+        def _security_scan():
+            validators.check_no_injection_patterns(character.first_name, "First name")
+            validators.check_no_injection_patterns(character.last_name, "Last name")
+            for question in validators.FIXED_ICEBREAKER_QUESTIONS:
+                validators.check_no_injection_patterns(
+                    getattr(character, question["field_name"]) or "", "Icebreaker answer"
+                )
 
-    if not _run_stage(character, "security_scan", "testing_uniqueness", _security_scan, "no injection patterns found"):
-        return
+        if not _run_stage(
+            character, "security_scan", "testing_uniqueness", _security_scan, "no injection patterns found", fast_mode
+        ):
+            return
 
-    def _test_uniqueness():
-        validators.check_full_name_collision(
-            character.first_name, character.last_name, exclude_character_id=character.id
-        )
+        def _test_uniqueness():
+            validators.check_full_name_collision(
+                character.first_name, character.last_name, exclude_character_id=character.id
+            )
 
-    if not _run_stage(character, "test_uniqueness", "testing_profanity", _test_uniqueness, "name is unique"):
-        return
+        if not _run_stage(
+            character, "test_uniqueness", "testing_profanity", _test_uniqueness, "name is unique", fast_mode
+        ):
+            return
 
-    def _test_profanity():
-        validators.check_no_profanity(character.first_name, "First name")
-        validators.check_no_profanity(character.last_name, "Last name")
-        for question in validators.FIXED_ICEBREAKER_QUESTIONS:
-            validators.check_no_profanity(getattr(character, question["field_name"]) or "", "Icebreaker answer")
+        def _test_profanity():
+            validators.check_no_profanity(character.first_name, "First name")
+            validators.check_no_profanity(character.last_name, "Last name")
+            for question in validators.FIXED_ICEBREAKER_QUESTIONS:
+                validators.check_no_profanity(getattr(character, question["field_name"]) or "", "Icebreaker answer")
 
-    if not _run_stage(character, "test_profanity", "building", _test_profanity, "no blocked words found"):
-        return
+        if not _run_stage(
+            character, "test_profanity", "building", _test_profanity, "no blocked words found", fast_mode
+        ):
+            return
 
-    def _build():
-        character.world_x, character.world_y = _spawn_position()
-        db.session.commit()
+        def _build():
+            character.world_x, character.world_y = _spawn_position()
+            db.session.commit()
 
-    if not _run_stage(character, "build", "deploying", _build, "spawn payload assembled"):
-        return
+        if not _run_stage(character, "build", "deploying", _build, "spawn payload assembled", fast_mode):
+            return
 
-    def _deploy():
-        # This *is* the deploy action -- writing status="live" to the row.
-        # next_status=None below so _pass_stage doesn't then overwrite it.
-        character.status = "live"
-        db.session.commit()
-        world_cache.invalidate_world_cache()
+        def _deploy():
+            # This *is* the deploy action -- writing status="live" to the row.
+            # next_status=None below so _pass_stage doesn't then overwrite it.
+            character.status = "live"
+            db.session.commit()
+            world_cache.invalidate_world_cache()
 
-    if not _run_stage(character, "deploy", None, _deploy, "written as live"):
-        return
+        if not _run_stage(character, "deploy", None, _deploy, "written as live", fast_mode):
+            return
 
-    def _verify():
-        # A genuine read-after-write check, not assumed -- re-reads the
-        # row rather than trusting the in-memory object still matches
-        # what was committed.
-        db.session.refresh(character)
-        if character.status != "live":
-            raise validators.ValidationError("post-deploy verification found an unexpected status")
+        def _verify():
+            # A genuine read-after-write check, not assumed -- re-reads the
+            # row rather than trusting the in-memory object still matches
+            # what was committed.
+            db.session.refresh(character)
+            if character.status != "live":
+                raise validators.ValidationError("post-deploy verification found an unexpected status")
 
-    _run_stage(character, "verify", None, _verify, "read-after-write check passed")
+        _run_stage(character, "verify", None, _verify, "read-after-write check passed", fast_mode)
+    finally:
+        # Recalculated and re-broadcast every time a run happens in fast
+        # mode -- not just on page load -- so every open tab's benchmarks
+        # table stays current without a reload. Runs on every exit path
+        # (including an early stage failure), not just full success.
+        if fast_mode:
+            emit_benchmarks_update()

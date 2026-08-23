@@ -7,6 +7,15 @@
   var API_BASE = "/projects/trading-simulator/api";
   var TRADING_BASE = "/projects/trading-simulator";
 
+  // A navigation aborts any in-flight fetch, and the rejection is
+  // indistinguishable from a real network failure at the catch site.
+  // Reporting "Could not load chain" while the page is on its way out is
+  // both wrong and alarming, so the error handlers check this first.
+  var pageIsUnloading = false;
+  window.addEventListener("beforeunload", function () {
+    pageIsUnloading = true;
+  });
+
   function initOpenForm() {
     var kindSelect = document.getElementById("kind");
     var tickerSelect = document.getElementById("ticker");
@@ -48,6 +57,7 @@
           loadChain();
         })
         .catch(function () {
+          if (pageIsUnloading) return;
           expirySelect.innerHTML = "<option value=''>Could not load expiries</option>";
         });
     }
@@ -82,6 +92,7 @@
           strikeHidden.value = strikeSelect.value;
         })
         .catch(function () {
+          if (pageIsUnloading) return;
           strikeSelect.innerHTML = "<option value=''>Could not load chain</option>";
         });
     }
@@ -98,12 +109,45 @@
     toggleOptionFields();
   }
 
+  // Refreshes the shared position book so its prices don't go stale.
+  //
+  // It has to stay off the user's back while they're actually using the
+  // open-position form. A reload mid-edit throws away every field they've
+  // picked *and* aborts the in-flight option-chain fetch, which the catch
+  // in loadChain() then reports as "Could not load chain" -- so an
+  // unrelated background timer showed up as a broken option chain.
   function initAutoRefresh() {
     var el = document.querySelector("[data-auto-refresh]");
     if (!el) return;
-    setTimeout(function () {
+
+    var INTERVAL_MS = 30000;
+    // How long the form has to sit untouched before a refresh is allowed
+    // again. Without this, one keystroke would disable refreshing for the
+    // rest of the session.
+    var IDLE_BEFORE_REFRESH_MS = 60000;
+
+    var form = el.querySelector("form");
+    var lastInteraction = 0;
+
+    if (form) {
+      ["input", "change", "focusin"].forEach(function (evt) {
+        form.addEventListener(evt, function () {
+          lastInteraction = Date.now();
+        });
+      });
+    }
+
+    function tick() {
+      var focusInsideForm = form && form.contains(document.activeElement);
+      var recentlyActive = Date.now() - lastInteraction < IDLE_BEFORE_REFRESH_MS;
+      if (focusInsideForm || recentlyActive) {
+        setTimeout(tick, INTERVAL_MS); // check back rather than giving up
+        return;
+      }
       window.location.reload();
-    }, 30000);
+    }
+
+    setTimeout(tick, INTERVAL_MS);
   }
 
   function initPositionDetail() {
@@ -206,20 +250,32 @@
       if (emptyState) emptyState.style.display = "none";
       historyCount++;
       var row = document.createElement("tr");
+      // Scenario values are stored in the units the form collects them in
+      // (whole percent, whole IV points), so they render as-is. They used
+      // to be scaled by 100 here, which was left over from when the engine
+      // treated them as fractions.
       var scenarioText = riskRequest.scenario
-        ? "spot " + (riskRequest.scenario.spot_shock_pct * 100).toFixed(0) + "%, vol " + (riskRequest.scenario.vol_shock_pts * 100).toFixed(0) + "pt"
+        ? "spot " + riskRequest.scenario.spot_shock_pct + "%, vol " + riskRequest.scenario.vol_shock_pts + "pt"
         : "as-of-now";
+      var reportLink = riskRequest.report_url
+        ? "<a class='button small' href='" + riskRequest.report_url + "'>Open</a>"
+        : "";
       row.innerHTML =
         "<td>" + historyCount + "</td>" +
         "<td class='muted'>" + new Date(riskRequest.requested_at).toLocaleTimeString() + "</td>" +
+        "<td class='mono'>" + (riskRequest.model_key || "") + "</td>" +
         "<td>" + scenarioText + "</td>" +
         "<td class='mono'>$" + fmt(riskRequest.result.underlying_price_used) + "</td>" +
-        "<td class='mono'>$" + fmt(riskRequest.result.pnl) + "</td>";
+        "<td class='mono'>$" + fmt(riskRequest.result.pnl) + "</td>" +
+        "<td>" + reportLink + "</td>";
       document.getElementById("risk-history-body").insertBefore(row, document.getElementById("risk-history-body").firstChild);
     }
 
     function submitRiskRequest(body) {
-      fetch(base + "/risk-requests", { method: "POST", body: body ? new URLSearchParams(body) : undefined })
+      var modelSelect = document.getElementById("risk-model");
+      var payload = body || {};
+      if (modelSelect) payload.model_key = modelSelect.value;
+      fetch(base + "/risk-requests", { method: "POST", body: new URLSearchParams(payload) })
         .then(function (r) { return r.json(); })
         .then(function (data) {
           if (!data.ok) return;
@@ -234,8 +290,11 @@
     });
 
     document.getElementById("risk-request-scenario").addEventListener("click", function () {
-      var spotPct = parseFloat(document.getElementById("spot-shock-pct").value || "0") / 100;
-      var volPts = parseFloat(document.getElementById("vol-shock-pts").value || "0") / 100;
+      // Sent exactly as typed: the field says "%" and "IV points", and the
+      // engine applies them as whole percent/points. Dividing here as well
+      // made every scenario 100x too small.
+      var spotPct = parseFloat(document.getElementById("spot-shock-pct").value || "0");
+      var volPts = parseFloat(document.getElementById("vol-shock-pts").value || "0");
       submitRiskRequest({ spot_shock_pct: spotPct, vol_shock_pts: volPts });
     });
 
@@ -268,8 +327,80 @@
     });
   }
 
+  // Position-level risk: one request across every leg in the position.
+  function initPositionRiskPanel() {
+    var panel = document.getElementById("position-risk-panel");
+    if (!panel) return;
+    var strategyId = panel.dataset.strategyId;
+    var statusEl = document.getElementById("pos-risk-status");
+
+    document.getElementById("pos-run-risk").addEventListener("click", function () {
+      var payload = { model_key: document.getElementById("pos-risk-model").value };
+      // Sent in the units the labels promise: whole percent, whole IV points.
+      var spot = document.getElementById("pos-spot-shock").value;
+      var vol = document.getElementById("pos-vol-shock").value;
+      if (spot) payload.spot_shock_pct = spot;
+      if (vol) payload.vol_shock_pts = vol;
+
+      statusEl.textContent = "Pricing the position...";
+      fetch(TRADING_BASE + "/strategies/" + strategyId + "/risk-requests", {
+        method: "POST",
+        body: new URLSearchParams(payload),
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (!data.ok) {
+            statusEl.textContent = data.error || "That risk request failed.";
+            return;
+          }
+          // The report is the deliverable, so go straight to it.
+          window.location.href = data.risk_request.report_url;
+        })
+        .catch(function () {
+          if (pageIsUnloading) return;
+          statusEl.textContent = "That risk request could not be sent.";
+        });
+    });
+  }
+
+  // Book-level risk: one request across every open instrument in the
+  // whole book, from the all-positions page.
+  function initBookRiskPanel() {
+    var panel = document.getElementById("book-risk-panel");
+    if (!panel) return;
+    var statusEl = document.getElementById("book-risk-status");
+
+    document.getElementById("book-run-risk").addEventListener("click", function () {
+      var payload = { model_key: document.getElementById("book-risk-model").value };
+      var spot = document.getElementById("book-spot-shock").value;
+      var vol = document.getElementById("book-vol-shock").value;
+      if (spot) payload.spot_shock_pct = spot;
+      if (vol) payload.vol_shock_pts = vol;
+
+      statusEl.textContent = "Pricing every open instrument in the book...";
+      fetch(TRADING_BASE + "/risk-requests", {
+        method: "POST",
+        body: new URLSearchParams(payload),
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (!data.ok) {
+            statusEl.textContent = data.error || "That risk request failed.";
+            return;
+          }
+          window.location.href = data.risk_request.report_url;
+        })
+        .catch(function () {
+          if (pageIsUnloading) return;
+          statusEl.textContent = "That risk request could not be sent.";
+        });
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     initOpenForm();
+    initPositionRiskPanel();
+    initBookRiskPanel();
     initAutoRefresh();
     initPositionDetail();
     initRiskPanel();

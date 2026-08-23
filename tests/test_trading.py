@@ -366,7 +366,7 @@ def test_submit_risk_request_persists_a_request_and_a_result(app, db, monkeypatc
 
     with app.app_context():
         leg = _open_call_direct(monkeypatch)
-        request_row = risk_engine.submit_risk_request(leg.id)
+        request_row = risk_engine.submit_risk_request(leg_id=leg.id)
 
         assert request_row.status == "complete"
         assert request_row.scenario is None
@@ -385,7 +385,7 @@ def test_ir_delta_equals_rho_from_pricing_module(app, db, monkeypatch):
 
     with app.app_context():
         leg = _open_call_direct(monkeypatch)
-        request_row = risk_engine.submit_risk_request(leg.id)
+        request_row = risk_engine.submit_risk_request(leg_id=leg.id)
         result = request_row.results.first()
 
         expected = pricing.position_greeks(
@@ -410,7 +410,7 @@ def test_scenario_gamma_is_near_zero_for_a_stock_leg(app, db, monkeypatch):
         db.session.add(leg)
         db.session.commit()
 
-        request_row = risk_engine.submit_risk_request(leg.id)
+        request_row = risk_engine.submit_risk_request(leg_id=leg.id)
         result = request_row.results.first()
         # A stock position's value is linear in spot -- no curvature, so
         # both the analytical gamma and the bump-and-revalue scenario
@@ -425,11 +425,12 @@ def test_submit_risk_request_applies_scenario_shock(app, db, monkeypatch):
     with app.app_context():
         leg = _open_call_direct(monkeypatch)
 
-        baseline = risk_engine.submit_risk_request(leg.id).results.first()
-        shocked = risk_engine.submit_risk_request(
-            leg.id, scenario={"spot_shock_pct": 0.1, "vol_shock_pts": 0.0}
+        baseline = risk_engine.submit_risk_request(leg_id=leg.id).results.first()
+        shocked = risk_engine.submit_risk_request(leg_id=leg.id, scenario={"spot_shock_pct": 10, "vol_shock_pts": 0}
         ).results.first()
 
+        # 10 means +10%, not +1000%: shocks are whole percent, matching the
+        # field name and the form label.
         assert shocked.underlying_price_used == pytest.approx(baseline.underlying_price_used * 1.1, rel=1e-6)
         # A long call gains value when spot rises.
         assert shocked.pv > baseline.pv
@@ -440,7 +441,7 @@ def test_submit_risk_request_raises_for_unknown_leg(app, db):
 
     with app.app_context():
         with pytest.raises(ValueError):
-            risk_engine.submit_risk_request(999999)
+            risk_engine.submit_risk_request(leg_id=999999)
 
 
 def _open_call_direct(monkeypatch, ticker="AAPL", strike=150.0, quantity=1, iv=0.3):
@@ -486,14 +487,22 @@ def test_risk_request_route_submits_and_report_route_fetches_it_back(client, db,
 
 def test_risk_request_route_accepts_a_scenario(client, db, monkeypatch):
     leg = _open_call(client, monkeypatch=monkeypatch)
+    monkeypatch.setattr(market_data, "get_last_price", lambda t, use_cache=True: 150.0)
 
     resp = client.post(
         f"/projects/trading-simulator/positions/{leg.id}/risk-requests",
-        data={"spot_shock_pct": "-0.1", "vol_shock_pts": "0.05"},
+        data={"spot_shock_pct": "-10", "vol_shock_pts": "5"},
     )
     assert resp.status_code == 200
     data = resp.get_json()["risk_request"]
-    assert data["scenario"] == {"spot_shock_pct": -0.1, "vol_shock_pts": 0.05}
+    assert data["scenario"] == {"spot_shock_pct": -10.0, "vol_shock_pts": 5.0}
+
+    # -10 has to mean -10%, moving spot to 0.9x. Applied as a raw fraction
+    # instead it meant -1000%, which priced the underlying at -2784 -- a
+    # negative share price, and every scenario Greek came back 0.
+    result = data["result"]
+    assert result["underlying_price_used"] > 0
+    assert result["underlying_price_used"] == pytest.approx(150.0 * 0.9, rel=1e-6)
 
 
 def test_risk_request_route_404s_for_unknown_position(client):
@@ -522,7 +531,11 @@ def test_risk_dashboard_loads_empty(client):
     resp = client.get("/projects/trading-simulator/risk-dashboard")
     assert resp.status_code == 200
     assert b"Risk Dashboard" in resp.data
-    assert b"No risk requests run yet" in resp.data
+    # Matches the empty-state element, not its exact wording -- the point
+    # is that the dashboard renders an empty state at all, and copy gets
+    # reworded without the behaviour changing.
+    assert b'class="empty-state"' in resp.data
+    assert b"No risk requests" in resp.data
 
 
 def test_risk_dashboard_shows_requests_from_multiple_positions(client, db, monkeypatch):
@@ -532,7 +545,7 @@ def test_risk_dashboard_shows_requests_from_multiple_positions(client, db, monke
     client.post(f"/projects/trading-simulator/positions/{leg_a.id}/risk-requests")
     client.post(
         f"/projects/trading-simulator/positions/{leg_b.id}/risk-requests",
-        data={"spot_shock_pct": "-0.1", "vol_shock_pts": "0"},
+        data={"spot_shock_pct": "-10", "vol_shock_pts": "0"},
     )
 
     from app.services import risk_dashboard
@@ -552,7 +565,7 @@ def test_risk_dashboard_summary_stats_counts_requests(client, db, monkeypatch):
     client.post(f"/projects/trading-simulator/positions/{leg.id}/risk-requests")
     client.post(
         f"/projects/trading-simulator/positions/{leg.id}/risk-requests",
-        data={"spot_shock_pct": "0.05", "vol_shock_pts": "0"},
+        data={"spot_shock_pct": "5", "vol_shock_pts": "0"},
     )
 
     from app.services import risk_dashboard

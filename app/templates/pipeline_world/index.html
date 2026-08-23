@@ -10,17 +10,26 @@
     </div>
 
     <div class="disclaimer-banner">
-        No code is ever submitted or executed here -- the only inputs are a name, a pick from a fixed
-        appearance list, and free-text answers to the same 4 fixed icebreaker questions everyone answers.
-        That "join" event runs through a real, queued 7-stage pipeline (see the live build log below) before
-        your character is written as live. Everyone watching this page sees the same runs in real time. See
-        the <a href="{{ url_for('sre_infra.index') }}">SRE Infra Layer</a> page for the queue/cache/rate-limit
-        infrastructure underneath, and
-        <a href="{{ url_for('pipeline_world.pipeline_analytics') }}">Pipeline Analytics</a> for the SQL over
-        every run logged here.
+        You can't submit code here. The inputs are a name, an appearance from a fixed list, and answers to the
+        same four questions everyone gets. Joining kicks off a real 7-stage pipeline that validates, tests,
+        builds and deploys your character before it goes live, and you can watch it happen in the build log
+        below. Everyone on this page sees the same runs at the same time. The queue, cache and rate limiting
+        behind it are written up on the <a href="{{ url_for('sre_infra.index') }}">SRE Infra Layer</a> page.
+        <a href="{{ url_for('pipeline_world.pipeline_analytics') }}">Pipeline Analytics</a> has the SQL over
+        every run.
     </div>
 
     <p><a class="button" href="{{ url_for('pipeline_world.town') }}">View Production Town &rarr;</a></p>
+
+    <div class="fast-mode-control">
+        <button id="fast-mode-toggle" type="button" class="button small {{ 'is-active' if fast_mode }}" data-enabled="{{ '1' if fast_mode else '0' }}">
+            Fast mode: <span id="fast-mode-label">{{ "ON" if fast_mode else "OFF" }}</span>
+        </button>
+        <span class="muted">
+            Normal mode holds each stage for a random 1-10 seconds so you can actually watch it work. Fast mode
+            drops the delay, which is what the benchmarks below measure.
+        </span>
+    </div>
 
     <div class="section-title">
         <h2>Join the world</h2>
@@ -80,7 +89,7 @@
         </div>
         <input type="hidden" id="hand_type_id" name="hand_type_id" value="">
 
-        <label>Icebreakers <span class="muted">(same 4 questions for everyone -- shown as speech bubbles in Production Town, free text, cleaned and checked by the pipeline)</span></label>
+        <label>Icebreakers <span class="muted">(everyone answers the same four. They become speech bubbles in Production Town, after the pipeline cleans and checks them.)</span></label>
         <div class="fields">
             {% for question in icebreaker_questions %}
             <div class="field half">
@@ -101,15 +110,36 @@
 
     <div class="section-title">
         <h2>Live build log</h2>
-        <span class="muted">What the pipeline is actually running, as it runs</span>
+        <span class="muted">What each stage is running, while it runs</span>
     </div>
+    {# Sample run shown only until the first real log line arrives -- an
+       empty black box told a first-time visitor nothing about what this
+       panel does. Uses the same markup/classes logStageUpdate emits (see
+       pipeline_tracker.js) so it reads as genuine output, and is labelled
+       as a sample so it can't be mistaken for a run that already
+       happened. appendLogLines drops it on the first real line. #}
     <div class="terminal-wrapper">
-        <pre id="build-log" class="terminal"></pre>
+        <pre id="build-log" class="terminal"><span class="log-placeholder"><span class="log-placeholder-note">// nothing running right now. this is what a finished run looks like</span>
+<span class="log-stage-start">&gt; Ada Lovelace: Sanitize</span>
+<span class="log-pass">  &#10003; PASS -- format/length/charset OK (5ms)</span>
+<span class="log-stage-start">&gt; Ada Lovelace: Security Scan</span>
+<span class="log-pass">  &#10003; PASS -- no injection patterns found (5ms)</span>
+<span class="log-stage-start">&gt; Ada Lovelace: Test: Uniqueness</span>
+<span class="log-pass">  &#10003; PASS -- name is unique (10ms)</span>
+<span class="log-stage-start">&gt; Ada Lovelace: Test: Profanity</span>
+<span class="log-pass">  &#10003; PASS -- no blocked words found (6ms)</span>
+<span class="log-stage-start">&gt; Ada Lovelace: Build</span>
+<span class="log-pass">  &#10003; PASS -- spawn payload assembled (11ms)</span>
+<span class="log-stage-start">&gt; Ada Lovelace: Deploy</span>
+<span class="log-pass">  &#10003; PASS -- written as live (5ms)</span>
+<span class="log-stage-start">&gt; Ada Lovelace: Verify</span>
+<span class="log-pass">  &#10003; PASS -- read-after-write check passed (2ms)</span>
+</span></pre>
     </div>
 
     <div class="section-title">
         <h2>Pipeline runs</h2>
-        <span class="muted">Live -- updates as runs happen, for everyone watching</span>
+        <span class="muted">Updates live for everyone watching</span>
     </div>
     <div class="data-table-wrapper">
         <div class="data-table-scroll">
@@ -127,9 +157,11 @@
                     <tr data-character-id="{{ row.character.id }}" class="{{ 'row-live' if row.character.status == 'live' else 'row-failed' if row.character.status == 'failed' else '' }}">
                         <td>{{ row.character.full_name }}</td>
                         {% for stage in stage_order %}
-                        {% set status = row.stages[stage] %}
+                        {% set entry = row.stages[stage] %}
+                        {% set status = entry.status if entry else None %}
                         <td class="stage-cell" data-stage="{{ stage }}">
                             <span class="stage-status stage-status-{{ status or 'none' }}">{{ "PASS" if status == "pass" else "FAIL" if status == "fail" else "-" }}</span>
+                            <span class="stage-duration">{{ "(%s)"|format(entry.duration_display) if entry and entry.duration_display else "" }}</span>
                         </td>
                         {% endfor %}
                     </tr>
@@ -139,7 +171,41 @@
         </div>
     </div>
     {% if not recent_runs %}
-    <div class="empty-state">No one has joined yet -- be the first.</div>
+    <div class="empty-state">Nobody has joined yet. Be the first.</div>
+    {% endif %}
+
+    <div class="section-title">
+        <h2>Fast mode benchmarks</h2>
+        <span class="muted">Real per-stage timing, recalculated after every fast-mode run</span>
+    </div>
+    <div class="data-table-wrapper">
+        <div class="data-table-scroll">
+            <table class="traffic-table" id="benchmarks-table">
+                <thead>
+                    <tr>
+                        <th>Stage</th>
+                        <th>Avg</th>
+                        <th>Min</th>
+                        <th>Max</th>
+                        <th>Samples</th>
+                    </tr>
+                </thead>
+                <tbody id="benchmarks-body">
+                    {% for row in benchmarks %}
+                    <tr data-stage="{{ row.stage }}">
+                        <td>{{ stage_info[row.stage].label }}</td>
+                        <td class="bench-avg">{{ row.avg_display or "-" }}</td>
+                        <td class="bench-min">{{ row.min_display or "-" }}</td>
+                        <td class="bench-max">{{ row.max_display or "-" }}</td>
+                        <td class="bench-samples">{{ row.samples }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% if not benchmarks or benchmarks|selectattr("samples", "gt", 0)|list|length == 0 %}
+    <div class="empty-state" id="benchmarks-empty-state">No fast-mode runs yet. Switch fast mode on and join to fill this in.</div>
     {% endif %}
 </section>
 {% endblock %}

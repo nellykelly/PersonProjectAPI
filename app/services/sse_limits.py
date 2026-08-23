@@ -1,27 +1,30 @@
 """Concurrency caps for the app's long-lived SSE (Server-Sent Events)
-connections -- the Trading Simulator's risk feed and watchlist stream,
-and the Network Sniffer's live stream. Each of those views holds a
+connections -- the Trading Simulator's risk feed and watchlist stream.
+(The Network Sniffer used to be a third SSE consumer here; it's now a
+polled analytics board instead, see net_monitor.py, so this module has
+one fewer category than its own history would suggest.) Each of those
+views holds a
 worker thread open indefinitely for as long as a browser tab stays
 connected, and gunicorn only has a small, fixed pool of them (see the
-Dockerfile's `-w 2 --threads 4` = 8 total request-handling slots).
+Dockerfile's `-w 1 --threads 8` = 8 total request-handling slots --
+single process, not multiple, because Flask-SocketIO's "threading"
+async_mode needs every Socket.IO session handled by the same process).
 Without a cap, a handful of concurrent connections from one visitor can
-occupy every thread in every worker and hang the *entire site* for
-everyone else -- not just degrade one feature. This module is what
-actually enforces the cap.
+occupy every thread and hang the *entire site* for everyone else -- not
+just degrade one feature. This module is what actually enforces the cap.
 
 Backed by Redis (the same connection Pipeline World's queue already
-uses, see queue.py) rather than an in-process counter, specifically so
-the cap holds across gunicorn's multiple worker *processes* in real
-deployment -- a plain Python-memory semaphore would only cap one
-process's share of the thread pool, letting an attacker still exhaust
-the other worker's threads.
+uses, see queue.py) rather than an in-process counter -- a plain
+Python-memory semaphore would only cap this one process's share, and
+wouldn't hold if this ever scales to multiple web replicas/containers
+behind a load balancer.
 
 Three limits are enforced together for every connection attempt:
   - `max_global`: a hard ceiling across *all* SSE categories combined,
     sized to leave some of the shared thread pool free for ordinary page
     loads no matter which single feed is being hammered.
   - `max_per_category`: a ceiling on one specific feed (risk-feed,
-    watchlist, sniffer) so one feature can't consume the whole global
+    watchlist) so one feature can't consume the whole global
     budget by itself.
   - `max_per_client`: a ceiling per IP address, so one visitor can't
     single-handedly exhaust either of the above with many tabs/scripts.

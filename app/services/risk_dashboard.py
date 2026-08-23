@@ -39,6 +39,14 @@ def recent_risk_requests(limit: int = RECENT_LIMIT) -> list[dict]:
                 "scenario": request.scenario,
                 "status": request.status,
                 "leg_id": request.leg_id,
+                "strategy_id": request.strategy_id,
+                # A position- or book-level run has no single leg, so the
+                # dashboard links to the position (or nowhere, for a book
+                # run) instead. Without this the row tried to build a leg
+                # URL from None and 500'd the whole page.
+                "is_position_level": request.is_position_level,
+                "is_book_level": request.is_book_level,
+                "leg_count": (request.totals or {}).get("leg_count", 1),
                 "ticker": leg.ticker if leg else None,
                 "kind": leg.kind if leg else None,
                 "strike": leg.strike if leg else None,

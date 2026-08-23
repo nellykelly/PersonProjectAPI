@@ -8,9 +8,19 @@
     <meta name="description" content="Nelson Koskela -- Software Engineer II at JPMorgan Chase &amp; Co. Personal portfolio site with independent trading, quant scoring, pipeline visualization, and network monitoring projects.">
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='assets/img/favicon.ico') }}">
 
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+
     <link rel="stylesheet" href="{{ url_for('static', filename='assets/css/main.css') }}">
     <noscript><link rel="stylesheet" href="{{ url_for('static', filename='assets/css/noscript.css') }}"></noscript>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
+
+    {# Set before first paint so the scroll-reveal start state (hidden,
+       pushed down) only ever applies when JS is actually there to undo
+       it -- a no-JS visitor never sees a blank page. Inline on purpose:
+       an external file would load too late to avoid a flash. #}
+    <script>document.documentElement.className += " js-reveal";</script>
     {% block extra_head %}{% endblock %}
 </head>
 <body class="is-preload">
@@ -54,11 +64,10 @@
 
     <footer class="site-footer">
         <div class="disclaimer">
-            This is a personal portfolio site. The Trading Simulator uses simulated positions with
-            delayed, real market data pulled from yfinance -- no real money changes hands and nothing
-            here is financial advice. The QR company scores are an educational demo, not investment
-            advice. The Network Sniffer only logs this application's own inbound requests and
-            outbound API calls, never a visitor's browsing traffic.
+            Personal portfolio site. The Trading Simulator uses simulated positions against delayed real
+            market data from yfinance. No real money, and none of it is financial advice. The QR scores
+            are a demo, not investment advice. The Network Sniffer logs only this app's own requests and
+            API calls, never a visitor's browsing.
         </div>
         <div class="footer-links">
             <a href="{{ GITHUB_URL }}" target="_blank" rel="noopener">GitHub</a>

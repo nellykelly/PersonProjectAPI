@@ -36,6 +36,12 @@
   function appendLogLines(lines) {
     var log = document.getElementById("build-log");
     if (!log) return;
+    // The sample run rendered server-side (see index.html) is only there
+    // to explain an otherwise-empty panel -- the moment there's real
+    // output it has to go, or a visitor would be reading a made-up run
+    // and a live one interleaved in the same log.
+    var placeholder = log.querySelector(".log-placeholder");
+    if (placeholder) log.removeChild(placeholder);
     var atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
     log.insertAdjacentHTML("beforeend", lines.join("\n") + "\n");
     while (log.children.length > MAX_LOG_LINES) {
@@ -44,10 +50,21 @@
     if (atBottom) log.scrollTop = log.scrollHeight;
   }
 
+  function formatDurationValue(seconds) {
+    if (seconds == null) return "";
+    return seconds < 1 ? Math.round(seconds * 1000) + "ms" : seconds.toFixed(2) + "s";
+  }
+
+  function formatDuration(seconds) {
+    var value = formatDurationValue(seconds);
+    return value ? " (" + value + ")" : "";
+  }
+
   function logStageUpdate(data) {
     var stageLabel = (STAGE_INFO[data.stage] && STAGE_INFO[data.stage].label) || data.stage;
     var name = escapeHtml(data.character.full_name);
     var lines = [];
+    var timing = formatDuration(data.duration_seconds);
 
     if (data.status === "start") {
       lines.push("<span class='log-stage-start'>&gt; " + name + ": " + escapeHtml(stageLabel) + "</span>");
@@ -55,9 +72,9 @@
         lines.push("<span class='log-command'>" + escapeHtml(cmd) + "</span>");
       });
     } else if (data.status === "pass") {
-      lines.push("<span class='log-pass'>  ✓ PASS" + (data.detail ? " -- " + escapeHtml(data.detail) : "") + "</span>");
+      lines.push("<span class='log-pass'>  ✓ PASS" + (data.detail ? " -- " + escapeHtml(data.detail) : "") + escapeHtml(timing) + "</span>");
     } else if (data.status === "fail") {
-      lines.push("<span class='log-fail'>  ✗ FAIL -- " + escapeHtml(data.detail) + "</span>");
+      lines.push("<span class='log-fail'>  ✗ FAIL -- " + escapeHtml(data.detail) + escapeHtml(timing) + "</span>");
     }
     appendLogLines(lines);
   }
@@ -68,6 +85,7 @@
     return (
       "<td class='stage-cell' data-stage='" + stage + "'>" +
       "<span class='stage-status stage-status-none'>-</span>" +
+      "<span class='stage-duration'></span>" +
       "</td>"
     );
   }
@@ -95,13 +113,21 @@
     return row;
   }
 
-  function updateStageCell(character, stage, status) {
+  function updateStageCell(character, stage, status, durationSeconds) {
     var row = getOrCreateRow(character);
     if (!row) return;
-    var cell = row.querySelector("td[data-stage='" + stage + "'] .stage-status");
+    var td = row.querySelector("td[data-stage='" + stage + "']");
+    if (!td) return;
+    var cell = td.querySelector(".stage-status");
     if (!cell) return;
     cell.className = "stage-status stage-status-" + status;
     cell.textContent = status === "running" ? "..." : status === "pass" ? "PASS" : status === "fail" ? "FAIL" : "-";
+
+    var durationEl = td.querySelector(".stage-duration");
+    if (durationEl) {
+      var value = formatDurationValue(durationSeconds);
+      durationEl.textContent = value ? "(" + value + ")" : "";
+    }
 
     if (stage === LAST_STAGE && status === "pass") {
       row.classList.remove("row-failed");
@@ -122,7 +148,7 @@
 
     var stage = data.stage;
     var status = data.status === "start" ? "running" : data.status;
-    updateStageCell(data.character, stage, status);
+    updateStageCell(data.character, stage, status, data.duration_seconds);
 
     if (data.character.id !== myCharacterId) return;
 
@@ -137,6 +163,53 @@
     }
   }
 
+  // ---------- fast mode ----------
+
+  function setFastModeButton(enabled) {
+    var btn = document.getElementById("fast-mode-toggle");
+    var label = document.getElementById("fast-mode-label");
+    if (!btn || !label) return;
+    btn.dataset.enabled = enabled ? "1" : "0";
+    btn.classList.toggle("is-active", enabled);
+    label.textContent = enabled ? "ON" : "OFF";
+  }
+
+  function handleBenchmarksUpdate(data) {
+    var body = document.getElementById("benchmarks-body");
+    if (!body || !data.benchmarks) return;
+    data.benchmarks.forEach(function (row) {
+      var tr = body.querySelector("tr[data-stage='" + row.stage + "']");
+      if (!tr) return;
+      tr.querySelector(".bench-avg").textContent = formatDurationValue(row.avg_seconds) || "-";
+      tr.querySelector(".bench-min").textContent = formatDurationValue(row.min_seconds) || "-";
+      tr.querySelector(".bench-max").textContent = formatDurationValue(row.max_seconds) || "-";
+      tr.querySelector(".bench-samples").textContent = row.samples;
+    });
+    var emptyState = document.getElementById("benchmarks-empty-state");
+    if (emptyState && data.benchmarks.some(function (row) { return row.samples > 0; })) {
+      emptyState.style.display = "none";
+    }
+  }
+
+  function setupFastModeToggle() {
+    var btn = document.getElementById("fast-mode-toggle");
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      var next = btn.dataset.enabled !== "1";
+      fetch("/projects/pipeline-world/fast-mode", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "enabled=" + (next ? "1" : "0"),
+      })
+        .then(function (r) {
+          return r.json();
+        })
+        .then(function (data) {
+          if (data.ok) setFastModeButton(data.fast_mode);
+        });
+    });
+  }
+
   function connectSocket() {
     if (!window.io) return;
     var socket = window.io("/pipeline-world");
@@ -147,6 +220,10 @@
       setLiveIndicator("reconnecting");
     });
     socket.on("pipeline_update", handlePipelineUpdate);
+    socket.on("pipeline_mode_update", function (data) {
+      setFastModeButton(data.fast_mode);
+    });
+    socket.on("pipeline_benchmarks_update", handleBenchmarksUpdate);
   }
 
   // ---------- join form ----------
@@ -253,5 +330,6 @@
   document.addEventListener("DOMContentLoaded", function () {
     connectSocket();
     setupJoinForm();
+    setupFastModeToggle();
   });
 })();

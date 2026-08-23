@@ -2,9 +2,9 @@ from flask import current_app, jsonify, render_template, request, session
 
 from app.blueprints.pipeline_world import bp
 from app.config import PIPELINE_STAGE_INFO, PRODUCTION_TOWN_BOUNDS
-from app.extensions import db, limiter
+from app.extensions import db, limiter, socketio
 from app.models import PIPELINE_STAGES, Character
-from app.services import analytics, queue, validators, world_cache
+from app.services import analytics, pipeline, queue, validators, world_cache
 from app.services.validators import LastNameCollision, ValidationError
 
 RECENT_RUNS_LIMIT = 20
@@ -21,11 +21,20 @@ def _recent_pipeline_snapshot(limit: int = RECENT_RUNS_LIMIT) -> list[dict]:
     characters = Character.query.order_by(Character.created_at.desc()).limit(limit).all()
     rows = []
     for character in characters:
-        by_stage = {run.stage: run.status for run in character.pipeline_runs}
+        by_stage = {run.stage: run for run in character.pipeline_runs}
         rows.append(
             {
                 "character": character.to_dict(),
-                "stages": {stage: by_stage.get(stage) for stage in PIPELINE_STAGES},
+                "stages": {
+                    stage: {
+                        "status": by_stage[stage].status,
+                        "duration_seconds": by_stage[stage].duration_seconds,
+                        "duration_display": pipeline.format_duration_seconds(by_stage[stage].duration_seconds),
+                    }
+                    if stage in by_stage
+                    else None
+                    for stage in PIPELINE_STAGES
+                },
             }
         )
     return rows
@@ -44,7 +53,18 @@ def index():
         stage_info=PIPELINE_STAGE_INFO,
         stage_order=PIPELINE_STAGES,
         recent_runs=_recent_pipeline_snapshot(),
+        fast_mode=pipeline.is_fast_mode(),
+        benchmarks=pipeline.fast_mode_benchmarks(),
     )
+
+
+@bp.route("/fast-mode", methods=["POST"])
+@limiter.limit(lambda: current_app.config["PIPELINE_FAST_MODE_RATE_LIMIT"])
+def toggle_fast_mode():
+    enabled = request.form.get("enabled") == "1"
+    pipeline.set_fast_mode(enabled)
+    socketio.emit(pipeline.MODE_EVENT, {"fast_mode": enabled}, namespace=pipeline.SOCKETIO_NAMESPACE)
+    return jsonify({"ok": True, "fast_mode": enabled})
 
 
 @bp.route("/town")

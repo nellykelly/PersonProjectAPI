@@ -77,8 +77,11 @@ interview as *how* you catch bugs, not just that you can write code without them
   reads the *ticker* as the host for this synthetic scheme -- so the dashboard grouped
   calls by ticker symbol instead of by service. Fixed by branching on whether the target
   is a real `http(s)://` URL (extract the host) or something else (use the scheme name
-  instead) -- and had to fix it in *two* places, since the client-side JS recomputes the
-  same stats independently for live SSE updates rather than re-fetching from the server.
+  instead) -- and had to fix it in *two* places at the time, since the client-side JS
+  recomputed the same stats independently for live SSE updates rather than re-fetching
+  from the server. (That duplication is gone now that the page polls a server-computed
+  analytics endpoint instead of streaming raw entries -- one fewer place this exact class
+  of bug could recur, a side benefit of the later rebuild, not the reason for it.)
 
 - **A CSS reset collision, not a logic bug.** The site's dark theme borrows a global
   `button { height: 2.75rem; line-height: 2.75rem; white-space: nowrap; ... }` rule from
@@ -191,10 +194,13 @@ interview as *how* you catch bugs, not just that you can write code without them
 
 ## 4. Legal/ethical scoping decisions (good "how do you think about constraints" answers)
 
-- **Network Sniffer only logs the app's own traffic**, never a visitor's browsing --
-  capturing arbitrary visitor traffic is treated as wiretapping in most jurisdictions
-  regardless of intent, and would violate almost any host's ToS. Scoped to inbound
-  requests to the app's own routes and outbound calls the app itself makes.
+- **Site Traffic Analytics (formerly "Network Sniffer") only logs the app's own
+  traffic**, never a visitor's browsing -- capturing arbitrary visitor traffic is
+  treated as wiretapping in most jurisdictions regardless of intent, and would violate
+  almost any host's ToS. Scoped to inbound requests to the app's own routes and outbound
+  calls the app itself makes. The page was later rebuilt from a raw live log into an
+  aggregate analytics board (volume over time, latency percentiles, error rate), but the
+  scoping rule underneath -- what's captured at all -- didn't change.
 
 - **Pipeline World never executes visitor-submitted code, by construction.** The entire
   input surface is a name and a pick from a fixed list -- there's no code-execution
@@ -229,3 +235,137 @@ stages, each with the right amount of caution for its blast radius:
 Good interview answer to "tell me about a time you found a security issue": the
 progression from "fix the symptom safely" to "fully remediate, but verify before doing
 anything destructive" to "the fix doesn't replace rotating the actual secret."
+
+---
+
+## 6. The position-level risk rework: bugs and decisions worth telling the real story about
+
+Turning the Trading Simulator's risk engine from "price one leg" into "price a whole
+position (or the whole book), all in one job, on a separate worker" surfaced several bugs
+that were genuinely instructive, not cosmetic.
+
+- **A silently-corrupting bug that never got the chance to exist.** `submit_risk_request`
+  used to take a leg id as its first *positional* argument. Adding a `strategy_id` keyword
+  meant a stale call site written as `submit_risk_request(42)` would now be silently
+  reinterpreted as *pricing position 42* instead of *leg 42* -- wrong answer, no error,
+  nothing to notice. Made every argument keyword-only instead, which turned exactly that
+  mistake into an immediate `TypeError` -- and it did: the refactor's own test suite had
+  11 old call sites written the old way, and every one of them failed loudly and
+  specifically instead of quietly pricing the wrong thing. The lesson isn't "keyword-only
+  is good style" -- it's that a signature change that silently changes an existing
+  positional argument's *meaning* is exactly the situation worth spending a few extra
+  characters to make unrepresentable.
+
+- **NaN is not valid JSON, and Python will happily lie to you about that.** `yfinance`
+  returns `NaN` for missing option-chain quotes (thin strikes, no recent trade). Python's
+  own `json.loads` accepts a bare `NaN` token as an extension to the spec -- so testing
+  the endpoint with `curl | python -m json.tool` looked completely fine. A real browser's
+  `JSON.parse` follows the actual JSON spec, where `NaN` is a syntax error, and rejected
+  the response outright; the `.catch()` around it reported a generic "could not load
+  chain" with no indication why. Two tools disagreeing about what "valid JSON" means is
+  the whole story here -- verifying with the *same* JSON parser the browser uses (a
+  strict `parse_constant` that rejects `NaN`/`Infinity`) is what actually caught it, and
+  that strict-parser test is checked into `tests/test_market_data_json_safety.py` along
+  with a test proving the strict parser itself would reject `NaN` -- otherwise the guard
+  could quietly stop testing anything.
+
+- **Exceptions don't cross a process boundary -- the row does.** Once risk pricing moved
+  onto a separate `worker` container, `submit_risk_request` (still in the web process)
+  can't just wrap the pricing call in `try/except` anymore -- the code that might raise
+  `MarketDataError` now runs somewhere else entirely. The fix: the worker job catches its
+  own exceptions and writes a plain-text reason onto the `RiskRequest` row
+  (`error = "market_data: ..."`), and the waiting web-process code re-derives the *same*
+  exception type from that string once the row stops reading `pending`, so every existing
+  route's `except MarketDataError` handler keeps working without having to know pricing
+  moved to a different process at all. The interview-worthy point: distributed systems
+  don't get to "just raise" across a process boundary -- the shared state (here, the
+  database row) has to carry both the result *and* the failure, because there's no shared
+  call stack to unwind.
+
+- **The NOT-NULL-on-a-populated-table migration trap, four times running.** Every
+  Alembic autogenerate for a new `nullable=False` column against a table that already has
+  rows generates SQL that fails immediately -- Postgres backfills existing rows with
+  `NULL` before it ever checks the constraint, and a bare `NULL` obviously fails `NOT
+  NULL`. Hit this for `instruments.instrument_type`'s width fix, for `risk_requests.model_key`,
+  for `risk_requests.strategy_id`/`scope`, and for `instruments.code` -- each time the
+  fix is the same shape: add the column nullable, backfill every existing row with a real
+  (not placeholder) value in the same migration, *then* tighten to `NOT NULL`. Worth
+  distinguishing two flavors of backfill in an interview: a single constant works with
+  `server_default` (e.g. every existing risk request defaulting to `model_key =
+  'trader_granular'`, since that was the only model that existed before request-level
+  model selection), while a value that varies per row (each instrument's own OCC code)
+  needs an actual Python or SQL loop computing the real value per row -- a single
+  `server_default` can't do that.
+
+- **A regression guard catching a bug it wasn't written for.** `tests/test_models_column_widths.py`
+  was built earlier to stop a *different* VARCHAR-too-narrow bug from recurring, and it
+  audits every `String` column's declared width against the real values the app can
+  write. Adding `Instrument.code` (an OCC symbol) tripped it immediately: the column was
+  declared `String(24)`, but the actual worst case -- a 10-character ticker (the width
+  `underlying_ticker` itself already allows) + 6-digit expiry + C/P + 8-digit strike -- is
+  25 characters, one over. That's the guard doing exactly its job on a bug that didn't
+  exist when it was written, which is the actual point of a coverage-style regression
+  test over a narrow, bug-specific one.
+
+- **A tool silently rewriting the very path it was told to check.** Debugging why a
+  freshly-generated migration file "wasn't there" inside the `worker`/`web` containers led
+  to `docker compose exec web ls /app/migrations/versions` returning `No such file or
+  directory: D:/Git/app/migrations/versions` -- Git Bash's MSYS layer auto-converts
+  Unix-looking absolute paths in command arguments to Windows paths *before* Docker ever
+  sees them, so `/app/...` silently became a local Windows path that obviously doesn't
+  exist inside a Linux container. `MSYS_NO_PATHCONV=1` (or a `//app/...` double-slash
+  escape) disables that translation for the one command that needs a literal
+  container-side path. A good reminder that "the file doesn't exist" and "the tool never
+  saw the path I typed" are different bugs that look identical from the error message.
+
+- **Rebuilt the image, generated the migration, forgot to rebuild again.** The actual
+  root cause behind the above investigation, once the path issue was ruled out: a
+  migration was correctly generated against a freshly-built image (so autogenerate could
+  see the new model columns), copied out to the host with `docker cp`... and then the
+  *next* `docker compose up` started containers from the image built *before* that file
+  existed on the host, because the image bakes in whatever was in the build context at
+  build time. The established pattern (build -> generate -> copy out -> **rebuild again**
+  -> apply) has a rebuild on both sides of the copy for exactly this reason; skipping the
+  second one produces a container that looks like it ran `flask db upgrade` successfully
+  while silently sitting one migration behind.
+
+- **A correction worth taking seriously even after independent research initially seemed
+  to contradict it.** Told that calling a lone, non-spread trade a "leg" was wrong,
+  the first instinct was to check the actual definition -- and industry sources do
+  confirm "a single-leg strategy" is real, standard terminology, which read like the
+  complaint might be unfounded. The real distinction, once asked directly where
+  specifically it looked wrong, turned out to be narrower and correct: a *leg* still
+  requires an actual multi-part structure to be part of, and a standalone trade with no
+  siblings has no such structure, so calling it "1 leg" (a UI stat tile literally reading
+  "Legs priced: 1") is imprecise in a way that "a single-leg *strategy*" as a category
+  name is not. The fix was scoped to exactly that: "leg" language only appears once a
+  request or a position actually spans more than one instrument; a lone trade says
+  "single trade" and skips the aggregate sections entirely rather than trivially
+  restating its own single result under a "position totals" heading. Worth remembering:
+  research that seems to vindicate your first instinct doesn't mean the correction was
+  wrong -- it can mean the real distinction is narrower than either side's first framing.
+
+---
+
+## 7. Timed-Squares: catching state-machine bugs by actually driving the state machine
+
+Timed-Squares (`app/static/js/timed_squares.js`) has no Python test coverage -- it's
+client-side JS with no test runner wired into this repo -- so verifying its turn
+resolution, telegraphing, and each obstacle's movement math meant instantiating the
+actual game engine in a real browser and driving it directly (`tryMovePlayer` calls, then
+real dispatched `keydown` events) rather than trusting the code by inspection.
+
+That's what it was for: a first pass at the manual verification script tried to check the
+bouncer's edge-reversal by handing it an already-invalid telegraphed move and asserting
+it got corrected -- which failed, because that's not what the code does or should do. The
+real invariant is *decided at telegraph time*: an obstacle's `nextMove` is only ever
+computed by its own decider function (which checks whether the *next* step would leave
+the board and flips direction pre-emptively if so), never hand-set to something the
+decider never would have produced. Once the test was corrected to drive the obstacle
+through a real spawn-shaped path -- give it a valid first move, let the engine execute
+it, then inspect what it telegraphed *next* -- the actual sequence (move to the second-
+to-last cell, telegraph flips to reversed, next move executes the reversal) checked out
+exactly as designed. Worth remembering for any state machine: a verification script that
+skips the state transition and pokes at intermediate state directly can produce a
+failure that indicts the harness, not the code -- rerunning it through the real
+transition path is what tells you which one is actually wrong.

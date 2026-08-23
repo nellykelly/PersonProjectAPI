@@ -7,14 +7,16 @@
     <h1 class="major"><img class="page-icon" src="{{ url_for('static', filename='assets/img/icons/trading.svg') }}" alt="">Trading Simulator / PnL Tracker</h1>
 
     <div class="disclaimer-banner">
-        <strong>Simulation only.</strong> This is a shared, anonymous public trade book -- anyone can
-        open a position, and every position is visible to every visitor. No real money is involved.
-        Prices come from yfinance and are typically delayed ~15 minutes. Nothing here is financial advice.
+        <strong>Simulation only.</strong> This is a shared public trade book. Anyone can open a position and
+        everyone sees all of them. No real money changes hands. Prices come from yfinance and run about 15
+        minutes behind. None of this is financial advice.
     </div>
 
     <p>
         <a class="button small" href="{{ url_for('trading.watchlist_view') }}">Live Watchlist &rarr;</a>
         <a class="button small" href="{{ url_for('trading.risk_dashboard_view') }}">Risk Dashboard &rarr;</a>
+        <a class="button small" href="{{ url_for('trading.strategies_index') }}">All Positions &rarr;</a>
+        <a class="button small" href="{{ url_for('trading.instruments_index') }}">Instrument Catalog &rarr;</a>
     </p>
 
     <div class="section-title">
@@ -106,7 +108,7 @@
         </table>
     </div>
     {% else %}
-    <div class="empty-state">No open positions yet -- open the first one above.</div>
+    <div class="empty-state">No open positions yet. Open the first one above.</div>
     {% endif %}
 
     {% if closed_positions %}

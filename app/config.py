@@ -143,12 +143,31 @@ class Config:
     # deployment (docker-compose) sets this to the redis service's URL.
     REDIS_URL = os.environ.get("REDIS_URL")
 
-    # Small artificial per-stage delay so the pipeline visualization is
-    # actually watchable instead of resolving instantly.
-    PIPELINE_STAGE_DELAY_SECONDS = float(os.environ.get("PIPELINE_STAGE_DELAY_SECONDS", "1.2"))
+    # Normal per-stage delay is a random 1-10s roll, decided fresh per
+    # flow (see pipeline.py's SLOW_MODE_DELAY_RANGE) -- toggleable at
+    # runtime to "fast mode" (no delay) via the Redis-backed flag in
+    # pipeline.is_fast_mode(), not an env var. This is an escape-hatch
+    # override only: set it to force every stage to a fixed delay
+    # instead, bypassing both the random roll and the fast-mode toggle.
+    # TestingConfig below uses exactly this to force 0 in tests.
+    _pipeline_stage_delay_env = os.environ.get("PIPELINE_STAGE_DELAY_SECONDS", "").strip()
+    PIPELINE_STAGE_DELAY_SECONDS = float(_pipeline_stage_delay_env) if _pipeline_stage_delay_env else None
     PIPELINE_JOIN_RATE_LIMIT = os.environ.get("PIPELINE_JOIN_RATE_LIMIT", "10 per hour")
+    PIPELINE_FAST_MODE_RATE_LIMIT = os.environ.get("PIPELINE_FAST_MODE_RATE_LIMIT", "30 per hour")
 
     WORLD_CACHE_TTL_SECONDS = int(os.environ.get("WORLD_CACHE_TTL_SECONDS", "30"))
+
+    # Timed-Squares: generous relative to the other public-write limits
+    # above (trading/pipeline) on purpose -- submitting a score is the
+    # normal end of every single run of an actual game, not an occasional
+    # action, so a player replaying several rounds in a row shouldn't hit
+    # this under normal play.
+    TIMED_SQUARES_SCORE_RATE_LIMIT = os.environ.get("TIMED_SQUARES_SCORE_RATE_LIMIT", "60 per hour")
+    # Sanity bound on a submitted score, not real anti-cheat (see
+    # TimedSquaresScore's docstring) -- rejects an obviously-garbage
+    # payload without pretending to validate that a score was legitimately
+    # earned.
+    TIMED_SQUARES_MAX_TURNS = int(os.environ.get("TIMED_SQUARES_MAX_TURNS", "100000"))
 
 
 class DevelopmentConfig(Config):

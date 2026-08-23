@@ -28,7 +28,12 @@ class Instrument(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     underlying_ticker = db.Column(db.String(10), nullable=False, index=True)
-    instrument_type = db.Column(db.String(4), nullable=False)  # 'stock' | 'call' | 'put'
+    # 10, not 4: 'stock' is 5 characters and never fit. SQLite ignores
+    # VARCHAR limits entirely, so this passed every test and only failed
+    # against Postgres, where opening any stock position 500'd on insert.
+    # See tests/test_models_column_widths.py, which now checks the whole
+    # table for this rather than waiting to hit it one column at a time.
+    instrument_type = db.Column(db.String(10), nullable=False)  # 'stock' | 'call' | 'put'
 
     strike = db.Column(db.Float, nullable=True)
     expiry = db.Column(db.Date, nullable=True)
@@ -39,6 +44,21 @@ class Instrument(db.Model):
     exercise_style = db.Column(db.String(9), nullable=True)  # 'american' | 'european'
     settlement_type = db.Column(db.String(8), nullable=True)  # 'physical' | 'cash'
     contract_multiplier = db.Column(db.Integer, nullable=False, default=1)
+
+    # A stable, human-lookupable identifier for this exact contract -- the
+    # standard OCC option symbol (root + YYMMDD expiry + C/P + 8-digit
+    # strike*1000) for options, or just the ticker for stock. Derived
+    # entirely from the fields above (see occ_code in
+    # app/services/instruments.py), so it's always unique given the
+    # uq_instrument_identity constraint already on this table -- it's
+    # stored rather than recomputed so it can be indexed and searched.
+    #
+    # 32, not the tighter 25 the worst case (10-char ticker + 6-digit
+    # expiry + C/P + 8-digit strike) needs: underlying_ticker is itself
+    # String(10), so that's the real ceiling, with a little headroom
+    # rather than a value the very next digit would overflow. See
+    # tests/test_models_column_widths.py.
+    code = db.Column(db.String(32), nullable=False, unique=True, index=True)
 
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
 
@@ -55,6 +75,7 @@ class Instrument(db.Model):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "code": self.code,
             "underlying_ticker": self.underlying_ticker,
             "instrument_type": self.instrument_type,
             "strike": self.strike,
@@ -204,22 +225,47 @@ class PriceCache(db.Model):
 
 class RiskRequest(db.Model):
     """The middle step of position -> risk request -> report/live feed:
-    a real, persisted, queryable *ask* for risk on one Leg, rather than
-    risk just being recomputed silently and thrown away every time a
-    page happens to render. "Show me every risk request run against Leg
-    #12 today, and what each one found" is a real query against this
-    table (join to RiskResult), not something you'd have to reconstruct
-    from logs.
+    a real, persisted, queryable *ask* for risk on a whole position,
+    rather than risk being recomputed silently and thrown away every time
+    a page happens to render. "Show me every risk request run against
+    position #12 today, and what each one found" is a real query against
+    this table (join to RiskResult), not something to reconstruct from
+    logs.
 
-    `scenario` is None for a plain as-of-now request, or a small shock
-    spec for a what-if request, e.g. {"spot_shock_pct": -0.05,
-    "vol_shock_pts": 0.05} -- see app/services/risk_engine.py.
+    A request targets a Strategy -- the position -- and produces one
+    RiskResult per Leg inside it plus the aggregated `totals` below. All
+    of those legs are priced from a single market snapshot taken once at
+    the top of the run, so the report is internally consistent: a
+    two-legged spread can never be marked with its legs seen seconds
+    apart, which would make the net Greeks quietly wrong.
+
+    `scenario` is None for a plain as-of-now request, or a shock spec for
+    a what-if request, e.g. {"spot_shock_pct": -10, "vol_shock_pts": 5}
+    meaning "spot down 10%, implied vol up 5 points". Both are in whole
+    percent/points, matching the field names and the form labels, not
+    fractions -- see app/services/risk_engine.py.
     """
 
     __tablename__ = "risk_requests"
 
     id = db.Column(db.Integer, primary_key=True)
-    leg_id = db.Column(db.Integer, db.ForeignKey("legs.id"), nullable=False, index=True)
+
+    # The position this request was run against. Nullable only so the
+    # migration could backfill historical rows; every new request sets it.
+    strategy_id = db.Column(db.Integer, db.ForeignKey("strategies.id"), nullable=True, index=True)
+
+    # Set when a request deliberately targets one leg inside the position
+    # rather than the whole thing. NULL means "the whole position", which
+    # is the normal case.
+    leg_id = db.Column(db.Integer, db.ForeignKey("legs.id"), nullable=True, index=True)
+
+    # What this request was actually run against -- 'leg' (one instrument),
+    # 'position' (every leg in one Strategy), or 'book' (every open leg
+    # across every position). Set explicitly by submit_risk_request rather
+    # than inferred from which of strategy_id/leg_id is NULL, because a
+    # book-level request has both NULL and would otherwise be
+    # indistinguishable from a stale/invalid row.
+    scope = db.Column(db.String(8), nullable=False, default="leg")  # 'leg' | 'position' | 'book'
 
     requested_at = db.Column(db.DateTime, nullable=False, default=utcnow)
     # none_as_null=True: SQLAlchemy's JSON type otherwise stores a Python
@@ -230,17 +276,54 @@ class RiskRequest(db.Model):
     scenario = db.Column(db.JSON(none_as_null=True), nullable=True)
     status = db.Column(db.String(8), nullable=False, default="pending")  # 'pending' | 'complete' | 'failed'
 
+    # Why a 'failed' request failed -- set by the worker job that actually
+    # priced it (see risk_engine.run_risk_request_job), since that's a
+    # separate process from the one that created this row and can't just
+    # raise an exception back into it. "market_data: ..." is recognized by
+    # submit_risk_request and re-raised as MarketDataError so callers keep
+    # seeing the same exception type as before pricing moved to a worker.
+    error = db.Column(db.Text, nullable=True)
+
+    # Which registered quantitative model answered this request (see
+    # app/services/risk_models). Stored per-request rather than assumed,
+    # because two requests on the same position can legitimately disagree
+    # when they ran different models -- a report is only meaningful if it
+    # can say which one produced its numbers.
+    model_key = db.Column(db.String(40), nullable=False, default="trader_granular")
+
+    # Aggregated across every leg priced in this run: net Greeks, total PV
+    # and PnL, plus the snapshot the whole run shared. Stored rather than
+    # recomputed so reopening an old report gives the numbers that run
+    # actually produced, not today's.
+    totals = db.Column(db.JSON(none_as_null=True), nullable=True)
+
+    strategy = db.relationship("Strategy")
     leg = db.relationship("Leg")
     results = db.relationship("RiskResult", backref="risk_request", order_by="RiskResult.id", lazy="dynamic")
+
+    @property
+    def is_position_level(self) -> bool:
+        """True when this priced a whole position rather than one leg."""
+        return self.scope == "position"
+
+    @property
+    def is_book_level(self) -> bool:
+        """True when this priced every open leg across the whole book."""
+        return self.scope == "book"
 
     def to_dict(self) -> dict:
         result = self.results.order_by(RiskResult.id.desc()).first()
         return {
             "id": self.id,
             "leg_id": self.leg_id,
+            "scope": self.scope,
             "requested_at": self.requested_at.isoformat(),
             "scenario": self.scenario,
+            "model_key": self.model_key,
+            "strategy_id": self.strategy_id,
+            "totals": self.totals,
             "status": self.status,
+            "error": self.error,
             "result": result.to_dict() if result else None,
         }
 
@@ -303,6 +386,13 @@ class RiskResult(db.Model):
     scenario_gamma = db.Column(db.Float, nullable=True)
     ir_vega = db.Column(db.Float, nullable=True)  # Hull-White bump-and-revalue -- see class docstring
 
+    # The model's own ordered measures, structural extras (a revaluation
+    # ladder, for one) and any notes it wanted to attach. The fixed
+    # columns above are a lowest common denominator every model can fill;
+    # this is where a model reports things they were never designed to
+    # hold, without a migration per model.
+    report = db.Column(db.JSON(none_as_null=True), nullable=True)
+
     def to_dict(self) -> dict:
         return {
             "id": self.id,
@@ -319,6 +409,7 @@ class RiskResult(db.Model):
             "vega": self.vega,
             "ir_delta": self.ir_delta,
             "scenario_gamma": self.scenario_gamma,
+            "report": self.report,
             "ir_vega": self.ir_vega,
         }
 
@@ -479,12 +570,30 @@ class PipelineRun(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     character_id = db.Column(db.Integer, db.ForeignKey("characters.id"), nullable=False, index=True)
 
-    stage = db.Column(db.String(10), nullable=False)  # one of PIPELINE_STAGES
+    # 20, not 10: "test_uniqueness" (15 chars) is the longest of
+    # PIPELINE_STAGES. SQLite never enforces VARCHAR length at all, so a
+    # too-short length here passed every local/test run silently and only
+    # surfaced as a real crash (StringDataRightTruncation) against Postgres.
+    stage = db.Column(db.String(20), nullable=False)  # one of PIPELINE_STAGES
     status = db.Column(db.String(4), nullable=False)  # 'pass' | 'fail'
     detail = db.Column(db.Text, nullable=True)
 
     started_at = db.Column(db.DateTime, nullable=False, default=utcnow, index=True)
     ended_at = db.Column(db.DateTime, nullable=True)
+
+    # Whether this stage ran with the artificial demo delay disabled --
+    # decided once per flow (see pipeline.py's run_pipeline), not
+    # per-stage. Real-timing benchmarks (pipeline.fast_mode_benchmarks)
+    # only ever average rows where this is True: a slow-mode row's
+    # duration_seconds includes the artificial 1-10s sleep and would
+    # make a "real processing time" benchmark meaningless if mixed in.
+    fast_mode = db.Column(db.Boolean, nullable=False, default=False)
+
+    @property
+    def duration_seconds(self) -> float | None:
+        if self.ended_at is None:
+            return None
+        return (self.ended_at - self.started_at).total_seconds()
 
     def to_dict(self) -> dict:
         return {
@@ -495,4 +604,46 @@ class PipelineRun(db.Model):
             "detail": self.detail,
             "started_at": self.started_at.isoformat(),
             "ended_at": self.ended_at.isoformat() if self.ended_at else None,
+            "duration_seconds": self.duration_seconds,
+            "fast_mode": self.fast_mode,
+        }
+
+
+class TimedSquaresScore(db.Model):
+    """One completed run of Timed-Squares, on a public shared leaderboard --
+    the same anonymous/public pattern as the trading simulator's shared
+    trade book: no login, a random per-visitor `session_id` cookie exists
+    only to rate-limit/cap submissions from one visitor, and every score
+    (across every visitor) is visible to everyone.
+
+    `turns_survived` is the score -- the game is turn-based by design (see
+    the Timed-Squares build spec), so "turns survived" and "time survived"
+    are the same number, unlike a real-time game where they'd diverge.
+
+    No server-side replay validation: a determined visitor could POST a
+    fabricated score directly to the API. Accepted as a documented
+    simplification at this scope (see `sanitize_turns_survived` in
+    routes.py for the actual bound enforced) -- the same "simulation
+    only" spirit as the Trading Simulator having no real money on the
+    line, just applied to a leaderboard number instead.
+    """
+
+    __tablename__ = "timed_squares_scores"
+
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.String(36), nullable=False, index=True)
+    # Arcade-style short display name -- see
+    # app/services/validators.py: sanitize_arcade_name. Falls back to
+    # "ANON" rather than rejecting the submission outright: a malformed
+    # name shouldn't cost a player a score they already earned.
+    player_name = db.Column(db.String(12), nullable=False, default="ANON")
+    turns_survived = db.Column(db.Integer, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "player_name": self.player_name,
+            "turns_survived": self.turns_survived,
+            "created_at": self.created_at.isoformat(),
         }

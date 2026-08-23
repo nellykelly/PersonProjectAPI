@@ -15,6 +15,15 @@ request/response cycle: the HTTP request returns immediately, while a worker run
 real pipeline in the background (`app/services/pipeline.py`). This is the standard answer
 to "why doesn't synchronous processing scale for anything resource-intensive or bursty."
 
+The same worker pool now runs a second kind of job: the [Trading Simulator's](../trading/README.md)
+risk pricing. `app/services/queue.py` exposes two named queues (`pipeline_world`,
+`risk_engine`) on one Redis connection, and `worker.py` listens on both -- one process,
+two job types, rather than a second bespoke worker for the second feature. The trading
+side calls this synchronously from the caller's point of view (`submit_risk_request`
+enqueues, then polls the request row until the worker finishes it, so the HTTP response
+still comes back with a completed result) -- distribute the compute, then return the
+result, instead of computing inline in the web process.
+
 Three environments, three behaviors (see `app/services/queue.py`'s module docstring):
 
 - **Docker / real Redis**: a genuine separate `worker.py` process (its own container)
@@ -52,13 +61,20 @@ state across gunicorn's multiple worker processes.
 ## Try it
 
 Open [Pipeline World](../pipeline_world/README.md) and submit a character, then come back
-here (or refresh) -- queue/cache stats update to reflect what just happened.
+here (or refresh) -- queue/cache stats update to reflect what just happened. Or, in
+Docker, run `docker compose logs worker -f` and submit a risk request from the [Trading
+Simulator](../trading/README.md) (a single position, or "run risk on this report" from
+`/strategies`) -- the same worker container logs `run_risk_request_job(...)` executing
+the pricing, a second, independently-verifiable use of this exact infrastructure.
 
 ## Key files
 
 - `app/blueprints/sre_infra/routes.py`
 - `app/services/queue.py`, `world_cache.py`
-- `worker.py` (repo root) -- the real `rq worker` entrypoint for Docker
+- `app/services/risk_engine.py: run_risk_request_job` -- the trading side's job, run by
+  this same worker
+- `worker.py` (repo root) -- the real `rq worker` entrypoint for Docker, listening on
+  both queues
 - `docker-compose.yml` -- `redis`, `postgres`, and `worker` services
 
 ## Tests

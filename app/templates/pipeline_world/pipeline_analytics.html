@@ -7,10 +7,10 @@
     <p><a href="{{ url_for('pipeline_world.index') }}">&larr; Back to Pipeline World</a></p>
     <h1 class="major">Pipeline Analytics</h1>
     <p class="muted">
-        Real SQL over the <code>pipeline_runs</code> table -- joins, <code>GROUP BY</code> aggregations, and
-        window functions, computed live, not derived from ORM model iteration. This page requires a live
-        <strong>Postgres</strong> connection (<code>DATE_TRUNC</code> and the window-function frame syntax
-        below are Postgres dialect) -- see <code>app/services/analytics.py</code>.
+        Real SQL against the <code>pipeline_runs</code> table: joins, <code>GROUP BY</code>, and window
+        functions, run live rather than looped over in the ORM. It needs a <strong>Postgres</strong>
+        connection, since <code>DATE_TRUNC</code> and the window frames below are Postgres dialect. The
+        queries live in <code>app/services/analytics.py</code>.
     </p>
 
     {% for key, metric in metrics.items() %}
@@ -18,7 +18,7 @@
     {% if metric.error %}
     <div class="flash flash-error">{{ metric.error }}</div>
     {% elif not metric.rows %}
-    <div class="empty-state">No pipeline runs logged yet -- join Pipeline World to generate some.</div>
+    <div class="empty-state">No runs logged yet. Join Pipeline World to make some.</div>
     {% else %}
     <div class="table-wrapper">
         <table>

@@ -30,6 +30,10 @@
   var NOTICE_RADIUS = 300; // virtual px -- how far a character "notices" a free neighbor worth walking toward
   var WANDER_SPEED = 0.5;
   var SEEK_TURN_RATE = 0.05; // how quickly velocity turns toward a noticed neighbor, per frame
+  var PARK_ARRIVAL_DISTANCE = 6; // virtual px -- close enough to the chosen park spot to count as "arrived"
+  var PARK_MARGIN = 14; // keep clear of the park's own edge so the confine-to-park bounce has room to work
+  var PARK_STAY_MS = 5 * 60 * 1000;
+  var PARK_STUCK_RECOMPUTE_MS = 4000; // no waypoint progress in this long -> recompute the path fresh
 
   var appearanceColor = {};
   var appearanceLabel = {};
@@ -74,6 +78,18 @@
     })[0];
   }
 
+  // A random spot inside the park, kept off its own edge -- the first
+  // place every character heads to on spawning in (see stepMovement's
+  // headingToPark branch), not just a nearby street tile.
+  function pickParkTarget() {
+    var p = CITY && CITY.park;
+    if (!p || p.w <= PARK_MARGIN * 2 || p.h <= PARK_MARGIN * 2) return null;
+    return {
+      x: p.x + PARK_MARGIN + Math.random() * (p.w - PARK_MARGIN * 2),
+      y: p.y + PARK_MARGIN + Math.random() * (p.h - PARK_MARGIN * 2),
+    };
+  }
+
   function addCharacter(character, announce) {
     if (character.world_x == null || character.world_y == null) return;
     // The server picks world_x/world_y with no idea what the client's
@@ -81,6 +97,21 @@
     // land inside a block -- snap onto the nearest walkable street/park
     // point instead.
     var pos = snapToNearestWalkable(character.world_x, character.world_y);
+    // Only a genuinely new spawn (announce=true -- a deploy event
+    // happening live right now, see connectSocket) gets the park intro.
+    // setupInitialWorld() calls this for every already-established
+    // character on every single page load (announce=false) -- gating on
+    // announce means reloading the page doesn't send the entire
+    // existing population back on a fresh park walk instead of mingling
+    // like they already were.
+    var parkTarget = announce ? pickParkTarget() : null;
+    // Computed once, here, rather than steered toward live every frame:
+    // findGridPath actually routes around whatever buildings sit between
+    // the spawn point and the park (see its own comment for why the
+    // simpler live-steering approach isn't good enough for a walk this
+    // long), so there's a full waypoint list to follow before we ever
+    // start moving.
+    var parkPath = parkTarget ? findGridPath(pos.x, pos.y, parkTarget.x, parkTarget.y) : null;
     characters[character.id] = {
       character: character,
       color: appearanceColor[character.appearance_id] || "#3aa0ff",
@@ -91,6 +122,13 @@
       facingX: 0,
       facingY: 1,
       bubbleUntil: announce ? performance.now() + SPAWN_BUBBLE_DURATION_MS : 0,
+      // A brand-new spawn's first act: walk to a spot in the park and
+      // spend 5 minutes there (see stepMovement) before joining the
+      // general wander/seek-a-neighbor population.
+      headingToPark: !!parkPath,
+      parkPath: parkPath,
+      parkPathIndex: 0,
+      parkUntil: 0,
     };
     updatePopulationCount();
   }
@@ -314,33 +352,30 @@
     return best;
   }
 
-  function stepMovement(id, c, now) {
-    var target = findSeekTarget(id, c, now);
+  function steerToward(c, tx, ty) {
+    var dx = tx - c.x, dy = ty - c.y;
+    var dist = Math.hypot(dx, dy) || 1;
+    var desiredVx = (dx / dist) * WANDER_SPEED;
+    var desiredVy = (dy / dist) * WANDER_SPEED;
+    c.vx += (desiredVx - c.vx) * SEEK_TURN_RATE;
+    c.vy += (desiredVy - c.vy) * SEEK_TURN_RATE;
+  }
 
-    if (target) {
-      var dx = target.x - c.x, dy = target.y - c.y;
-      var dist = Math.hypot(dx, dy) || 1;
-      var desiredVx = (dx / dist) * WANDER_SPEED;
-      var desiredVy = (dy / dist) * WANDER_SPEED;
-      c.vx += (desiredVx - c.vx) * SEEK_TURN_RATE;
-      c.vy += (desiredVy - c.vy) * SEEK_TURN_RATE;
-    } else if (Math.random() < 0.02) {
-      c.vx = (Math.random() - 0.5) * WANDER_SPEED;
-      c.vy = (Math.random() - 0.5) * WANDER_SPEED;
-    }
-
-    // Axis-separated collision: try each axis independently against the
-    // street mask (see isWalkable) so a character sliding along a wall
-    // doesn't just stop dead the instant one axis is blocked -- it keeps
-    // moving along the other axis, same as standard 2D tile collision.
+  // Axis-separated collision: try each axis independently against
+  // `walkableFn` so a character sliding along a boundary doesn't just
+  // stop dead the instant one axis is blocked -- it keeps moving along
+  // the other axis, same as standard 2D tile collision. `walkableFn` is
+  // swapped out (isWalkable vs. isInsidePark) depending on whether this
+  // character is currently confined to the park (see stepMovement).
+  function applyMovement(c, walkableFn) {
     var nx = c.x + c.vx;
-    if (isWalkable(nx, c.y)) {
+    if (walkableFn(nx, c.y)) {
       c.x = nx;
     } else {
       c.vx *= -1;
     }
     var ny = c.y + c.vy;
-    if (isWalkable(c.x, ny)) {
+    if (walkableFn(c.x, ny)) {
       c.y = ny;
     } else {
       c.vy *= -1;
@@ -351,6 +386,80 @@
       c.facingX = c.vx / speed;
       c.facingY = c.vy / speed;
     }
+  }
+
+  function stepMovement(id, c, now) {
+    // Highest priority, and only ever true once per character (right
+    // after spawning in): head straight for the park before doing
+    // anything else. isWalkable, not isInsidePark, here -- they're
+    // travelling *to* the park from wherever they spawned, typically
+    // through streets outside it.
+    if (c.headingToPark) {
+      // Safety net, not the normal case: the grid BFS is reliable but not
+      // airtight against every possible tight nook a random spawn point
+      // could land in (confirmed empirically -- a rare geometric edge
+      // case can still leave zero valid moves at the grid's resolution).
+      // If a character hasn't advanced a single waypoint in a while,
+      // just recompute a fresh path from wherever it actually is now --
+      // cheap to do, and guarantees eventual arrival rather than trusting
+      // one BFS run's outcome forever.
+      if (c._parkRecomputeAt == null || now - c._parkRecomputeAt > PARK_STUCK_RECOMPUTE_MS) {
+        var parkTarget = c.parkPath[c.parkPath.length - 1];
+        c.parkPath = findGridPath(c.x, c.y, parkTarget.x, parkTarget.y);
+        c.parkPathIndex = 0;
+        c._parkRecomputeAt = now;
+      }
+
+      var waypoint = c.parkPath[c.parkPathIndex];
+      if (Math.hypot(waypoint.x - c.x, waypoint.y - c.y) < PARK_ARRIVAL_DISTANCE) {
+        if (c.parkPathIndex < c.parkPath.length - 1) {
+          c.parkPathIndex += 1;
+          c._parkRecomputeAt = now; // real progress -- restart the stuck-detection clock
+        } else {
+          c.headingToPark = false;
+          c.parkUntil = now + PARK_STAY_MS;
+        }
+      }
+      if (c.headingToPark) {
+        steerToward(c, waypoint.x, waypoint.y);
+        applyMovement(c, isWalkable);
+        return;
+      }
+    }
+
+    // Second priority: settled in the park for their first 5 minutes.
+    // Idle-wander like normal, but confined to the park's own bounds
+    // (isInsidePark) rather than the whole walkable map -- no seeking
+    // out neighbors or exploring buildings until this wears off.
+    if (c.parkUntil && now < c.parkUntil) {
+      if (Math.random() < 0.02) {
+        c.vx = (Math.random() - 0.5) * WANDER_SPEED;
+        c.vy = (Math.random() - 0.5) * WANDER_SPEED;
+      }
+      applyMovement(c, isInsidePark);
+      return;
+    }
+
+    var target = findSeekTarget(id, c, now);
+    // Not while actively seeking a neighbor -- that already takes the
+    // character wherever it's going; this only kicks in for otherwise-
+    // idle wandering, which would otherwise have no better than a random
+    // chance of ever lining up with the (narrow) door on its own.
+    var building = !target && findContainingBuilding(c.x, c.y);
+
+    if (target) {
+      steerToward(c, target.x, target.y);
+    } else if (building) {
+      var door = building.door;
+      var doorX = door.x + door.w / 2;
+      var doorY = door.side === "top" ? building.y - 2 : building.y + building.h + 2;
+      steerToward(c, doorX, doorY);
+    } else if (Math.random() < 0.02) {
+      c.vx = (Math.random() - 0.5) * WANDER_SPEED;
+      c.vy = (Math.random() - 0.5) * WANDER_SPEED;
+    }
+
+    applyMovement(c, isWalkable);
   }
 
   // ---------- city background (procedural, generated once) ----------
@@ -534,18 +643,46 @@
     return true;
   }
 
+  // Used to confine a character to the park during their initial 5
+  // minutes there (see stepMovement) -- deliberately just the park's own
+  // rect, not the general isWalkable check, since the point is keeping
+  // them from wandering back out onto the street early.
+  function isInsidePark(x, y) {
+    var p = CITY && CITY.park;
+    if (!p) return false;
+    return x >= p.x && x <= p.x + p.w && y >= p.y && y <= p.y + p.h;
+  }
+
+  // A building's *interior* is deliberately walkable (see the comment
+  // above WALL_THICKNESS) so a character can roam inside one it entered
+  // through the door on purpose -- but that same rule meant a brand-new
+  // spawn landing inside a building's footprint looked "walkable" and
+  // never got snapped back out, so new characters could spawn already
+  // trapped in a house with only a narrow door to randomly stumble back
+  // through. Spawn placement needs the stricter "on a street/park tile,
+  // not inside any building at all" -- ongoing wander inside a building
+  // (once actually entered) is unaffected, see stepMovement's door-seek.
+  function findContainingBuilding(x, y) {
+    if (!CITY) return null;
+    for (var i = 0; i < CITY.buildings.length; i++) {
+      var b = CITY.buildings[i];
+      if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return b;
+    }
+    return null;
+  }
+
   // A character's server-assigned spawn position has no idea about the
   // client-generated street layout, so it can easily land inside a
   // block -- snap it to the nearest walkable street/park point instead
-  // of letting it spawn inside a wall. One-off cost per spawn, not
-  // per-frame, so a coarse grid search is plenty fast.
+  // of letting it spawn inside a wall or a building's interior. One-off
+  // cost per spawn, not per-frame, so a coarse grid search is plenty fast.
   function snapToNearestWalkable(x, y) {
-    if (isWalkable(x, y)) return { x: x, y: y };
+    if (isWalkable(x, y) && !findContainingBuilding(x, y)) return { x: x, y: y };
     var b = CITY ? CITY.bounds : BOUNDS;
     var best = null, bestDist = Infinity, step = 6;
     for (var gy = b[1]; gy <= b[3]; gy += step) {
       for (var gx = b[0]; gx <= b[2]; gx += step) {
-        if (!isWalkable(gx, gy)) continue;
+        if (!isWalkable(gx, gy) || findContainingBuilding(gx, gy)) continue;
         var d = Math.hypot(gx - x, gy - y);
         if (d < bestDist) {
           bestDist = d;
@@ -554,6 +691,143 @@
       }
     }
     return best || { x: b[0] + 5, y: b[1] + 5 };
+  }
+
+  // ---------- pathfinding (spawn -> park) ----------
+  //
+  // Straight-line "steer toward the target" (as used for seeking a
+  // neighbor or a building's door -- both always short, usually
+  // obstruction-free hops) has no notion of buildings in the way. Over
+  // the kind of long walk a spawn point clear across town to the park
+  // can be, that means genuinely getting stuck oscillating against the
+  // same wall forever rather than ever routing around it -- confirmed
+  // directly: a character starting in a far corner never arrived even
+  // after 8000 simulated frames. A real (if coarse) grid BFS, computed
+  // once per spawn rather than per frame, is what actually guarantees
+  // arrival regardless of what's in the way.
+
+  // Small enough to route through the narrow (4-10px) margins buildings
+  // leave around themselves within a block -- 10px was too coarse and
+  // could leave a character with literally zero valid moves out of a
+  // tight corner nook, same order of magnitude as
+  // snapToNearestWalkable's own 6px search step for the same reason.
+  var PATH_GRID_STEP = 6;
+
+  function segmentIsWalkable(x0, y0, x1, y1) {
+    var dist = Math.hypot(x1 - x0, y1 - y0);
+    var steps = Math.max(1, Math.ceil(dist / 4));
+    for (var i = 0; i <= steps; i++) {
+      var t = i / steps;
+      if (!isWalkable(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t)) return false;
+    }
+    return true;
+  }
+
+  // Collapses a long run of adjacent grid cells down to just its real
+  // turning points, by greedily extending each segment as far ahead as
+  // a straight line stays walkable -- a character following the result
+  // moves in a handful of smooth hops instead of visibly snapping
+  // between every single 10px grid cell.
+  function simplifyPath(path) {
+    if (path.length <= 2) return path;
+    var simplified = [path[0]];
+    var anchor = 0;
+    for (var i = 1; i < path.length - 1; i++) {
+      if (!segmentIsWalkable(path[anchor].x, path[anchor].y, path[i + 1].x, path[i + 1].y)) {
+        simplified.push(path[i]);
+        anchor = i;
+      }
+    }
+    simplified.push(path[path.length - 1]);
+    return simplified;
+  }
+
+  var PATH_DIRS = [
+    [1, 0], [-1, 0], [0, 1], [0, -1],
+    [1, 1], [1, -1], [-1, 1], [-1, -1],
+  ];
+
+  // Breadth-first search over a coarse walkability grid -- guaranteed to
+  // find a route if one exists (no local-minimum trap the way straight-
+  // line steering has), and cheap enough to run once per spawn: at
+  // PATH_GRID_STEP=10 the whole map is only a few thousand cells.
+  function findGridPath(startX, startY, targetX, targetY) {
+    if (!CITY) return [{ x: targetX, y: targetY }];
+    var b = CITY.bounds, step = PATH_GRID_STEP;
+    var cols = Math.ceil((b[2] - b[0]) / step) + 1;
+    var rows = Math.ceil((b[3] - b[1]) / step) + 1;
+
+    function clampCell(cx, cy) {
+      return { cx: Math.max(0, Math.min(cols - 1, cx)), cy: Math.max(0, Math.min(rows - 1, cy)) };
+    }
+    function cellOf(x, y) {
+      return clampCell(Math.round((x - b[0]) / step), Math.round((y - b[1]) / step));
+    }
+    function pointOf(cx, cy) {
+      return { x: b[0] + cx * step, y: b[1] + cy * step };
+    }
+    function idx(cx, cy) {
+      return cy * cols + cx;
+    }
+
+    var start = cellOf(startX, startY);
+    var goal = cellOf(targetX, targetY);
+    var startIdx = idx(start.cx, start.cy);
+    var goalIdx = idx(goal.cx, goal.cy);
+
+    var visited = new Uint8Array(cols * rows);
+    var cameFrom = new Int32Array(cols * rows).fill(-1);
+    visited[startIdx] = 1;
+    var queue = [start];
+    var head = 0;
+    var reached = startIdx === goalIdx;
+
+    while (head < queue.length && !reached) {
+      var cur = queue[head++];
+      var curIdx = idx(cur.cx, cur.cy);
+      for (var d = 0; d < PATH_DIRS.length && !reached; d++) {
+        var ncx = cur.cx + PATH_DIRS[d][0], ncy = cur.cy + PATH_DIRS[d][1];
+        if (ncx < 0 || ncx >= cols || ncy < 0 || ncy >= rows) continue;
+        var ni = idx(ncx, ncy);
+        if (visited[ni]) continue;
+        var p = pointOf(ncx, ncy);
+        if (!isWalkable(p.x, p.y)) continue;
+        // Checking the destination cell's own center isn't enough on its
+        // own -- a wall thinner than the grid spacing (WALL_THICKNESS=4
+        // vs. PATH_GRID_STEP=10) can sit entirely between two cells that
+        // are each individually walkable at their own centers, letting a
+        // diagonal step "corner-cut" straight through it. Requiring the
+        // whole connecting segment to be walkable closes that gap.
+        var cp = pointOf(cur.cx, cur.cy);
+        if (!segmentIsWalkable(cp.x, cp.y, p.x, p.y)) continue;
+        visited[ni] = 1;
+        cameFrom[ni] = curIdx;
+        if (ni === goalIdx) {
+          reached = true;
+          break;
+        }
+        queue.push({ cx: ncx, cy: ncy });
+      }
+    }
+
+    if (!reached) return [{ x: targetX, y: targetY }]; // no route found -- fall back to a direct line
+
+    var cellPath = [];
+    var cur = goalIdx;
+    while (cur !== -1 && cur !== startIdx) {
+      cellPath.push({ x: b[0] + (cur % cols) * step, y: b[1] + Math.floor(cur / cols) * step });
+      cur = cameFrom[cur];
+    }
+    cellPath.reverse();
+    // The character's true continuous position, not just its grid cell's
+    // (rounded) center -- without this, simplifyPath's anchor-extension
+    // never validates the very first leg (real start -> first grid
+    // waypoint) for a clear line, so a thin wall thinner than the grid
+    // spacing between two adjacent cell centers could sit unnoticed
+    // right across that first hop and never get walked around.
+    cellPath.unshift({ x: startX, y: startY });
+    cellPath.push({ x: targetX, y: targetY }); // exact target, not just its grid cell's center
+    return simplifyPath(cellPath);
   }
 
   // Cheap procedural wall texture -- a few semi-transparent stroked

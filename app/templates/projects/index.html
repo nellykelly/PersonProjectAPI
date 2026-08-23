@@ -4,7 +4,7 @@
 {% block content %}
 <section>
     <h1 class="major">Projects</h1>
-    <p class="muted">Five independent, working projects -- each documented with its own README.</p>
+    <p class="muted">Five projects, all working, each with its own README.</p>
 
     <div class="card-grid">
         {% for project in projects %}
@@ -23,13 +23,17 @@
     </div>
 
     <h2>Earlier Projects</h2>
-    <p class="muted">Smaller, not live-demoed here -- linked for range.</p>
+    <p class="muted">Older and smaller. Not running here, just linked.</p>
     <div class="card-grid">
         {% for project in earlier_projects %}
         <div class="card">
             <h3>{{ project.title }}</h3>
             <p>{{ project.blurb }}</p>
+            {% if project.decommissioned %}
+            <span class="badge badge-closed">Decommissioned</span>
+            {% else %}
             <a class="button small" href="{{ project.url }}" target="_blank" rel="noopener">View</a>
+            {% endif %}
         </div>
         {% endfor %}
     </div>

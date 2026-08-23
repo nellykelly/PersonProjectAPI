@@ -3,6 +3,19 @@
    the original one-page template didn't need, kept in the same dark
    palette (#1b1f22 / #000 / #fff) with a single accent color added. */
 
+/* Defensive safety net for mobile: found the hard way that a single
+   invisible-until-hover tooltip (position:absolute, centered over a
+   narrow tile) was enough to silently inflate the entire page's mobile
+   layout viewport, because an absolutely positioned element still
+   counts toward scrollable overflow even when nothing about it is
+   visible. That specific case is fixed at its source (the tooltip's own
+   max-width, below), but this is cheap, has no effect on any page that's
+   already correctly contained, and catches the same failure mode from
+   any future decorative element without needing to hunt it down again. */
+html, body {
+  overflow-x: hidden;
+}
+
 :root {
   --bg: #1b1f22;
   --bg-alt: #000000;
@@ -15,6 +28,127 @@
   --good: #4ade80;
   --bad: #f87171;
   --warn: #fbbf24;
+
+  /* Raised surfaces -- cards/tiles sit on their own panel color rather
+     than being outlined holes in the page background, which is what
+     gives the layout actual depth instead of a flat wireframe look. */
+  --surface: #1d2127;
+  --surface-border: #333a44;
+
+  /* Second end of the headline gradient. Anchored to the existing blue
+     accent rather than an unrelated purple, so the hero reads as the
+     same design system as every project page, just turned up. */
+  --accent-violet: #b388ff;
+  --accent-glow: rgba(122, 138, 255, 0.35);
+}
+
+/* ---------- Typography ----------
+   Space Grotesk over the theme's default Source Sans Pro: it has real
+   character in the wide, uppercase, letter-spaced headings this site
+   leans on, where a neutral UI sans just reads as unstyled. JetBrains
+   Mono replaces Courier New everywhere something is deliberately
+   terminal/numeric -- the build log, stat values, tabular data. */
+
+body,
+input,
+select,
+textarea,
+button {
+  font-family: "Space Grotesk", "Source Sans Pro", Helvetica, sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: "Space Grotesk", "Source Sans Pro", Helvetica, sans-serif;
+}
+
+/* The Dimension theme's own h1.major/h2.major/etc. rule (main.css) sets
+   `width: max-content` so the underline hugs the heading text instead of
+   spanning the full container -- a fine desktop touch, but max-content
+   ignores the viewport entirely: on a narrow screen it forces every page
+   title wider than the device (e.g. "Trading Simulator / PnL Tracker" at
+   713px in a 375px viewport), which doesn't just overflow that one
+   element -- it expands the whole page's layout viewport to fit it, so
+   the ENTIRE page renders zoomed out instead of just the heading
+   wrapping. `max-width: 100%` keeps the max-content sizing (so it still
+   hugs short titles exactly as designed) while capping it at whatever
+   room is actually available, letting long titles wrap normally. */
+h1.major, h2.major, h3.major, h4.major, h5.major, h6.major {
+  max-width: 100%;
+}
+
+/* ---------- Gradient headline ---------- */
+
+.gradient-text {
+  background: linear-gradient(96deg, var(--accent) 5%, #7f9cff 45%, var(--accent-violet) 95%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* ---------- Scroll reveal ----------
+   Elements start pushed a full self-height down and fade up as their
+   section scrolls into view, staggered in source order (delay applied
+   per-element by base.js). Gated behind html.js-reveal -- set by an
+   inline script in <head> so it applies before first paint -- meaning a
+   no-JS visitor gets the finished state instead of a blank page. */
+
+.reveal-up {
+  transition:
+    opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html.js-reveal .reveal-up {
+  opacity: 0;
+  transform: translateY(100%);
+}
+
+html.js-reveal .reveal-up.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Clips the travel so the content wipes up from behind an edge rather
+   than visibly sliding over whatever sits below it. */
+.reveal-mask {
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.js-reveal .reveal-up {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* ---------- Section headings (eyebrow + title) ---------- */
+
+.section-head {
+  text-align: center;
+  margin: 5rem 0 2.5rem;
+}
+
+.section-head .eyebrow {
+  display: block;
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.28rem;
+  text-transform: uppercase;
+  margin-bottom: 0.9rem;
+}
+
+.section-head h2 {
+  font-size: clamp(1.7rem, 4vw, 2.4rem);
+  margin: 0;
+}
+
+.section-head .section-sub {
+  color: var(--fg-light);
+  margin: 1rem auto 0;
+  max-width: 34rem;
 }
 
 /* ---------- Page wrapper stacking ----------
@@ -32,6 +166,22 @@
   width: 100%;
   display: flex;
   flex-direction: column;
+}
+
+/* ---------- Background scrim ----------
+   Dimension ships #bg as a photo (bg.jpg) behind a 50% scrim
+   (#bg:before in main.css). That photo is genuinely light -- it averages
+   rgb(126,129,147), and its brightest regions average rgb(174,192,215) --
+   so at 50% the muted body text (rgba(255,255,255,0.6)) came out at a
+   measured 3.21:1 contrast over those regions, under the 4.5:1 WCAG AA
+   floor and visibly hard to read. Deepening the scrim to 82% puts the
+   same text at 5.96:1 and plain white at 13.65:1, while still leaving
+   enough of the photo to read as texture rather than a flat fill. */
+
+#bg:before {
+  background-image:
+    linear-gradient(to top, rgba(12, 14, 17, 0.82), rgba(12, 14, 17, 0.82)),
+    url("/static/assets/img/overlay.png");
 }
 
 /* ---------- Header / nav ---------- */
@@ -206,19 +356,68 @@
 /* ---------- Hero (home page) ---------- */
 
 .hero {
+  position: relative;
   text-align: center;
-  padding: 3rem 0 2rem;
+  padding: 5rem 0 4rem;
+  isolation: isolate;
+}
+
+/* Two stacked background layers, same idea as the template's dot field
+   under a dark gradient wash: a fine dot grid for texture, and a radial
+   glow centred on the headline so the name has a light source behind it
+   instead of sitting on flat black. Both are pure CSS -- no extra image
+   asset to ship -- and sit at z-index -1 under the hero's own content. */
+/* Horizontal inset stays at 0 rather than bleeding out to -50vw: an
+   absolutely-positioned child wider than the viewport pushes the whole
+   document's scrollWidth out and creates a horizontal scrollbar, since
+   nothing in the ancestor chain clips it. The radial mask below fades
+   the dots out well inside the content width anyway, so full-bleed
+   bought nothing visually. */
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: -3rem 0 auto 0;
+  height: 34rem;
+  background-image:
+    radial-gradient(circle at center, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+  background-size: 22px 22px;
+  -webkit-mask-image: radial-gradient(ellipse 45% 70% at 50% 30%, #000 20%, transparent 75%);
+  mask-image: radial-gradient(ellipse 45% 70% at 50% 30%, #000 20%, transparent 75%);
+  z-index: -2;
+  pointer-events: none;
+}
+
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: -6rem -2rem auto -2rem;
+  height: 30rem;
+  background: radial-gradient(ellipse 55% 100% at 50% 10%, var(--accent-glow), transparent 70%);
+  filter: blur(30px);
+  opacity: 0.7;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.hero-eyebrow {
+  margin-bottom: 1.75rem;
 }
 
 .hero h1 {
-  font-size: 2.2rem;
-  margin-bottom: 0.5rem;
+  font-size: clamp(2.4rem, 8vw, 4.5rem);
+  line-height: 1.12;
+  letter-spacing: 0.22rem;
+  margin-bottom: 1.25rem;
+  /* The gradient fill needs a hair of vertical room or the descenders
+     and the clipped background get cropped by the reveal mask. */
+  padding: 0.1em 0;
 }
 
 .hero .tagline {
   color: var(--fg-light);
   font-size: 1.05rem;
-  margin-bottom: 2rem;
+  max-width: 34rem;
+  margin: 0 auto 2.25rem;
 }
 
 .hero-actions {
@@ -226,6 +425,40 @@
   gap: 1rem;
   justify-content: center;
   flex-wrap: wrap;
+  padding: 0.35rem 0;
+}
+
+.tech-strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  margin: 3rem auto 0;
+  max-width: 40rem;
+}
+
+/* ---------- CTA band ---------- */
+
+.cta-band {
+  position: relative;
+  text-align: center;
+  padding: 4rem 2rem;
+  margin: 5rem 0 1rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  background:
+    radial-gradient(ellipse 60% 120% at 50% 0%, var(--accent-dim), transparent 70%),
+    var(--surface);
+  overflow: hidden;
+}
+
+.cta-band h2 {
+  font-size: clamp(1.6rem, 4vw, 2.2rem);
+  margin-bottom: 0.75rem;
+}
+
+.cta-band p {
+  margin-bottom: 2rem;
 }
 
 /* ---------- Cards ---------- */
@@ -238,17 +471,23 @@
 }
 
 .card {
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 1.5rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 1.6rem;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  transition: border-color 0.2s ease-in-out;
+  transition:
+    border-color 0.25s ease-in-out,
+    transform 0.25s ease-in-out,
+    box-shadow 0.25s ease-in-out;
 }
 
 .card:hover {
   border-color: var(--accent);
+  transform: translateY(-4px);
+  box-shadow: 0 16px 40px -18px var(--accent-glow);
 }
 
 .card-icon {
@@ -300,16 +539,38 @@
   margin: 1.5rem 0;
 }
 
+/* Flex column with the label allowed to take however many lines it
+   needs, rather than relying on the tile's intrinsic height matching
+   whatever the text happens to wrap to. A two-line label ("IR Delta
+   (Rho)", "Scenario Gamma") was spilling past the bottom border on
+   narrower columns; letting the label grow inside the tile and giving
+   every tile the same min-height keeps a mixed row of one- and two-line
+   labels aligned instead of ragged. */
 .stat-tile {
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 1rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 1.4rem 0.9rem;
   text-align: center;
+  transition: border-color 0.25s ease-in-out;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 6.5rem;
+}
+
+.stat-tile:hover {
+  border-color: var(--accent);
 }
 
 .stat-tile .value {
-  font-size: 1.6rem;
+  font-size: 1.9rem;
   font-weight: 600;
+  line-height: 1.2;
+  /* Long values (a wide PV, a scenario PnL) shrink the tile rather than
+     punching out through its side. */
+  overflow-wrap: anywhere;
 }
 
 .stat-tile .label {
@@ -317,6 +578,97 @@
   text-transform: uppercase;
   letter-spacing: 0.08rem;
   color: var(--fg-light);
+  line-height: 1.35;
+}
+
+/* ---------- Explain-on-hover tooltips ----------
+   Used on the risk metrics, where a bare number like "Scenario Gamma:
+   0.368" means nothing without knowing what was actually computed. A
+   styled tooltip rather than the `title` attribute: title has a ~1s
+   delay, can't hold more than a short phrase legibly, and can't be
+   opened from the keyboard at all. This shows on hover *and* on
+   keyboard focus, which is why the elements carry tabindex="0". */
+
+[data-tooltip] {
+  position: relative;
+  cursor: help;
+}
+
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 0.6rem);
+  left: 50%;
+  transform: translateX(-50%) translateY(0.25rem);
+  width: max-content;
+  /* Capped at the viewport width too, not just 20rem: a fixed max-width
+     lets a tooltip centered over a narrow tile extend past the screen
+     edge on mobile. Even though it's invisible until hover/focus
+     (opacity/visibility, not display:none), an absolutely positioned
+     element still counts toward the page's scrollable width -- so an
+     off-screen tooltip silently inflated the whole page's mobile layout
+     viewport, on every page with a data-tooltip tile, whether or not
+     anyone ever actually hovered one. */
+  max-width: min(20rem, calc(100vw - 2rem));
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  background: #0f1216;
+  color: var(--fg);
+  font-size: 0.72rem;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: normal;
+  text-transform: none;
+  text-align: left;
+  white-space: normal;
+  box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.8);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+  /* Above neighbouring tiles, which would otherwise paint over it. */
+  z-index: 20;
+  pointer-events: none;
+}
+
+[data-tooltip]:hover::after,
+[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Edge tiles can't centre a 20rem tooltip over themselves without it
+   running off the viewport. CSS alone can't detect this: the tiles wrap
+   into grid rows that aren't separate elements, so :first-child only
+   knows about the very first tile in the whole grid, not the first one
+   in each row -- which is exactly where the left-hand overflow happened.
+   base.js measures on hover/focus and adds one of these classes. */
+[data-tooltip].tip-align-left::after {
+  left: 0;
+  right: auto;
+  transform: translateX(0) translateY(0.25rem);
+}
+
+[data-tooltip].tip-align-left:hover::after,
+[data-tooltip].tip-align-left:focus-visible::after {
+  transform: translateX(0) translateY(0);
+}
+
+[data-tooltip].tip-align-right::after {
+  left: auto;
+  right: 0;
+  transform: translateX(0) translateY(0.25rem);
+}
+
+[data-tooltip].tip-align-right:hover::after,
+[data-tooltip].tip-align-right:focus-visible::after {
+  transform: translateX(0) translateY(0);
+}
+
+[data-tooltip]:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* ---------- Badges / PnL coloring ---------- */
@@ -338,6 +690,13 @@
 
 .badge-closed {
   color: var(--fg-light);
+}
+
+/* Cards are flex columns, so a bare badge would stretch the full card
+   width and read as a greyed-out button rather than a status label. */
+.card .badge {
+  align-self: flex-start;
+  padding: 0.4rem 0.8rem;
 }
 
 .pnl-positive {
@@ -389,6 +748,15 @@ input[type="date"]:focus {
 
 .table-wrapper {
   margin-bottom: 1.5rem;
+  /* Without this, a table wider than the viewport doesn't just overflow
+     its own box -- mobile browsers expand the whole page's layout
+     viewport to fit it (window.innerWidth grows past the actual device
+     width), so the entire page renders zoomed out instead of just this
+     one table scrolling. Found on the trade book's own table, the
+     oldest one on the site, predating the .data-table-wrapper +
+     .data-table-scroll pattern used everywhere newer -- six templates
+     were still on this older class with no scroll containment at all. */
+  overflow-x: auto;
 }
 
 section + section {
@@ -408,7 +776,7 @@ section + section {
 }
 
 .mono {
-  font-family: 'Courier New', monospace;
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
 }
 
 .empty-state {
@@ -549,6 +917,53 @@ section + section {
   text-align: right;
   font-variant-numeric: tabular-nums;
   font-size: 0.8rem;
+}
+
+/* Volume-over-time chart on the Site Traffic Analytics board -- one
+   column per time bucket, inbound/outbound stacked bottom-up so the
+   split is visible without a legend fight. Heights are set inline
+   (proportional to the busiest bucket), not here. */
+
+.volume-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 140px;
+  margin: 1rem 0 0.4rem;
+  padding: 0 0.25rem;
+}
+
+.volume-bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column-reverse;
+  height: 100%;
+  min-width: 6px;
+  border-radius: 3px 3px 0 0;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.volume-bar-in {
+  background: var(--accent);
+  width: 100%;
+}
+
+.volume-bar-out {
+  background: var(--accent-violet, var(--fg-light));
+  width: 100%;
+}
+
+.volume-chart-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  color: var(--fg-light);
+  padding: 0 0.25rem;
+}
+
+.error-rate-tile.has-errors .value {
+  color: var(--bad);
 }
 
 /* ---------- Watchlist live grid (Trading Simulator) ---------- */
@@ -745,6 +1160,27 @@ section + section {
   background: rgba(248, 113, 113, 0.1);
 }
 
+.stage-duration {
+  display: block;
+  font-size: 0.62rem;
+  color: var(--fg-light);
+  margin-top: 0.15rem;
+}
+
+.fast-mode-control {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+
+#fast-mode-toggle.is-active {
+  border-color: var(--good);
+  color: var(--good);
+  background: rgba(74, 222, 128, 0.1);
+}
+
 @keyframes stage-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
@@ -790,7 +1226,7 @@ section + section {
   padding: 1rem 1.1rem;
   max-height: 260px;
   overflow-y: auto;
-  font-family: 'Courier New', monospace;
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
   font-size: 0.8rem;
   line-height: 1.6;
   white-space: pre-wrap;
@@ -822,7 +1258,168 @@ section + section {
   color: var(--bad);
 }
 
+/* The sample run shown before any real output exists. Held back visually
+   so it never competes with a live run for attention -- it's context for
+   an empty panel, not content. */
+.terminal .log-placeholder {
+  opacity: 0.55;
+}
+
+.terminal .log-placeholder-note {
+  display: block;
+  color: var(--fg-light);
+  margin-bottom: 0.5rem;
+}
+
 /* Speech bubbles in Production Town are drawn directly on the <canvas>
    (see pipeline_town.js) rather than as HTML overlays -- simpler than
    keeping DOM elements in sync with animated canvas coordinates every
    frame, and consistent with how characters/zones are already drawn. */
+
+/* Timed-Squares board layout.
+
+   #content is normally capped at 1200px (.wide) so body text stays a
+   readable line length -- that's exactly wrong for a game board, which
+   should use as much of the viewport as it actually has. .ts-page opts
+   this one page out of that cap; the two-column info row below the
+   board (legend/leaderboard) still reads fine at full width since each
+   column caps its own content, not the whole page. */
+
+#content.ts-page {
+  max-width: 100%;
+  padding-left: clamp(1rem, 4vw, 3rem);
+  padding-right: clamp(1rem, 4vw, 3rem);
+}
+
+.ts-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  align-items: start;
+  max-width: 1100px;
+  margin: 2rem auto 0;
+}
+
+@media (max-width: 700px) {
+  .ts-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ts-hud {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.ts-hud-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.ts-hud-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fg-light);
+}
+
+.ts-hud-value {
+  font-size: 1.4rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ts-board-wrapper {
+  position: relative;
+  /* Big and centered: bounded by viewport height (so it never pushes
+     the HUD/overlay off-screen on a short window) as much as by width,
+     since a square board on a wide desktop monitor is height-limited
+     long before it's width-limited. */
+  width: min(100%, 82vh, 900px);
+  aspect-ratio: 1 / 1;
+  margin: 0 auto;
+  border: 1px solid var(--surface-border);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+#ts-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.ts-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(13, 17, 23, 0.86);
+}
+
+/* The `hidden` attribute and this class have equal CSS specificity, and
+   this rule loads after the browser's own `[hidden] { display: none }`
+   default -- so without this override, `.ts-overlay { display: flex }`
+   above always wins the tie and the game-over screen never actually
+   hides no matter how many times JS sets `overlay.hidden = true`. This
+   selector's extra attribute clause outranks the plain class rule, so
+   `hidden` wins regardless of source order. */
+.ts-overlay[hidden] {
+  display: none;
+}
+
+.ts-overlay-card {
+  text-align: center;
+  padding: 1.5rem;
+  max-width: 300px;
+}
+
+.ts-overlay-card h2 {
+  margin: 0 0 0.5rem;
+  color: var(--bad);
+}
+
+.ts-overlay-card input {
+  width: 100%;
+  margin: 0.75rem 0;
+  padding: 0.5rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg);
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.ts-overlay-actions {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: center;
+  margin-top: 0.5rem;
+}
+
+.ts-legend {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.ts-legend-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  margin-right: 0.5rem;
+  vertical-align: middle;
+}

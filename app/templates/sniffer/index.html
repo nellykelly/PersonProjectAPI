@@ -1,27 +1,56 @@
 {% extends "base.html" %}
-{% block title %}Network Sniffer{% endblock %}
+{% block title %}Site Traffic Analytics{% endblock %}
 {% block content_class %}wide{% endblock %}
 
 {% block content %}
 <section>
     <div class="section-title">
-        <h1 class="major"><img class="page-icon" src="{{ url_for('static', filename='assets/img/icons/sniffer.svg') }}" alt="">Network Sniffer</h1>
-        <span class="badge badge-closed" id="live-indicator">○ Connecting...</span>
+        <h1 class="major"><img class="page-icon" src="{{ url_for('static', filename='assets/img/icons/sniffer.svg') }}" alt="">Site Traffic Analytics</h1>
+        <span class="badge badge-open" id="refresh-indicator">Updating&hellip;</span>
     </div>
 
     <div class="disclaimer-banner">
-        This dashboard shows <strong>only this application's own network traffic</strong> --
-        inbound requests it receives on its own routes, and outbound API calls it makes itself
-        (to yfinance / SEC EDGAR for the other two projects). It never captures a visitor's actual
-        browsing traffic: doing that would be a wiretapping/privacy problem on almost any host,
-        regardless of intent. See the project README for the full reasoning.
+        This only aggregates <strong>traffic belonging to this app</strong>: requests hitting its own routes,
+        and the API calls it makes out to yfinance and SEC EDGAR. It never touches your browsing. Capturing
+        that would be wiretapping on most hosts no matter the intent -- see the project README.
     </div>
 
     <div class="stat-grid" id="stats">
-        <div class="stat-tile"><div class="value" data-stat="total">{{ stats.total }}</div><div class="label">Total logged</div></div>
-        <div class="stat-tile"><div class="value" data-stat="inbound">{{ stats.inbound }}</div><div class="label">Inbound</div></div>
-        <div class="stat-tile"><div class="value" data-stat="outbound">{{ stats.outbound }}</div><div class="label">Outbound</div></div>
-        <div class="stat-tile"><div class="value" data-stat="avg_duration_ms">{{ stats.avg_duration_ms if stats.avg_duration_ms is not none else "n/a" }}</div><div class="label">Avg Duration</div></div>
+        <div class="stat-tile"><div class="value" data-stat="total">{{ analytics.total }}</div><div class="label">Total logged</div></div>
+        <div class="stat-tile"><div class="value" data-stat="inbound">{{ analytics.inbound }}</div><div class="label">Inbound</div></div>
+        <div class="stat-tile"><div class="value" data-stat="outbound">{{ analytics.outbound }}</div><div class="label">Outbound</div></div>
+        <div class="stat-tile" tabindex="0" data-tooltip="Median inbound response time.">
+            <div class="value" data-stat="p50">{{ analytics.inbound_latency.p50 if analytics.inbound_latency.p50 is not none else "n/a" }}{% if analytics.inbound_latency.p50 is not none %} ms{% endif %}</div>
+            <div class="label">Inbound p50</div>
+        </div>
+        <div class="stat-tile" tabindex="0" data-tooltip="99th percentile inbound response time -- the slow tail, not the typical case.">
+            <div class="value" data-stat="p99">{{ analytics.inbound_latency.p99 if analytics.inbound_latency.p99 is not none else "n/a" }}{% if analytics.inbound_latency.p99 is not none %} ms{% endif %}</div>
+            <div class="label">Inbound p99</div>
+        </div>
+        <div class="stat-tile error-rate-tile {{ 'has-errors' if analytics.server_error_rate_pct }}" tabindex="0" data-tooltip="Share of inbound requests answered with a 5xx status.">
+            <div class="value" data-stat="server_error_rate_pct">{{ analytics.server_error_rate_pct if analytics.server_error_rate_pct is not none else "0" }}%</div>
+            <div class="label">Server error rate</div>
+        </div>
+    </div>
+
+    <h2>Volume over time</h2>
+    <p class="muted">
+        Bucketed across whatever span of traffic is currently in the retained in-memory window --
+        inbound requests and outbound API calls stacked in each column.
+    </p>
+    <div class="volume-chart" id="volume-chart"></div>
+    <div class="volume-chart-labels" id="volume-chart-labels"></div>
+
+    <h2>Top endpoints</h2>
+    <div class="data-table-wrapper">
+        <div class="data-table-scroll">
+            <table class="traffic-table">
+                <thead><tr><th>Endpoint</th><th>Requests</th><th>Avg duration</th></tr></thead>
+                <tbody id="endpoints-body">
+                    <tr><td colspan="3" class="muted">Loading&hellip;</td></tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 
     <h2>Outbound calls by host</h2>
@@ -31,21 +60,6 @@
                 <thead><tr><th>Host</th><th>Calls</th></tr></thead>
                 <tbody id="hosts-body">
                     <tr><td colspan="2" class="muted">Loading&hellip;</td></tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <h2>Live traffic (last 200, newest first)</h2>
-    <p class="muted">Streams in over Server-Sent Events as it happens -- no refresh needed. Try opening
-        the Trading Simulator or QR Scorer in another tab and watch their outbound calls show up here
-        instantly.</p>
-    <div class="data-table-wrapper">
-        <div class="data-table-scroll">
-            <table class="traffic-table">
-                <thead><tr><th>Time</th><th>Dir</th><th>Method</th><th>Target</th><th>Status</th><th class="duration-cell">Duration</th></tr></thead>
-                <tbody id="log-body">
-                    <tr><td colspan="6" class="muted">Loading&hellip;</td></tr>
                 </tbody>
             </table>
         </div>

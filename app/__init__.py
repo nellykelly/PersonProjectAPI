@@ -94,6 +94,7 @@ def _register_blueprints(app: Flask) -> None:
     from app.blueprints.sniffer import bp as sniffer_bp
     from app.blueprints.pipeline_world import bp as pipeline_world_bp
     from app.blueprints.sre_infra import bp as sre_infra_bp
+    from app.blueprints.timed_squares import bp as timed_squares_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(about_bp, url_prefix="/about")
@@ -104,3 +105,4 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(sniffer_bp, url_prefix="/projects/network-sniffer")
     app.register_blueprint(pipeline_world_bp, url_prefix="/projects/pipeline-world")
     app.register_blueprint(sre_infra_bp, url_prefix="/projects/sre-infra")
+    app.register_blueprint(timed_squares_bp, url_prefix="/projects/timed-squares")

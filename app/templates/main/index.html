@@ -1,17 +1,102 @@
 {% extends "base.html" %}
 {% block title %}Home{% endblock %}
+{% block content_class %}wide{% endblock %}
 
 {% block content %}
 <section class="hero">
-    <h1>Nelson Koskela</h1>
-    <p class="tagline">
+    <div class="reveal-mask">
+        <span class="reveal-up hero-eyebrow badge badge-open">&#9679; Open to interesting problems</span>
+    </div>
+
+    <div class="reveal-mask">
+        <h1 class="reveal-up gradient-text">Nelson Koskela</h1>
+    </div>
+
+    <p class="reveal-up tagline">
         Software Engineer II at JPMorgan Chase &amp; Co. &middot; Houston, TX<br>
         Building trading tools, pipeline visualizations, and network diagnostics on the side.
     </p>
-    <div class="hero-actions">
-        <a class="button primary" href="{{ url_for('about.index') }}">About Me</a>
-        <a class="button" href="{{ url_for('projects.index') }}">View Projects</a>
-        <a class="button" href="{{ url_for('contact.index') }}">Contact</a>
+
+    <div class="reveal-mask">
+        <div class="reveal-up hero-actions">
+            <a class="button primary" href="{{ url_for('about.index') }}">About Me</a>
+            <a class="button" href="{{ url_for('projects.index') }}">View Projects</a>
+            <a class="button" href="{{ url_for('contact.index') }}">Contact</a>
+        </div>
+    </div>
+
+    <div class="reveal-up tech-strip">
+        <span class="tag">Python</span>
+        <span class="tag">Flask</span>
+        <span class="tag">PostgreSQL</span>
+        <span class="tag">Redis</span>
+        <span class="tag">SQLAlchemy</span>
+        <span class="tag">Socket.IO</span>
+        <span class="tag">Docker</span>
+        <span class="tag">JavaScript</span>
+    </div>
+
+</section>
+
+<section>
+    <div class="section-head">
+        <span class="reveal-up eyebrow">Background</span>
+        <h2 class="reveal-up">By the numbers</h2>
+    </div>
+    <div class="stat-grid landing-stats">
+        <div class="reveal-up stat-tile">
+            <div class="value mono">2021&ndash;</div>
+            <div class="label">JPMorgan Chase &amp; Co.</div>
+        </div>
+        <div class="reveal-up stat-tile">
+            <div class="value mono">5</div>
+            <div class="label">Shipped side projects</div>
+        </div>
+        <div class="reveal-up stat-tile">
+            <div class="value mono">Real</div>
+            <div class="label">Postgres and Redis, not mocked</div>
+        </div>
+        <div class="reveal-up stat-tile">
+            <div class="value mono">100%</div>
+            <div class="label">Built and documented solo</div>
+        </div>
+    </div>
+</section>
+
+<section>
+    <div class="section-head">
+        <span class="reveal-up eyebrow">Built on my own time</span>
+        <h2 class="reveal-up">Featured projects</h2>
+        <p class="reveal-up section-sub">
+            These run against live data and real infrastructure. No mock backends.
+            Each one has its own README.
+        </p>
+    </div>
+    <div class="card-grid">
+        {% for project in featured_projects %}
+        <div class="reveal-up card">
+            <img class="card-icon" src="{{ url_for('static', filename=project.icon) }}" alt="" width="48" height="48">
+            <h3>{{ project.title }}</h3>
+            <p>{{ project.blurb }}</p>
+            <div class="tag-list">
+                {% for tag in project.tags %}
+                <span class="tag">{{ tag }}</span>
+                {% endfor %}
+            </div>
+            <a class="button small" href="{{ url_for(project.endpoint) }}">Open</a>
+        </div>
+        {% endfor %}
+    </div>
+    <p class="reveal-up" style="text-align: center; margin-top: 2rem;">
+        <a class="button" href="{{ url_for('projects.index') }}">See all 5 projects &rarr;</a>
+    </p>
+</section>
+
+<section>
+    <div class="reveal-up cta-band">
+        <h2>Have something worth building?</h2>
+        <p class="muted">Happy to talk through anything interesting.</p>
+        <a class="button primary" href="{{ url_for('contact.index') }}">Get in touch</a>
     </div>
 </section>
 {% endblock %}

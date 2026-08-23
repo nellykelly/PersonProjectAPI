@@ -153,7 +153,17 @@ def get_option_chain(ticker: str, expiry: str) -> dict:
         cols = ["strike", "lastPrice", "bid", "ask", "impliedVolatility", "openInterest"]
 
         def _rows(df):
-            return df[cols].to_dict("records") if not df.empty else []
+            if df.empty:
+                return []
+            # Pandas uses NaN for a missing quote, and illiquid contracts
+            # routinely have no bid. Python's json module happily writes
+            # that out as a bare `NaN` literal, which is *not* valid JSON --
+            # the browser's JSON.parse rejects the whole response, so a
+            # single missing bid took out the entire option chain in the
+            # UI. (Python's own json.load accepts NaN, which is why this
+            # looked fine from curl and only broke in the browser.)
+            # Converting to None here means every consumer gets valid JSON.
+            return df[cols].astype(object).where(df[cols].notna(), None).to_dict("records")
 
         return {"calls": _rows(chain.calls), "puts": _rows(chain.puts)}
 

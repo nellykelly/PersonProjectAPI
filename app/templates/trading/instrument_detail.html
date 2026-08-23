@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}{{ instrument.code }}{% endblock %}
+{% block content_class %}wide{% endblock %}
+
+{% block content %}
+<section>
+    <p><a href="{{ url_for('trading.instruments_index') }}">&larr; Back to instrument catalog</a></p>
+
+    <div class="section-title">
+        <h1 class="major"><code>{{ instrument.code }}</code></h1>
+    </div>
+
+    <p class="muted">
+        Reference data for this one contract, shared by every position that has ever traded it --
+        opening the same instrument again doesn't create a second copy, it points back here.
+        Queryable as JSON at <code>{{ url_for('trading.api_instrument', code=instrument.code) }}</code>.
+    </p>
+
+    <div class="stat-grid">
+        <div class="stat-tile"><div class="value mono">{{ instrument.underlying_ticker }}</div><div class="label">Underlying</div></div>
+        <div class="stat-tile"><div class="value mono">{{ instrument.instrument_type }}</div><div class="label">Type</div></div>
+        {% if instrument.strike %}
+        <div class="stat-tile"><div class="value mono">${{ "%.2f"|format(instrument.strike) }}</div><div class="label">Strike</div></div>
+        <div class="stat-tile"><div class="value mono">{{ instrument.expiry.strftime("%Y-%m-%d") }}</div><div class="label">Expiry</div></div>
+        <div class="stat-tile"><div class="value mono">{{ instrument.exercise_style }}</div><div class="label">Exercise style</div></div>
+        <div class="stat-tile"><div class="value mono">{{ instrument.settlement_type }}</div><div class="label">Settlement</div></div>
+        {% endif %}
+        <div class="stat-tile"><div class="value mono">{{ instrument.contract_multiplier }}</div><div class="label">Contract multiplier</div></div>
+    </div>
+
+    <h2>Traded by</h2>
+    <p class="muted">Every leg, across every position, that has ever held this exact instrument.</p>
+    {% if legs %}
+    <div class="data-table-wrapper">
+        <div class="data-table-scroll">
+            <table class="traffic-table">
+                <thead>
+                    <tr><th>Leg</th><th>Position</th><th>Side</th><th>Qty</th><th>Entry</th><th>Status</th><th></th></tr>
+                </thead>
+                <tbody>
+                    {% for leg in legs %}
+                    <tr>
+                        <td class="mono">#{{ leg.id }}</td>
+                        <td><a href="{{ url_for('trading.strategy_detail', strategy_id=leg.strategy_id) }}">#{{ leg.strategy_id }}</a></td>
+                        <td>{{ leg.side }}</td>
+                        <td class="mono">{{ leg.quantity }}</td>
+                        <td class="mono">${{ "%.2f"|format(leg.entry_price) }}</td>
+                        <td><span class="badge {{ 'badge-open' if leg.status == 'open' else 'badge-closed' }}">{{ leg.status }}</span></td>
+                        <td><a class="button small" href="{{ url_for('trading.position_detail', position_id=leg.id) }}">View</a></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="empty-state">No leg currently references this instrument.</div>
+    {% endif %}
+</section>
+{% endblock %}

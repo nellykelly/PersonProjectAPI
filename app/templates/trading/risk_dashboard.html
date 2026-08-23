@@ -40,7 +40,7 @@
         </div>
         <div class="stat-tile">
             <div class="value mono">{% if stats.avg_delta is not none %}{{ "%.2f"|format(stats.avg_delta) }}{% else %}n/a{% endif %}</div>
-            <div class="label">Avg delta ({{ stats.open_option_legs }} open option legs)</div>
+            <div class="label">Avg delta ({{ stats.open_option_legs }} open option trades)</div>
         </div>
         <div class="stat-tile">
             <div class="value mono">{% if stats.avg_ir_vega is not none %}{{ "%.3f"|format(stats.avg_ir_vega) }}{% else %}n/a{% endif %}</div>
@@ -50,7 +50,7 @@
 
     <div class="section-title">
         <h2>Recent risk requests</h2>
-        <span class="muted">Newest first, across every position -- {{ recent|length }} shown</span>
+        <span class="muted">Newest first, across every position. {{ recent|length }} shown</span>
     </div>
 
     {% if recent %}
@@ -73,7 +73,16 @@
                 {% for row in recent %}
                 <tr class="{{ 'row-failed' if row.status == 'failed' else '' }}">
                     <td class="mono">{{ row.id }}</td>
-                    <td>{{ row.ticker }}{% if row.kind != 'stock' %} &middot; {{ row.kind }}{% if row.strike %} @{{ row.strike }}{% endif %}{% endif %}</td>
+                    <td>
+                        {% if row.is_book_level %}
+                        Whole book <span class="muted">({{ row.leg_count }} instruments)</span>
+                        {% elif row.is_position_level %}
+                        Position #{{ row.strategy_id }}
+                        {% if row.leg_count > 1 %}<span class="muted">({{ row.leg_count }} legs)</span>{% endif %}
+                        {% else %}
+                        {{ row.ticker }}{% if row.kind != 'stock' %} &middot; {{ row.kind }}{% if row.strike %} @{{ row.strike }}{% endif %}{% endif %}
+                        {% endif %}
+                    </td>
                     <td class="muted">
                         {% if row.scenario %}spot {{ "%+.0f"|format(row.scenario.spot_shock_pct * 100) }}%, vol {{ "%+.0f"|format(row.scenario.vol_shock_pts * 100) }}pt
                         {% else %}as-of-now{% endif %}
@@ -85,14 +94,22 @@
                         {% if row.result %}${{ "%.2f"|format(row.result.pnl) }}{% else %}-{% endif %}
                     </td>
                     <td class="muted">{{ row.requested_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
-                    <td><a class="button small" href="{{ url_for('trading.position_detail', position_id=row.leg_id) }}">View</a></td>
+                    <td>
+                        {% if row.is_book_level %}
+                        <a class="button small" href="{{ url_for('trading.risk_report', risk_request_id=row.id) }}">Report</a>
+                        {% elif row.is_position_level and row.strategy_id %}
+                        <a class="button small" href="{{ url_for('trading.strategy_detail', strategy_id=row.strategy_id) }}">Position</a>
+                        {% elif row.leg_id %}
+                        <a class="button small" href="{{ url_for('trading.position_detail', position_id=row.leg_id) }}">View</a>
+                        {% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
     {% else %}
-    <div class="empty-state">No risk requests run yet -- open a position and run one from its detail page.</div>
+    <div class="empty-state">No risk requests yet. Open a position and run one from its detail page.</div>
     {% endif %}
 </section>
 {% endblock %}

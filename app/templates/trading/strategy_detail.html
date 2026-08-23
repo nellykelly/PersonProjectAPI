@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Position #{{ strategy.id }}{% endblock %}
+{% block content_class %}wide{% endblock %}
+
+{% block content %}
+<section>
+    <p><a href="{{ url_for('trading.index') }}">&larr; Back to trade book</a></p>
+
+    <div class="section-title">
+        <h1 class="major">Position #{{ strategy.id }} &middot; {{ strategy.name }}</h1>
+        <span class="badge {{ 'badge-open' if strategy.status == 'open' else 'badge-closed' }}">{{ strategy.status }}</span>
+    </div>
+
+    <p class="muted">
+        Opened {{ strategy.opened_at.strftime("%Y-%m-%d %H:%M") }} UTC.
+        A position holds one or more legs. Risk runs against the whole thing at once, pricing every leg
+        off a single market snapshot so the net numbers describe one moment rather than several.
+        Queryable as JSON at <code>{{ url_for('trading.api_strategy', strategy_id=strategy.id) }}</code>.
+    </p>
+
+    {# A strategy with exactly one instrument isn't a multi-leg strategy at
+       all, so it gets plain "instrument" wording rather than "leg". #}
+    {% set is_multi_leg = rows|length > 1 %}
+    <h2>{{ "Legs" if is_multi_leg else "Instrument" }}</h2>
+    <div class="data-table-wrapper">
+        <div class="data-table-scroll">
+            <table class="traffic-table">
+                <thead>
+                    <tr><th>{{ "Leg" if is_multi_leg else "#" }}</th><th>Instrument</th><th>Code</th><th>Side</th><th>Qty</th><th>Entry</th><th>Spot</th><th>PnL</th><th>Status</th><th></th></tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    {% set leg = row.position %}
+                    <tr>
+                        <td class="mono">#{{ leg.id }}</td>
+                        <td>{{ leg.ticker }} {{ leg.kind }}{% if leg.strike %} @ {{ leg.strike }}{% endif %}</td>
+                        <td><a href="{{ url_for('trading.instrument_detail', code=leg.instrument.code) }}"><code>{{ leg.instrument.code }}</code></a></td>
+                        <td>{{ leg.side }}</td>
+                        <td class="mono">{{ leg.quantity }}</td>
+                        <td class="mono">${{ "%.2f"|format(leg.entry_price) }}</td>
+                        <td class="mono">{% if row.underlying_price is not none %}${{ "%.2f"|format(row.underlying_price) }}{% else %}n/a{% endif %}</td>
+                        <td class="mono {{ 'pnl-positive' if row.pnl and row.pnl.pnl >= 0 else 'pnl-negative' if row.pnl else '' }}">
+                            {% if row.pnl %}${{ "%.2f"|format(row.pnl.pnl) }}{% else %}n/a{% endif %}
+                        </td>
+                        <td><span class="badge {{ 'badge-open' if leg.status == 'open' else 'badge-closed' }}">{{ leg.status }}</span></td>
+                        <td><a class="button small" href="{{ url_for('trading.position_detail', position_id=leg.id) }}">{{ "Leg" if is_multi_leg else "View" }}</a></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <h2>Run risk on the whole position</h2>
+    <div id="position-risk-panel" data-strategy-id="{{ strategy.id }}">
+        <div class="fields">
+            <div class="field">
+                <label for="pos-risk-model">Quantitative model</label>
+                <select id="pos-risk-model">
+                    {% for m in risk_model_options %}
+                    <option value="{{ m.key }}">{{ m.name }} &mdash; {{ m.summary }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="fields">
+            <div class="field third">
+                <label for="pos-spot-shock">Spot shock (%)</label>
+                <input type="number" id="pos-spot-shock" step="1" placeholder="e.g. -10">
+            </div>
+            <div class="field third">
+                <label for="pos-vol-shock">Vol shock (IV points)</label>
+                <input type="number" id="pos-vol-shock" step="1" placeholder="e.g. 5">
+            </div>
+            <div class="field third">
+                <button type="button" class="button primary" id="pos-run-risk">Run position risk</button>
+            </div>
+        </div>
+        <p class="muted" id="pos-risk-status"></p>
+    </div>
+
+    <h2>Risk requests against this position</h2>
+    {% if risk_requests %}
+    <div class="data-table-wrapper">
+        <div class="data-table-scroll">
+            <table class="traffic-table">
+                <thead>
+                    <tr><th>#</th><th>Requested</th><th>Model</th><th>Scope</th><th>Scenario</th><th>Net PnL</th><th>Net delta</th><th>Report</th></tr>
+                </thead>
+                <tbody>
+                    {% for r in risk_requests %}
+                    <tr>
+                        <td class="mono">{{ r.id }}</td>
+                        <td class="muted">{{ r.requested_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+                        <td class="mono">{{ r.model_key }}</td>
+                        <td>{{ "whole position" if r.is_position_level else "single trade" }}</td>
+                        <td>
+                            {% if r.scenario %}spot {{ r.scenario.spot_shock_pct }}%, vol {{ r.scenario.vol_shock_pts }}pt
+                            {% else %}as-of-now{% endif %}
+                        </td>
+                        <td class="mono {{ 'pnl-positive' if r.totals and r.totals.pnl >= 0 else 'pnl-negative' if r.totals else '' }}">
+                            {% if r.totals %}${{ "%.2f"|format(r.totals.pnl) }}{% else %}n/a{% endif %}
+                        </td>
+                        <td class="mono">{% if r.totals %}{{ "%.2f"|format(r.totals.delta) }}{% else %}n/a{% endif %}</td>
+                        <td><a class="button small" href="{{ url_for('trading.risk_report', risk_request_id=r.id) }}">Open</a></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="empty-state">No risk requests against this position yet. Run one above.</div>
+    {% endif %}
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/trading.js') }}"></script>
+{% endblock %}

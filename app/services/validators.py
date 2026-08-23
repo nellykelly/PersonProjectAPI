@@ -1,4 +1,6 @@
-"""Input validation for Pipeline World's input surface: a name, an
+"""Input validation, shared across the site's public-write surfaces.
+
+Most of this module is Pipeline World's input surface: a name, an
 appearance pick, and free-text answers to 4 fixed icebreaker questions.
 Nothing here is ever executed as code -- see docs/build-spec
 (project-3-4) "Input Model" for the original reasoning (name + a fixed
@@ -385,3 +387,30 @@ def validate_join_request(
             raise LastNameCollision(collision)
 
     return clean_first, clean_last, clean_appearance, clean_head_type, clean_body_type, clean_hand_type, clean_answers
+
+
+# ---------- Timed-Squares: a short public leaderboard display name ----------
+#
+# A different shape of "name" than the character-join fields above (which
+# is why it isn't just sanitize_name_part with different constants): an
+# arcade high-score initials field allows digits ("P1AYER") and, on
+# anything that fails validation, silently falls back to "ANON" instead
+# of rejecting the submission -- the score itself was earned by actually
+# playing the game, and a malformed name shouldn't cost the player that,
+# the way a malformed field should block a *form* submission before
+# anything of value has happened yet.
+
+MAX_ARCADE_NAME_LENGTH = 12
+_ARCADE_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 \-]{0,11}$")
+
+
+def sanitize_arcade_name(raw: str | None) -> str:
+    if not raw:
+        return "ANON"
+    cleaned = raw.strip()[:MAX_ARCADE_NAME_LENGTH]
+    if not cleaned or not _ARCADE_NAME_PATTERN.match(cleaned):
+        return "ANON"
+    cleaned = cleaned.upper()
+    if _contains_blocked_word(cleaned):
+        return "ANON"
+    return cleaned

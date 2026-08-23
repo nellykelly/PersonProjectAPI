@@ -65,7 +65,10 @@ def test_api_recent_runs_reflects_a_completed_join(client, db):
     assert data["ok"] is True
     row = data["rows"][0]
     assert row["character"]["first_name"] == "Nelson"
-    assert row["stages"] == {stage: "pass" for stage in ALL_STAGES}
+    assert set(row["stages"].keys()) == set(ALL_STAGES)
+    for stage in ALL_STAGES:
+        assert row["stages"][stage]["status"] == "pass"
+        assert row["stages"][stage]["duration_seconds"] >= 0
 
 
 def test_pipeline_analytics_loads_and_reports_postgres_required(client):

@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+{% block title %}Risk Report #{{ risk_request.id }}{% endblock %}
+{% block content_class %}wide{% endblock %}
+
+{% block content %}
+<section>
+    <div class="section-title">
+        <h1 class="major">Risk Report #{{ risk_request.id }}</h1>
+        <span class="badge {{ 'badge-open' if risk_request.status == 'complete' else 'badge-closed' }}">
+            {{ risk_request.status }}
+        </span>
+    </div>
+
+    <p class="muted">
+        Generated from risk request #{{ risk_request.id }}, run at
+        {{ risk_request.requested_at.strftime("%Y-%m-%d %H:%M:%S") }} UTC.
+        This page is rebuilt from the stored request and result every time it loads, so it always
+        shows the numbers that run actually produced.
+    </p>
+
+    <h2>What was asked</h2>
+    {% set totals = risk_request.totals or {} %}
+    {% set leg_count = totals.get("leg_count", results|length) %}
+    {# 'leg' only applies within one multi-instrument Strategy -- a book
+       run spans many unrelated positions, so its rows are "instruments",
+       not "legs" of anything. #}
+    {% set scope = risk_request.scope %}
+    {% set is_multi = leg_count > 1 %}
+    <div class="stat-grid">
+        <div class="stat-tile" tabindex="0" data-tooltip="Whether this run priced the whole book, a whole position, or a single trade.">
+            <div class="value mono" style="font-size:1.1rem;">
+                {% if scope == "book" %}Whole book
+                {% elif scope == "position" %}Whole position
+                {% else %}Single trade{% endif %}
+            </div>
+            <div class="label">Scope</div>
+        </div>
+        {% if scope != "book" %}
+        <div class="stat-tile" tabindex="0" data-tooltip="The position this risk was run against.">
+            <div class="value mono">#{{ risk_request.strategy_id or "n/a" }}</div>
+            <div class="label">Position</div>
+        </div>
+        {% endif %}
+        {% if is_multi %}
+        <div class="stat-tile" tabindex="0" data-tooltip="How many instruments were priced. All of them share one market snapshot, so the net figures describe a single moment.">
+            <div class="value mono">{{ leg_count }}</div>
+            <div class="label">{{ "Legs priced" if scope == "position" else "Instruments priced" }}</div>
+        </div>
+        {% endif %}
+        <div class="stat-tile" tabindex="0" data-tooltip="The what-if applied before pricing. 'As-of-now' means live market levels with nothing shifted.">
+            <div class="value mono" style="font-size:1.1rem;">
+                {% if risk_request.scenario %}
+                    spot {{ risk_request.scenario.spot_shock_pct }}%, vol {{ risk_request.scenario.vol_shock_pts }}pt
+                {% else %}as-of-now{% endif %}
+            </div>
+            <div class="label">Scenario</div>
+        </div>
+    </div>
+
+    {% if is_multi and totals.get("snapshot") %}
+    <p class="muted">
+        Market snapshot shared by every instrument in this run:
+        {% for ticker, price in totals["snapshot"].items() %}<code>{{ ticker }} ${{ "%.2f"|format(price) }}</code>{{ ", " if not loop.last }}{% endfor %}.
+    </p>
+    {% endif %}
+
+    <h2>Which model answered</h2>
+    {% if model %}
+    <div class="card" style="margin-bottom:2rem;">
+        <h3>{{ model.name }} <span class="tag">{{ model.key }}</span></h3>
+        <p>{{ model.summary }}</p>
+        <p><strong>How it works.</strong> {{ model.method }}</p>
+        <p><strong>Good for.</strong> {{ model.good_for }}</p>
+        <p><strong>Where it stops.</strong> {{ model.limitations }}</p>
+    </div>
+    {% else %}
+    <div class="flash flash-error">
+        This report names model <code>{{ risk_request.model_key }}</code>, which is no longer registered.
+        The stored numbers below are still exactly what it produced.
+    </div>
+    {% endif %}
+
+    {% if is_multi and totals.get("legs") %}
+    <h2>{{ "Book totals" if scope == "book" else "Position totals" }}</h2>
+    <p class="muted">
+        {% if scope == "book" %}
+        Summed across every open instrument in the book. Each row below is priced off the same
+        market snapshot, so these are consistent with one another even though the instruments
+        belong to different, unrelated positions.
+        {% else %}
+        Summed across every leg. Greeks add up across a position, which is the whole point of pricing
+        them together: two legs can offset, and only the net number tells you what the position is
+        actually exposed to.
+        {% endif %}
+        The return is recomputed from the totals rather than averaged across rows, because an
+        average of percentages isn't a meaningful return.
+    </p>
+    <div class="stat-grid">
+        <div class="stat-tile" tabindex="0" data-tooltip="Total value across every row.">
+            <div class="value mono">${{ "%.2f"|format(totals.pv) }}</div><div class="label">Net PV</div>
+        </div>
+        <div class="stat-tile" tabindex="0" data-tooltip="Total profit and loss across every row.">
+            <div class="value mono {{ 'pnl-positive' if totals.pnl >= 0 else 'pnl-negative' }}">${{ "%.2f"|format(totals.pnl) }}</div>
+            <div class="label">Net PnL</div>
+        </div>
+        <div class="stat-tile" tabindex="0" data-tooltip="Net PnL over the total cost of opening every row.">
+            <div class="value mono">{{ "%.2f"|format(totals.pnl_pct) }}%</div><div class="label">Return</div>
+        </div>
+        <div class="stat-tile" tabindex="0" data-tooltip="Net dollars gained per $1 rise in the underlying, after rows offset each other.">
+            <div class="value mono">{{ "%.2f"|format(totals.delta) }}</div><div class="label">Net Delta</div>
+        </div>
+        <div class="stat-tile" tabindex="0" data-tooltip="Net rate of change of Delta across every row.">
+            <div class="value mono">{{ "%.4f"|format(totals.gamma) }}</div><div class="label">Net Gamma</div>
+        </div>
+        <div class="stat-tile" tabindex="0" data-tooltip="Net dollars lost per day to time decay.">
+            <div class="value mono">{{ "%.2f"|format(totals.theta) }}</div><div class="label">Net Theta</div>
+        </div>
+        <div class="stat-tile" tabindex="0" data-tooltip="Net dollars gained per one point of implied volatility.">
+            <div class="value mono">{{ "%.2f"|format(totals.vega) }}</div><div class="label">Net Vega</div>
+        </div>
+        <div class="stat-tile" tabindex="0" data-tooltip="Net dollars gained per one percentage point rise in rates.">
+            <div class="value mono">{{ "%.4f"|format(totals.ir_delta) }}</div><div class="label">Net IR Delta</div>
+        </div>
+    </div>
+
+    <h2>{{ "Per-instrument breakdown" if scope == "book" else "Per-leg breakdown" }}</h2>
+    <div class="data-table-wrapper">
+        <div class="data-table-scroll">
+            <table class="traffic-table">
+                <thead>
+                    <tr>
+                        <th>Instrument</th>
+                        {% if scope == "book" %}<th>Position</th>{% endif %}
+                        <th>Qty</th><th>Spot used</th><th>PV</th><th>PnL</th><th>Delta</th><th>Gamma</th><th>Theta</th><th>Vega</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in totals["legs"] %}
+                    <tr>
+                        <td>
+                            <a href="{{ url_for('trading.instrument_detail', code=row.instrument_code) }}"><code>{{ row.instrument_code }}</code></a>
+                        </td>
+                        {% if scope == "book" %}
+                        <td><a href="{{ url_for('trading.strategy_detail', strategy_id=row.strategy_id) }}">#{{ row.strategy_id }}</a></td>
+                        {% endif %}
+                        <td class="mono">{{ row.quantity }}</td>
+                        <td class="mono">${{ "%.2f"|format(row.spot_used) }}</td>
+                        <td class="mono">${{ "%.2f"|format(row.pv) }}</td>
+                        <td class="mono {{ 'pnl-positive' if row.pnl >= 0 else 'pnl-negative' }}">${{ "%.2f"|format(row.pnl) }}</td>
+                        <td class="mono">{{ "%.2f"|format(row.delta) }}</td>
+                        <td class="mono">{{ "%.4f"|format(row.gamma) }}</td>
+                        <td class="mono">{{ "%.2f"|format(row.theta) }}</td>
+                        <td class="mono">{{ "%.2f"|format(row.vega) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="row-live">
+                        <td colspan="{{ 3 if scope == 'book' else 2 }}"><strong>Total</strong></td>
+                        <td class="mono"><strong>${{ "%.2f"|format(totals.pv) }}</strong></td>
+                        <td class="mono"><strong>${{ "%.2f"|format(totals.pnl) }}</strong></td>
+                        <td class="mono"><strong>{{ "%.2f"|format(totals.delta) }}</strong></td>
+                        <td class="mono"><strong>{{ "%.4f"|format(totals.gamma) }}</strong></td>
+                        <td class="mono"><strong>{{ "%.2f"|format(totals.theta) }}</strong></td>
+                        <td class="mono"><strong>{{ "%.2f"|format(totals.vega) }}</strong></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if result %}
+    <h2>{{ ('First instrument detail' if scope == 'book' else 'First leg detail') if is_multi else 'What it found' }}</h2>
+    {% set measures = (result.report or {}).get("measures") or [] %}
+    {% if measures %}
+    <div class="stat-grid">
+        {% for m in measures %}
+        <div class="stat-tile" tabindex="0" data-tooltip="{{ m.explanation }}">
+            <div class="value mono">
+                {% if m.value is none %}n/a
+                {% elif m.value|abs >= 1000 %}{{ "%.0f"|format(m.value) }}
+                {% elif m.value|abs >= 1 %}{{ "%.2f"|format(m.value) }}
+                {% else %}{{ "%.4f"|format(m.value) }}{% endif %}
+            </div>
+            <div class="label">{{ m.label }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    <p class="muted">Units, in order: {% for m in measures %}{{ m.label }} in {{ m.unit }}{{ "; " if not loop.last }}{% endfor %}.</p>
+    {% endif %}
+
+    {% set ladder = ((result.report or {}).get("extras") or {}).get("ladder") %}
+    {% if ladder %}
+    <h2>Revaluation ladder</h2>
+    <p class="muted">
+        The position repriced at each rung, holding implied vol fixed. This is measured P&amp;L, not a
+        Greek approximation, which is why it stays meaningful at the large moves where a local
+        derivative stops being trustworthy.
+    </p>
+    <div class="data-table-wrapper">
+        <div class="data-table-scroll">
+            <table class="traffic-table">
+                <thead>
+                    <tr><th>Spot shock</th><th>Spot</th><th>Position value</th><th>P&amp;L vs base</th></tr>
+                </thead>
+                <tbody>
+                    {% for rung in ladder %}
+                    <tr{% if rung.shock_pct == 0 %} class="row-live"{% endif %}>
+                        <td class="mono">{{ "%+d"|format(rung.shock_pct) }}%</td>
+                        <td class="mono">${{ "%.2f"|format(rung.spot) }}</td>
+                        <td class="mono">${{ "%.2f"|format(rung.value) }}</td>
+                        <td class="mono {{ 'pnl-positive' if rung.pnl_vs_base >= 0 else 'pnl-negative' }}">
+                            {{ "%+.2f"|format(rung.pnl_vs_base) }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    {% set notes = (result.report or {}).get("notes") or [] %}
+    {% if notes %}
+    <h2>Notes from the model</h2>
+    <ul>
+        {% for note in notes %}<li class="muted">{{ note }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+    {% else %}
+    <div class="empty-state">
+        This request has no result. It was recorded with status <strong>{{ risk_request.status }}</strong>,
+        which is kept on purpose so a failed run stays visible rather than disappearing.
+    </div>
+    {% endif %}
+
+    <p style="margin-top:2rem;">
+        {# A multi-instrument run has no single trade to go back to, so it
+           links to the position itself instead. #}
+        {% if risk_request.strategy_id %}
+        <a class="button" href="{{ url_for('trading.strategy_detail', strategy_id=risk_request.strategy_id) }}">&larr; Back to position</a>
+        {% endif %}
+        {% if leg %}
+        <a class="button" href="{{ url_for('trading.position_detail', position_id=leg.id) }}">Trade #{{ leg.id }}</a>
+        {% endif %}
+        <a class="button" href="{{ url_for('trading.risk_dashboard_view') }}">Risk dashboard</a>
+    </p>
+</section>
+{% endblock %}

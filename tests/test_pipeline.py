@@ -52,10 +52,17 @@ def capture_socketio_emits(monkeypatch):
     monkeypatch.setattr(
         pipeline,
         "emit_stage_update",
-        lambda character, stage, status, detail=None: events.append(
-            {"character_id": character.id, "stage": stage, "status": status, "detail": detail}
+        lambda character, stage, status, detail=None, duration_seconds=None: events.append(
+            {
+                "character_id": character.id,
+                "stage": stage,
+                "status": status,
+                "detail": detail,
+                "duration_seconds": duration_seconds,
+            }
         ),
     )
+    monkeypatch.setattr(pipeline, "emit_benchmarks_update", lambda: None)
     return events
 
 

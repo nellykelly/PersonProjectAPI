@@ -4,7 +4,14 @@
 
 {% block content %}
 <section {% if position.status == "open" %}data-quote-ticker="{{ position.ticker }}" data-position-id="{{ position.id }}"{% endif %}>
-    <p><a href="{{ url_for('trading.index') }}">&larr; Back to trade book</a></p>
+    <p>
+        <a href="{{ url_for('trading.index') }}">&larr; Back to trade book</a>
+        &middot;
+        <a href="{{ url_for('trading.strategy_detail', strategy_id=position.strategy_id) }}">
+            Position #{{ position.strategy_id }}
+        </a>
+        <span class="muted">(run risk across every leg together)</span>
+    </p>
 
     <div class="section-title">
         <h1 class="major">{{ position.ticker }} &middot; {{ position.kind }}{% if position.strike %} @ {{ position.strike }}{% endif %}</h1>
@@ -45,26 +52,31 @@
     {% if position.is_option and greeks %}
     <div class="section-title">
         <h2>Risk (Greeks)</h2>
-        <span class="muted">Position-level -- per-share sensitivity &times; quantity &times; contract multiplier</span>
+        <span class="muted">Position-level: per-share sensitivity &times; quantity &times; contract multiplier</span>
     </div>
     <div class="stat-grid">
-        <div class="stat-tile">
+        <div class="stat-tile" tabindex="0"
+             data-tooltip="If the stock goes up $1, you make this many dollars. Positive if you own calls, negative if you own puts.">
             <div class="value mono">{{ "%.2f"|format(greeks.delta) }}</div>
             <div class="label">Delta</div>
         </div>
-        <div class="stat-tile">
+        <div class="stat-tile" tabindex="0"
+             data-tooltip="How fast Delta itself changes. Move the stock $1 and your Delta shifts by this much. Big Gamma means your exposure moves out from under you quickly.">
             <div class="value mono">{{ "%.3f"|format(greeks.gamma) }}</div>
             <div class="label">Gamma</div>
         </div>
-        <div class="stat-tile">
+        <div class="stat-tile" tabindex="0"
+             data-tooltip="What one more day costs you, if nothing else moves. Almost always negative when you own options, because they are worth less the closer they get to expiry.">
             <div class="value mono">{{ "%.2f"|format(greeks.theta) }}</div>
             <div class="label">Theta ($/day)</div>
         </div>
-        <div class="stat-tile">
+        <div class="stat-tile" tabindex="0"
+             data-tooltip="If implied volatility rises one point, say 20% to 21%, you make this many dollars. Owning options means you want volatility to go up.">
             <div class="value mono">{{ "%.2f"|format(greeks.vega) }}</div>
             <div class="label">Vega ($/vol pt)</div>
         </div>
-        <div class="stat-tile">
+        <div class="stat-tile" tabindex="0"
+             data-tooltip="If interest rates rise one percentage point, say 4% to 5%, you make this many dollars. Barely matters on a short-dated option, matters a lot on a long-dated one.">
             <div class="value mono">{{ "%.2f"|format(greeks.rho) }}</div>
             <div class="label">Rho ($/1% rate)</div>
         </div>
@@ -74,10 +86,21 @@
     {% if position.is_option %}
     <div class="section-title">
         <h2>Risk requests</h2>
-        <span class="muted">position &rarr; risk request &rarr; report/live feed -- each run below is a real, persisted, queryable row</span>
+        <span class="muted">position &rarr; risk request &rarr; report/live feed. Each run below is a real, persisted, queryable row</span>
     </div>
 
     <div id="risk-panel" data-position-id="{{ position.id }}">
+        <div class="fields">
+            <div class="field">
+                <label for="risk-model">Quantitative model</label>
+                <select id="risk-model" name="model_key">
+                    {% for m in risk_model_options %}
+                    <option value="{{ m.key }}">{{ m.name }} &mdash; {{ m.summary }}</option>
+                    {% endfor %}
+                </select>
+                <p class="field-hint" id="risk-model-hint"></p>
+            </div>
+        </div>
         <div class="fields">
             <div class="field third">
                 <button type="button" class="button small" id="risk-request-now">Run risk request (as-of-now)</button>
@@ -101,22 +124,53 @@
             </div>
         </div>
 
+        {# Every tile carries a data-tooltip describing what the number is
+           and how it was actually produced (see app/services/risk_engine.py
+           and pricing.py). tabindex="0" so the explanation is reachable by
+           keyboard, not hover only. #}
         <div class="stat-grid" id="risk-result-grid" style="display:none; margin-top:1rem;">
-            <div class="stat-tile"><div class="value mono" id="risk-pv">-</div><div class="label">PV</div></div>
-            <div class="stat-tile"><div class="value mono" id="risk-pnl">-</div><div class="label">PnL</div></div>
-            <div class="stat-tile"><div class="value mono" id="risk-delta">-</div><div class="label">Delta</div></div>
-            <div class="stat-tile"><div class="value mono" id="risk-gamma">-</div><div class="label">Gamma</div></div>
-            <div class="stat-tile"><div class="value mono" id="risk-scenario-gamma">-</div><div class="label">Scenario Gamma</div></div>
-            <div class="stat-tile"><div class="value mono" id="risk-theta">-</div><div class="label">Theta</div></div>
-            <div class="stat-tile"><div class="value mono" id="risk-vega">-</div><div class="label">Vega</div></div>
-            <div class="stat-tile"><div class="value mono" id="risk-ir-delta">-</div><div class="label">IR Delta (Rho)</div></div>
-            <div class="stat-tile"><div class="value mono" id="risk-ir-vega">-</div><div class="label">IR Vega</div></div>
+            <div class="stat-tile" tabindex="0"
+                 data-tooltip="What the position is worth right now, in dollars. Prices one contract with Black-Scholes at the spot and IV this run used, then multiplies by quantity and by 100 for options.">
+                <div class="value mono" id="risk-pv">-</div><div class="label">PV</div>
+            </div>
+            <div class="stat-tile" tabindex="0"
+                 data-tooltip="How much you are up or down. Current value minus what it cost to open the position.">
+                <div class="value mono" id="risk-pnl">-</div><div class="label">PnL</div>
+            </div>
+            <div class="stat-tile" tabindex="0"
+                 data-tooltip="If the stock goes up $1, you make this many dollars. Positive if you own calls, negative if you own puts.">
+                <div class="value mono" id="risk-delta">-</div><div class="label">Delta</div>
+            </div>
+            <div class="stat-tile" tabindex="0"
+                 data-tooltip="How fast Delta itself changes. Move the stock $1 and your Delta shifts by this much. Big Gamma means your exposure moves out from under you quickly.">
+                <div class="value mono" id="risk-gamma">-</div><div class="label">Gamma</div>
+            </div>
+            <div class="stat-tile" tabindex="0"
+                 data-tooltip="The same thing Gamma measures, but found by actually repricing rather than using a formula. Reprices the position 1% above and 1% below the current spot and measures the curve through those three points. It should come out close to Gamma. If the two disagree, one of them is wrong, which is the point of showing both.">
+                <div class="value mono" id="risk-scenario-gamma">-</div><div class="label">Scenario Gamma</div>
+            </div>
+            <div class="stat-tile" tabindex="0"
+                 data-tooltip="What one more day costs you, if nothing else moves. Almost always negative when you own options, because they are worth less the closer they get to expiry.">
+                <div class="value mono" id="risk-theta">-</div><div class="label">Theta</div>
+            </div>
+            <div class="stat-tile" tabindex="0"
+                 data-tooltip="If implied volatility rises one point, say 20% to 21%, you make this many dollars. Owning options means you want volatility to go up.">
+                <div class="value mono" id="risk-vega">-</div><div class="label">Vega</div>
+            </div>
+            <div class="stat-tile" tabindex="0"
+                 data-tooltip="If interest rates rise one percentage point, say 4% to 5%, you make this many dollars. Barely matters on a short-dated option, matters a lot on a long-dated one.">
+                <div class="value mono" id="risk-ir-delta">-</div><div class="label">IR Delta (Rho)</div>
+            </div>
+            <div class="stat-tile" tabindex="0"
+                 data-tooltip="What you would gain if interest rates became more jumpy, rather than just higher or lower. Black-Scholes assumes rates are fixed and cannot answer this, so it is priced with a Hull-White rate model instead. Near zero on short-dated options, and exactly zero on stock.">
+                <div class="value mono" id="risk-ir-vega">-</div><div class="label">IR Vega</div>
+            </div>
         </div>
 
         <div class="data-table-wrapper" style="margin-top:1rem;">
             <div class="data-table-scroll">
                 <table class="traffic-table" id="risk-history-table">
-                    <thead><tr><th>#</th><th>Requested</th><th>Scenario</th><th>Spot used</th><th>PnL</th></tr></thead>
+                    <thead><tr><th>#</th><th>Requested</th><th>Model</th><th>Scenario</th><th>Spot used</th><th>PnL</th><th>Report</th></tr></thead>
                     <tbody id="risk-history-body"></tbody>
                 </table>
             </div>
