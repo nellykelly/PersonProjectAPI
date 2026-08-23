@@ -4,9 +4,28 @@
     <meta charset="utf-8">
     <meta http-equiv="x-ua-compatible" content="ie=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}Nelson Koskela{% endblock %} | Software Engineer II</title>
-    <meta name="description" content="Nelson Koskela -- Software Engineer II at JPMorgan Chase &amp; Co. Personal portfolio site with independent trading, quant scoring, pipeline visualization, and network monitoring projects.">
+    {% set page_title %}{% block title %}Nelson Koskela{% endblock %}{% endset %}
+    {% set page_description %}{% block meta_description %}Nelson Koskela -- Software Engineer II at JPMorgan Chase &amp; Co. Personal portfolio site with independent trading, quant scoring, pipeline visualization, and network monitoring projects.{% endblock %}{% endset %}
+    <title>{{ page_title }} | Software Engineer II</title>
+    <meta name="description" content="{{ page_description }}">
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='assets/img/favicon.ico') }}">
+
+    {# Open Graph / Twitter card -- what shows up when this page's link is
+       pasted into Slack, LinkedIn, iMessage, etc. Without these tags the
+       preview is either blank or falls back to raw page text, which reads
+       as unfinished on a portfolio link. og:image needs an absolute URL
+       (crawlers fetch it directly, not through the page), hence
+       _external=True. #}
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Nelson Koskela">
+    <meta property="og:title" content="{{ page_title }}">
+    <meta property="og:description" content="{{ page_description }}">
+    <meta property="og:url" content="{{ request.url }}">
+    <meta property="og:image" content="{% block og_image %}{{ url_for('static', filename='assets/img/bg.jpg', _external=True) }}{% endblock %}">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{{ page_title }}">
+    <meta name="twitter:description" content="{{ page_description }}">
+    <meta name="twitter:image" content="{% block twitter_image %}{{ url_for('static', filename='assets/img/bg.jpg', _external=True) }}{% endblock %}">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

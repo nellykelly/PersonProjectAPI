@@ -1,4 +1,4 @@
-from flask import render_template, send_from_directory, current_app
+from flask import Response, render_template, send_from_directory, current_app
 
 from app.blueprints.main import bp
 from app.blueprints.projects.routes import PROJECTS
@@ -23,3 +23,13 @@ def favicon():
     return send_from_directory(
         f"{current_app.static_folder}/assets/img", "favicon.ico", mimetype="image/vnd.microsoft.icon"
     )
+
+
+@bp.route("/robots.txt")
+def robots():
+    # Search engines request this at the domain root, not under /static/
+    # -- same reason favicon.ico gets its own route above rather than
+    # relying on url_for('static', ...). Fully permissive: nothing on
+    # this site is private or admin-only, and the entire point of a
+    # portfolio site is to be found.
+    return Response("User-agent: *\nAllow: /\n", mimetype="text/plain")
