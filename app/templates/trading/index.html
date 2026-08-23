@@ -102,7 +102,7 @@
     </div>
 
     <div class="chart-wrapper">
-        <canvas id="book-pnl-chart" data-legs='{{ bt.legs|tojson }}' height="90"></canvas>
+        <canvas id="book-pnl-chart" data-history='{{ book_history|tojson }}' height="90"></canvas>
     </div>
     {% else %}
     <div class="empty-state">

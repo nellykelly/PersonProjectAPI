@@ -405,28 +405,43 @@
   function initBookOverviewChart() {
     var canvas = document.getElementById("book-pnl-chart");
     if (!canvas || !window.Chart) return;
-    var legs;
+    var history;
     try {
-      legs = JSON.parse(canvas.dataset.legs || "[]");
+      history = JSON.parse(canvas.dataset.history || "[]");
     } catch (e) {
-      legs = [];
+      history = [];
     }
-    if (!legs.length) return;
+    if (!history.length) return;
 
-    var labels = legs.map(function (l) { return l.instrument_code || l.ticker; });
-    var pnls = legs.map(function (l) { return l.pnl; });
+    var labels = history.map(function (h) { return h.date; });
+    var pnls = history.map(function (h) { return h.pnl; });
     var colors = pnls.map(function (v) { return v >= 0 ? "#4ade80" : "#f87171"; });
 
     new Chart(canvas.getContext("2d"), {
-      type: "bar",
+      // A line, not bars, now that the x-axis is a time series (each
+      // past whole-book request) rather than one bar per instrument --
+      // a trend reads better as a line than as adjacent unrelated bars.
+      type: "line",
       data: {
         labels: labels,
-        datasets: [{ label: "PnL ($)", data: pnls, backgroundColor: colors }],
+        datasets: [{
+          label: "Book PnL ($)",
+          data: pnls,
+          borderColor: "#3aa0ff",
+          backgroundColor: "rgba(58, 160, 255, 0.15)",
+          pointBackgroundColor: colors,
+          pointRadius: 4,
+          fill: true,
+          tension: 0.15,
+        }],
       },
       options: {
         responsive: true,
         plugins: { legend: { display: false } },
-        scales: { y: { title: { display: true, text: "PnL ($)" } } },
+        scales: {
+          x: { title: { display: true, text: "Request date" } },
+          y: { title: { display: true, text: "PnL ($)" } },
+        },
       },
     });
   }

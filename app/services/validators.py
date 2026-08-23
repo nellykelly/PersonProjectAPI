@@ -42,12 +42,21 @@ NAME_PART_PATTERN = re.compile(r"^[A-Za-z][A-Za-z '\-]{0,29}$")
 
 # Hashed rather than a plaintext wordlist -- keeps the literal words out
 # of a public repo's source while still being a real, functioning check
-# (hash the candidate word the same way and compare).
+# (hash the candidate word the same way and compare). This list needs to
+# actually catch the profanity a public visitor might type, not just
+# stand in for one -- a live character named "Fuck Fuck" made it through
+# to Production Town because an earlier version of this list only had
+# three deliberately-mild placeholder words ("damn", "hell", "crap") in
+# it, which is a demo of the *mechanism* working, not the filter itself.
+_BLOCKED_WORDS = (
+    "fuck", "shit", "ass", "asshole", "bitch", "bastard", "cunt", "dick",
+    "cock", "pussy", "whore", "slut", "damn", "hell", "crap", "piss",
+    "twat", "wanker", "bollocks", "prick", "douche", "fag", "faggot",
+    "retard", "nigger", "nigga", "chink", "spic", "kike", "gook",
+    "tranny", "rape", "nazi", "hitler",
+)
 _BLOCKED_NAME_HASHES = frozenset(
-    {
-        hashlib.sha256(word.encode("utf-8")).hexdigest()
-        for word in ("damn", "hell", "crap")  # deliberately mild placeholders, see module docstring
-    }
+    hashlib.sha256(word.encode("utf-8")).hexdigest() for word in _BLOCKED_WORDS
 )
 
 APPEARANCE_OPTIONS = [

@@ -565,7 +565,7 @@ def test_trade_book_shows_overview_from_the_latest_book_request(app, db, client,
     assert f"#{book_request_id}".encode() in page.data
     assert b"Net PV" in page.data
     assert b"book-pnl-chart" in page.data
-    assert b"data-legs=" in page.data
+    assert b"data-history=" in page.data
 
 
 def test_trade_book_overview_uses_the_most_recent_book_request_not_the_first(app, db, client, monkeypatch):

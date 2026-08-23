@@ -103,6 +103,25 @@ def index():
         .first()
     )
 
+    # The chart plots the book's PnL trend over time -- one point per
+    # past whole-book request, oldest first -- rather than a per-instrument
+    # breakdown of a single snapshot, since "how has the book been doing"
+    # is the more useful question and there's already a real history of
+    # persisted book-level requests to answer it from.
+    book_history_requests = (
+        RiskRequest.query.filter_by(scope="book", status="complete")
+        .order_by(RiskRequest.id.desc())
+        .limit(20)
+        .all()
+    )
+    book_history = [
+        {
+            "date": req.requested_at.strftime("%Y-%m-%d %H:%M"),
+            "pnl": (req.totals or {}).get("pnl"),
+        }
+        for req in reversed(book_history_requests)
+    ]
+
     return render_template(
         "trading/index.html",
         rows=_price_positions(open_legs),
@@ -111,6 +130,7 @@ def index():
         max_open=current_app.config["TRADING_MAX_OPEN_POSITIONS_PER_SESSION"],
         open_count=_open_strategies_count(_session_id()),
         book_request=book_request,
+        book_history=book_history,
     )
 
 
