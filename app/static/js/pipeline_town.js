@@ -511,99 +511,99 @@
     return "#" + [r, g, b].map(function (v) { return v.toString(16).padStart(2, "0"); }).join("");
   }
 
+  // A large open field, not a city grid of blocks -- this used to lay
+  // out a 4x3 grid of blocks each with 1-2 hollow buildings, separated
+  // by narrow streets. That gave straight-line steering (see
+  // steerToward/applyMovement -- ordinary wandering and seeking a
+  // nearby character never pathfind, only the long spawn->park walk
+  // does, via findGridPath) constant walls to bounce off, so two
+  // characters who'd "noticed" each other within NOTICE_RADIUS often
+  // couldn't actually close the distance: confirmed live -- characters
+  // ended up scattered near separate buildings instead of ever
+  // reaching each other. Removing almost all of the interior obstacles
+  // is the actual fix, not a bigger NOTICE_RADIUS or a smarter seek --
+  // with nothing to bounce off of, direct steering reliably closes the
+  // gap. A thin strip of landmark buildings stays along the top edge
+  // purely as backdrop/scenery (and somewhere for the idle "wander
+  // into a building" behavior to occasionally do something), well
+  // outside the open field beneath it, so Production Town still reads
+  // as a place and not an empty rectangle.
   function buildCity(bounds) {
     var x0 = bounds[0], y0 = bounds[1], x1 = bounds[2], y1 = bounds[3];
-    var cols = 4, rows = 3;
-    var streetWidth = 26;
-    var totalW = x1 - x0, totalH = y1 - y0;
-    var blockW = (totalW - streetWidth * (cols - 1)) / cols;
-    var blockH = (totalH - streetWidth * (rows - 1)) / rows;
 
-    var blocks = [];
-    for (var r = 0; r < rows; r++) {
-      for (var c = 0; c < cols; c++) {
-        blocks.push({
-          x: x0 + c * (blockW + streetWidth),
-          y: y0 + r * (blockH + streetWidth),
-          w: blockW,
-          h: blockH,
-        });
-      }
-    }
+    var skylineDepth = 60; // buildings + their own margin live in this band only
+    var fieldMargin = 10;
+    var park = {
+      x: x0 + fieldMargin,
+      y: y0 + skylineDepth,
+      w: (x1 - x0) - fieldMargin * 2,
+      h: (y1 - y0) - skylineDepth - fieldMargin,
+    };
 
-    var parkIndex = Math.floor(rows / 2) * cols + Math.floor(cols / 2);
-    var park = blocks[parkIndex];
     var trees = [];
+    var treeCount = 22;
+    for (var t = 0; t < treeCount; t++) {
+      trees.push({
+        x: park.x + 10 + Math.random() * (park.w - 20),
+        y: park.y + 10 + Math.random() * (park.h - 20),
+        r: 4 + Math.random() * 3,
+      });
+    }
+    // Mottled grass texture -- irregular patches of a slightly
+    // different green so the field reads as grass, not a flat green
+    // rectangle. Density scaled up from the old single-block park to
+    // cover the now much larger field at the same visual texture.
     var grassPatches = [];
-    if (park) {
-      var treeCount = 6;
-      for (var t = 0; t < treeCount; t++) {
-        trees.push({
-          x: park.x + 10 + Math.random() * (park.w - 20),
-          y: park.y + 10 + Math.random() * (park.h - 20),
-          r: 4 + Math.random() * 3,
-        });
-      }
-      // Mottled grass texture -- irregular patches of a slightly
-      // different green so the park reads as grass, not a flat green
-      // rectangle.
-      for (var g = 0; g < 40; g++) {
-        grassPatches.push({
-          x: park.x + Math.random() * park.w,
-          y: park.y + Math.random() * park.h,
-          r: 3 + Math.random() * 5,
-          lighter: Math.random() < 0.5,
-        });
-      }
+    for (var g = 0; g < 220; g++) {
+      grassPatches.push({
+        x: park.x + Math.random() * park.w,
+        y: park.y + Math.random() * park.h,
+        r: 3 + Math.random() * 5,
+        lighter: Math.random() < 0.5,
+      });
     }
 
+    // A handful of landmark buildings in a single row along the top
+    // edge -- every door faces "down" into the open field below, since
+    // that's the only direction that's ever an actual walkable area
+    // from this row.
     var buildings = [];
-    blocks.forEach(function (block, i) {
-      if (i === parkIndex) return;
-      var row = Math.floor(i / cols);
-      // Every block row has a real street corridor above it (the gap
-      // to the previous row) *except* row 0, and a real street corridor
-      // below it *except* the last row -- since a building's door sits
-      // on the block's own top/bottom margin, placing it on the edge
-      // that faces the map's outer boundary instead of an actual street
-      // would make it open onto nothing. Bottom-row blocks flip their
-      // door to the top edge; every other row keeps the bottom edge
-      // (which is always safe here since only the very last row lacks a
-      // street below it).
-      var doorOnTop = row === rows - 1;
+    var buildingCount = 5;
+    var gap = 16;
+    var totalW = x1 - x0;
+    var subW = (totalW - gap * (buildingCount + 1)) / buildingCount;
+    for (var k = 0; k < buildingCount; k++) {
+      var bw = Math.max(20, subW * (0.7 + Math.random() * 0.3));
+      var bh = 26 + Math.random() * 14;
+      var bx = x0 + gap + k * (subW + gap);
+      var by = y0 + 4;
+      var doorWidth = Math.min(14, Math.max(8, bw * 0.3));
+      var material = pick(MATERIALS);
+      buildings.push({
+        x: bx,
+        y: by,
+        w: bw,
+        h: bh,
+        color: material.wall,
+        roofColor: material.roof,
+        texture: material.texture,
+        windowCols: Math.max(1, Math.floor(bw / 12)),
+        windowRows: Math.max(1, Math.floor(bh / 12)),
+        door: {
+          x: bx + bw / 2 - doorWidth / 2,
+          y: by + bh - 2,
+          w: doorWidth,
+          side: "bottom",
+        },
+      });
+    }
 
-      var count = 1 + Math.floor(Math.random() * 2);
-      var gap = 6;
-      var subW = (block.w - gap * (count + 1)) / count;
-      for (var k = 0; k < count; k++) {
-        var margin = 4 + Math.random() * 6;
-        var bw = Math.max(14, subW);
-        var bh = Math.max(14, block.h - margin * 2);
-        var bx = block.x + gap + k * (subW + gap);
-        var by = block.y + margin;
-        var doorWidth = Math.min(14, Math.max(8, bw * 0.3));
-        var material = pick(MATERIALS);
-        buildings.push({
-          x: bx,
-          y: by,
-          w: bw,
-          h: bh,
-          color: material.wall,
-          roofColor: material.roof,
-          texture: material.texture,
-          windowCols: Math.max(1, Math.floor(bw / 12)),
-          windowRows: Math.max(1, Math.floor(bh / 12)),
-          door: {
-            x: bx + bw / 2 - doorWidth / 2,
-            y: doorOnTop ? by : by + bh - 2,
-            w: doorWidth,
-            side: doorOnTop ? "top" : "bottom",
-          },
-        });
-      }
-    });
+    // `blocks` still exists purely for drawCity's background-tint pass
+    // (see its own comment) -- one strip behind the skyline row, none
+    // of the field itself, since the field is drawn as `park` instead.
+    var blocks = [{ x: x0, y: y0, w: x1 - x0, h: skylineDepth }];
 
-    return { blocks: blocks, buildings: buildings, park: park, parkIndex: parkIndex, trees: trees, grassPatches: grassPatches, bounds: bounds };
+    return { blocks: blocks, buildings: buildings, park: park, parkIndex: 0, trees: trees, grassPatches: grassPatches, bounds: bounds };
   }
 
   // Buildings are hollow, not solid: only a thin wall band around each
