@@ -534,7 +534,7 @@ html.js-reveal .reveal-up.is-visible {
 
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
   gap: 1rem;
   margin: 1.5rem 0;
 }
@@ -565,12 +565,24 @@ html.js-reveal .reveal-up.is-visible {
 }
 
 .stat-tile .value {
-  font-size: 1.9rem;
+  font-size: 1.55rem;
   font-weight: 600;
   line-height: 1.2;
-  /* Long values (a wide PV, a scenario PnL) shrink the tile rather than
-     punching out through its side. */
-  overflow-wrap: anywhere;
+  /* `anywhere` used to be here to stop a long value (a wide PV, a
+     scenario PnL) from punching out through the tile's side -- but for
+     a plain digit string with no natural break point, "anywhere" means
+     literally any character boundary, so it was splitting numbers
+     mid-digit ("$375" / "6570" / ".57") instead of wrapping at a
+     sensible point, which reads as broken rather than merely long.
+     A smaller font plus a slightly wider minimum tile (see .stat-grid)
+     fits the overwhelming majority of real values on one line;
+     genuinely extreme ones (see risk_report.html's money formatting,
+     which abbreviates to e.g. "$3.76M" past a threshold) are handled by
+     not producing an unreasonably long string in the first place,
+     rather than by chopping whatever string shows up -- so it's safe to
+     fall back to a normal wrap instead of forcing an ugly one. */
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .stat-tile .label {

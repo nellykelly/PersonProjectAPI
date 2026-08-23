@@ -45,6 +45,10 @@ def create_app(config_name: str | None = None) -> Flask:
 
     register_request_hooks(app)
 
+    from app.template_filters import register_filters
+
+    register_filters(app)
+
     _register_blueprints(app)
 
     @app.before_request

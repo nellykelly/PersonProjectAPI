@@ -96,11 +96,11 @@
         average of percentages isn't a meaningful return.
     </p>
     <div class="stat-grid">
-        <div class="stat-tile" tabindex="0" data-tooltip="Total value across every row.">
-            <div class="value mono">${{ "%.2f"|format(totals.pv) }}</div><div class="label">Net PV</div>
+        <div class="stat-tile" tabindex="0" data-tooltip="Total value across every row. Full precision is in the table below -- this is rounded/abbreviated past $1,000 to actually fit the tile.">
+            <div class="value mono">{{ totals.pv|money }}</div><div class="label">Net PV</div>
         </div>
-        <div class="stat-tile" tabindex="0" data-tooltip="Total profit and loss across every row.">
-            <div class="value mono {{ 'pnl-positive' if totals.pnl >= 0 else 'pnl-negative' }}">${{ "%.2f"|format(totals.pnl) }}</div>
+        <div class="stat-tile" tabindex="0" data-tooltip="Total profit and loss across every row. Full precision is in the table below -- this is rounded/abbreviated past $1,000 to actually fit the tile.">
+            <div class="value mono {{ 'pnl-positive' if totals.pnl >= 0 else 'pnl-negative' }}">{{ totals.pnl|money }}</div>
             <div class="label">Net PnL</div>
         </div>
         <div class="stat-tile" tabindex="0" data-tooltip="Net PnL over the total cost of opening every row.">
@@ -119,7 +119,7 @@
             <div class="value mono">{{ "%.2f"|format(totals.vega) }}</div><div class="label">Net Vega</div>
         </div>
         <div class="stat-tile" tabindex="0" data-tooltip="Net dollars gained per one percentage point rise in rates.">
-            <div class="value mono">{{ "%.4f"|format(totals.ir_delta) }}</div><div class="label">Net IR Delta</div>
+            <div class="value mono">{{ "%.2f"|format(totals.ir_delta) }}</div><div class="label">Net IR Delta</div>
         </div>
     </div>
 
