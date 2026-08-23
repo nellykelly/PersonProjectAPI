@@ -529,3 +529,15 @@ def test_api_instrument_returns_its_legs(client, db, monkeypatch):
     data = resp.get_json()
     assert data["instrument"]["code"] == code
     assert any(l["id"] == leg.id for l in data["legs"])
+
+
+def test_all_positions_page_loads_the_js_that_powers_its_own_button(client, db):
+    # The "Run risk on the whole book" button is wired up entirely by
+    # trading.js (initBookRiskPanel) -- a page that renders the button
+    # but forgets to include the script it depends on looks fine to the
+    # eye and to a plain route-loads test, but the button silently does
+    # nothing when clicked. Caught exactly this way once already.
+    resp = client.get("/projects/trading-simulator/strategies")
+    assert resp.status_code == 200
+    assert b'src="/static/js/trading.js"' in resp.data
+    assert b'id="book-run-risk"' in resp.data
