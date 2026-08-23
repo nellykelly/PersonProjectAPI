@@ -5,7 +5,7 @@ from app.config import PIPELINE_STAGE_INFO, PRODUCTION_TOWN_BOUNDS
 from app.extensions import db, limiter, socketio
 from app.models import PIPELINE_STAGES, Character
 from app.services import analytics, pipeline, queue, validators, world_cache
-from app.services.validators import LastNameCollision, ValidationError
+from app.services.validators import LastNameCollision
 
 RECENT_RUNS_LIMIT = 20
 
@@ -49,7 +49,11 @@ def index():
         body_type_options=validators.BODY_TYPE_OPTIONS,
         hand_type_options=validators.HAND_TYPE_OPTIONS,
         icebreaker_questions=validators.FIXED_ICEBREAKER_QUESTIONS,
-        max_icebreaker_answer_length=validators.MAX_ICEBREAKER_ANSWER_LENGTH,
+        # The *raw storage* caps, not the validated limits -- the form
+        # deliberately lets an over-limit value be typed so it fails
+        # visibly at the Sanitize stage instead of being unenterable.
+        max_raw_name_part_length=validators.MAX_RAW_NAME_PART_LENGTH,
+        max_raw_icebreaker_answer_length=validators.MAX_RAW_ICEBREAKER_ANSWER_LENGTH,
         stage_info=PIPELINE_STAGE_INFO,
         stage_order=PIPELINE_STAGES,
         recent_runs=_recent_pipeline_snapshot(),
@@ -89,8 +93,15 @@ def join():
         for question in validators.FIXED_ICEBREAKER_QUESTIONS
     }
 
+    # No content validation here, deliberately -- the submission is stored
+    # as-typed and every check happens inside the pipeline stage that owns
+    # it (see validators.prepare_join_submission for the full reasoning).
+    # A bad name doesn't cancel the run before it starts; it produces a run
+    # that visibly fails at Sanitize / Security Scan / Test:Profanity, and
+    # a failed stage stops the pipeline there so the character never goes
+    # live (see pipeline.run_pipeline).
     try:
-        first, last, appearance, head_type, body_type, hand_type, clean_answers = validators.validate_join_request(
+        first, last, appearance, head_type, body_type, hand_type, answers = validators.prepare_join_submission(
             request.form.get("first_name"),
             request.form.get("last_name"),
             request.form.get("appearance_id"),
@@ -101,6 +112,8 @@ def join():
             confirm_last_name_collision=confirm,
         )
     except LastNameCollision as collision:
+        # Not a rejection -- a confirm prompt. The visitor answering "yes"
+        # re-submits with confirm_last_name_collision=1 and proceeds.
         return jsonify(
             {
                 "ok": False,
@@ -108,8 +121,6 @@ def join():
                 "message": str(collision) + " Continue anyway?",
             }
         )
-    except ValidationError as exc:
-        return jsonify({"ok": False, "needs_confirmation": False, "message": str(exc)}), 400
 
     character = Character(
         session_id=_session_id(),
@@ -121,7 +132,7 @@ def join():
         hand_type_id=hand_type,
         status="pending",
         **{
-            question["field_name"]: clean_answers[question["id"]]
+            question["field_name"]: answers[question["id"]]
             for question in validators.FIXED_ICEBREAKER_QUESTIONS
         },
     )

@@ -289,69 +289,114 @@ def test_validate_hand_type_id_rejects_unknown_option():
         validators.validate_hand_type_id("not-a-real-hand")
 
 
-# ---------- validate_join_request (the full chain) ----------
+# ---------- truncate_for_storage ----------
+
+
+def test_truncate_for_storage_strips_and_caps():
+    assert validators.truncate_for_storage("  Nelson  ", 40) == "Nelson"
+    assert validators.truncate_for_storage("x" * 200, 40) == "x" * 40
+
+
+def test_truncate_for_storage_turns_none_into_an_empty_string():
+    # Not None: the columns are NOT NULL, and a missing field has to reach
+    # the Sanitize stage as something that stage can fail on, rather than
+    # blowing up the INSERT before any pipeline run exists.
+    assert validators.truncate_for_storage(None, 40) == ""
+
+
+def test_truncate_for_storage_never_makes_an_over_long_value_valid():
+    # The reason the raw caps sit above the validated limits: a 500-char
+    # name truncates to 40, which sanitize_name_part still rejects for
+    # being over 30. If the cap were 30 this would silently pass.
+    stored = validators.truncate_for_storage("N" * 500, validators.MAX_RAW_NAME_PART_LENGTH)
+    with pytest.raises(ValidationError):
+        validators.sanitize_name_part(stored, "First name")
+
+
+# ---------- prepare_join_submission (storage only, not validation) ----------
 
 DEFAULT_TYPES = ("round_tan", "regular", "bare")
 
 
-def test_validate_join_request_success_with_no_collisions(app, db):
+def test_prepare_join_submission_success_with_no_collisions(app, db):
     with app.app_context():
-        result = validators.validate_join_request("Nelson", "Koskela", "sky", *DEFAULT_TYPES, ANSWERS)
+        result = validators.prepare_join_submission("Nelson", "Koskela", "sky", *DEFAULT_TYPES, ANSWERS)
         assert result == ("Nelson", "Koskela", "sky", "round_tan", "regular", "bare", ANSWERS)
 
 
-def test_validate_join_request_raises_last_name_collision_by_default(app, db):
+def test_prepare_join_submission_raises_last_name_collision_by_default(app, db):
     with app.app_context():
         _make_character(db, "Alice", "Koskela")
         with pytest.raises(LastNameCollision):
-            validators.validate_join_request("Nelson", "Koskela", "sky", *DEFAULT_TYPES, ANSWERS)
+            validators.prepare_join_submission("Nelson", "Koskela", "sky", *DEFAULT_TYPES, ANSWERS)
 
 
-def test_validate_join_request_confirm_bypasses_last_name_collision(app, db):
+def test_prepare_join_submission_confirm_bypasses_last_name_collision(app, db):
     with app.app_context():
         _make_character(db, "Alice", "Koskela")
-        result = validators.validate_join_request(
+        result = validators.prepare_join_submission(
             "Nelson", "Koskela", "sky", *DEFAULT_TYPES, ANSWERS, confirm_last_name_collision=True
         )
         assert result == ("Nelson", "Koskela", "sky", "round_tan", "regular", "bare", ANSWERS)
 
 
-def test_validate_join_request_does_not_block_a_full_name_collision(app, db):
+def test_prepare_join_submission_does_not_block_a_full_name_collision(app, db):
     # Deliberate: uniqueness is checked later, by the pipeline's own
     # Test:Uniqueness stage (see test_pipeline.py), not at submission
     # time -- two visitors submitting the same name should both be
     # accepted here and race through the pipeline instead.
     with app.app_context():
         _make_character(db, "Nelson", "Koskela")
-        result = validators.validate_join_request(
+        result = validators.prepare_join_submission(
             "Nelson", "Koskela", "sky", *DEFAULT_TYPES, ANSWERS, confirm_last_name_collision=True
         )
         assert result == ("Nelson", "Koskela", "sky", "round_tan", "regular", "bare", ANSWERS)
 
 
-def test_validate_join_request_rejects_injection_in_icebreaker_answer(app, db):
+# Every one of the following used to raise here, at submission time, which
+# meant the pipeline never ran at all for a bad submission. They now pass
+# straight through to storage on purpose -- the stage that owns each rule
+# is what fails, visibly, once the run starts. The matching
+# "...and then fails at <stage>" tests live in test_pipeline_world.py.
+
+
+def test_prepare_join_submission_passes_injection_through_to_the_pipeline(app, db):
     with app.app_context():
-        with pytest.raises(ValidationError):
-            validators.validate_join_request(
-                "Nelson", "Koskela", "sky", *DEFAULT_TYPES, _answers(movie="<script>alert(1)</script>")
-            )
+        result = validators.prepare_join_submission(
+            "Nelson", "Koskela", "sky", *DEFAULT_TYPES, _answers(movie="<script>alert(1)</script>")
+        )
+        assert result[6]["movie"] == "<script>alert(1)</script>"
 
 
-def test_validate_join_request_rejects_missing_icebreaker_answer(app, db):
+def test_prepare_join_submission_passes_a_missing_answer_through_to_the_pipeline(app, db):
     with app.app_context():
-        with pytest.raises(ValidationError):
-            validators.validate_join_request("Nelson", "Koskela", "sky", *DEFAULT_TYPES, _answers(food=""))
+        result = validators.prepare_join_submission(
+            "Nelson", "Koskela", "sky", *DEFAULT_TYPES, _answers(food="")
+        )
+        assert result[6]["food"] == ""
 
 
-def test_validate_join_request_rejects_profanity_in_icebreaker_answer(app, db):
+def test_prepare_join_submission_passes_profanity_through_to_the_pipeline(app, db):
     with app.app_context():
-        with pytest.raises(ValidationError, match="disallowed"):
-            validators.validate_join_request(
-                "Nelson", "Koskela", "sky", *DEFAULT_TYPES, _answers(food="damn good tacos")
-            )
+        result = validators.prepare_join_submission(
+            "Nelson", "Koskela", "sky", *DEFAULT_TYPES, _answers(food="damn good tacos")
+        )
+        assert result[6]["food"] == "damn good tacos"
 
 
-def test_validate_join_request_rejects_invalid_head_type(app, db):
+def test_prepare_join_submission_passes_an_invalid_head_type_through_to_the_pipeline(app, db):
     with app.app_context():
-        with pytest.raises(ValidationError):
-            validators.validate_join_request("Nelson", "Koskela", "sky", "not-real", "regular", "bare", ANSWERS)
+        result = validators.prepare_join_submission(
+            "Nelson", "Koskela", "sky", "not-real", "regular", "bare", ANSWERS
+        )
+        assert result[3] == "not-real"
+
+
+def test_prepare_join_submission_truncates_to_storage_limits(app, db):
+    with app.app_context():
+        result = validators.prepare_join_submission(
+            "N" * 500, "K" * 500, "sky", *DEFAULT_TYPES, _answers(food="f" * 500)
+        )
+        assert result[0] == "N" * validators.MAX_RAW_NAME_PART_LENGTH
+        assert result[1] == "K" * validators.MAX_RAW_NAME_PART_LENGTH
+        assert result[6]["food"] == "f" * validators.MAX_RAW_ICEBREAKER_ANSWER_LENGTH

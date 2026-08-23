@@ -35,15 +35,24 @@
         <h2>Join the world</h2>
     </div>
 
-    <form id="join-form">
+    {# No `required` attributes and no client-side checks anywhere in this
+       form, deliberately: the browser blocking a submit is one more way a
+       submission gets cancelled before any pipeline run exists, and every
+       rule here belongs to the stage that enforces it (a blank field is a
+       real Sanitize failure the visitor gets to watch happen). `maxlength`
+       is set to the raw *storage* cap rather than the validated limit for
+       the same reason -- an over-long entry should be typeable, and then
+       fail visibly at Sanitize, instead of being silently unenterable.
+       See app/services/validators.py: prepare_join_submission. #}
+    <form id="join-form" novalidate>
         <div class="fields">
             <div class="field half">
                 <label for="first_name">First name</label>
-                <input type="text" id="first_name" name="first_name" maxlength="30" required>
+                <input type="text" id="first_name" name="first_name" maxlength="{{ max_raw_name_part_length }}">
             </div>
             <div class="field half">
                 <label for="last_name">Last name</label>
-                <input type="text" id="last_name" name="last_name" maxlength="30" required>
+                <input type="text" id="last_name" name="last_name" maxlength="{{ max_raw_name_part_length }}">
             </div>
         </div>
 
@@ -95,8 +104,8 @@
             <div class="field half">
                 <label for="icebreaker_answer_{{ question.id }}">{{ question.question }}</label>
                 <textarea id="icebreaker_answer_{{ question.id }}" name="icebreaker_answer_{{ question.id }}" rows="2"
-                          maxlength="{{ max_icebreaker_answer_length }}"
-                          placeholder="e.g. {{ question.example }}" required></textarea>
+                          maxlength="{{ max_raw_icebreaker_answer_length }}"
+                          placeholder="e.g. {{ question.example }}"></textarea>
             </div>
             {% endfor %}
         </div>
@@ -215,7 +224,6 @@
 <script>
   window.PIPELINE_STAGE_ORDER = {{ stage_order | tojson }};
   window.PIPELINE_STAGE_INFO = {{ stage_info | tojson }};
-  window.ICEBREAKER_QUESTION_IDS = {{ icebreaker_questions | map(attribute="id") | list | tojson }};
 </script>
 <script src="{{ url_for('static', filename='js/pipeline_tracker.js') }}"></script>
 {% endblock %}

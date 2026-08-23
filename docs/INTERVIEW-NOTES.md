@@ -15,12 +15,23 @@ move through a real, queued CI/CD-shaped pipeline before it's allowed to exist i
 shared world. Worth being able to walk through this end to end, not just name-drop "there's
 a pipeline":
 
-1. **Join request lands, gets a light upfront check, and is enqueued -- not processed
-   inline.** `POST /projects/pipeline-world/join` runs `validators.validate_join_request`
-   for immediate UX feedback (format, injection pattern, profanity -- deliberately *not*
-   full-name uniqueness, see step 3), creates a `Character` row with `status="pending"`,
-   and enqueues an RQ job onto the `pipeline_world` Redis queue. The HTTP response comes
-   back immediately; nothing about the actual pipeline has run yet.
+1. **Join request lands and is enqueued unchecked -- nothing validates it first.**
+   `POST /projects/pipeline-world/join` calls `validators.prepare_join_submission`, which
+   only strips each field and truncates it to its column width; it never rejects on
+   content. The `Character` row is stored exactly as typed with `status="pending"`, an RQ
+   job goes onto the `pipeline_world` Redis queue, and the HTTP response returns
+   immediately with no pipeline work done yet.
+
+   This is worth calling out as a *design correction*, because the first version did the
+   obvious thing and validated at the route: same charset, injection, and profanity
+   checks, run upfront so an obviously-bad submission never became a job. It looked
+   sensible and it quietly broke the product -- a visitor who typed a blocked word got a
+   red message under the form and **no pipeline run at all**, so the single most
+   interesting thing the project does was the one thing nobody could ever watch happen.
+   Now every rule lives in exactly one place, the stage that owns it, and bad input
+   produces a run that visibly fails. The general lesson: "fail fast" and "fail visibly"
+   are not the same goal, and validating early can delete the observability that was the
+   whole point of building the thing.
 
 2. **A worker -- a separate process/container from the web server -- picks up the job and
    runs the real 7-stage pipeline** (`app/services/pipeline.py`): Sanitize -> Security
@@ -35,12 +46,14 @@ a pipeline":
      stays diagnosable after the fact instead of only in the moment it happened;
    - emits a `pass`/`fail` event over the same socket.
 
-3. **A failure stops the pipeline right there, visibly, and the character never reaches
-   Production Town.** Uniqueness in particular is checked *only* in this stage, not
-   upfront at submission -- so two visitors submitting the same name back-to-back both
-   get enqueued and genuinely race through the pipeline; whichever one loses the race
-   fails at Test: Uniqueness with the real reason shown, instead of being silently turned
-   away before it even started.
+3. **A failure stops the pipeline right there, and the character never reaches Production
+   Town.** No later stage runs, so no later `PipelineRun` row exists -- the tracker table
+   renders those as "not reached", and a PASS can never appear to the right of a FAIL.
+   The character is left `failed` with the reason attached. Uniqueness is a good example
+   of why the checks belong here rather than at submission: two visitors submitting the
+   same name back-to-back both get enqueued and genuinely race, and whichever loses fails
+   at Test: Uniqueness with the real reason shown, rather than being turned away before
+   starting.
 
 4. **Deploy is the one stage that actually changes anything -- Verify is a read-after-
    write check, not a rubber stamp.** Deploy assigns a world position and flips

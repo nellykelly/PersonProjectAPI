@@ -53,12 +53,17 @@ ENUMERABLE_COLUMNS = [
 # rather than an enum. The number is the longest value that can get past
 # whatever guards the column.
 BOUNDED_COLUMNS = [
-    (models.Character, "first_name", validators.MAX_NAME_PART_LENGTH),
-    (models.Character, "last_name", validators.MAX_NAME_PART_LENGTH),
-    (models.Character, "icebreaker_answer_food", validators.MAX_ICEBREAKER_ANSWER_LENGTH),
-    (models.Character, "icebreaker_answer_movie", validators.MAX_ICEBREAKER_ANSWER_LENGTH),
-    (models.Character, "icebreaker_answer_hobby", validators.MAX_ICEBREAKER_ANSWER_LENGTH),
-    (models.Character, "icebreaker_answer_weekend", validators.MAX_ICEBREAKER_ANSWER_LENGTH),
+    # The *raw* caps, not the validated ones: a join submission is stored
+    # before any stage has checked it, so what the app can actually write
+    # here is whatever truncate_for_storage produced, which is wider than
+    # what sanitize_name_part/sanitize_icebreaker_answer will later
+    # accept. See validators.prepare_join_submission.
+    (models.Character, "first_name", validators.MAX_RAW_NAME_PART_LENGTH),
+    (models.Character, "last_name", validators.MAX_RAW_NAME_PART_LENGTH),
+    (models.Character, "icebreaker_answer_food", validators.MAX_RAW_ICEBREAKER_ANSWER_LENGTH),
+    (models.Character, "icebreaker_answer_movie", validators.MAX_RAW_ICEBREAKER_ANSWER_LENGTH),
+    (models.Character, "icebreaker_answer_hobby", validators.MAX_RAW_ICEBREAKER_ANSWER_LENGTH),
+    (models.Character, "icebreaker_answer_weekend", validators.MAX_RAW_ICEBREAKER_ANSWER_LENGTH),
     # session_id is a str(uuid4()), which is always exactly 36 characters.
     (models.Character, "session_id", 36),
     (models.Strategy, "session_id", 36),
@@ -104,6 +109,28 @@ def test_bounded_column_fits_its_validator_limit(model, column_name, max_input_l
         f"up to {max_input_length} chars. Postgres will reject the longest "
         f"values even though SQLite accepts them."
     )
+
+
+@pytest.mark.parametrize(
+    "column_name",
+    ["appearance_id", "head_type_id", "body_type_id", "hand_type_id"],
+)
+def test_customization_id_column_matches_its_raw_storage_cap(column_name):
+    """These columns hold a raw, unvalidated id straight off the form
+    (an invalid one is the Sanitize stage's job to reject, not the
+    route's), truncated to MAX_RAW_TYPE_ID_LENGTH on the way in. If the
+    constant and the column ever drift apart, truncation stops matching
+    what the column can hold and Postgres rejects the write."""
+    assert _column_length(models.Character, column_name) == validators.MAX_RAW_TYPE_ID_LENGTH
+
+
+def test_raw_storage_caps_leave_headroom_over_the_validated_limits():
+    """The whole point of the raw caps: a submission that's over the real
+    limit has to still *be* over it after truncation, or Sanitize would
+    approve a value the visitor never submitted (see
+    validators.truncate_for_storage)."""
+    assert validators.MAX_RAW_NAME_PART_LENGTH > validators.MAX_NAME_PART_LENGTH
+    assert validators.MAX_RAW_ICEBREAKER_ANSWER_LENGTH > validators.MAX_ICEBREAKER_ANSWER_LENGTH
 
 
 def test_every_string_column_is_covered_by_this_file():

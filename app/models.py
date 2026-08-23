@@ -476,6 +476,10 @@ class Character(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     session_id = db.Column(db.String(36), nullable=False, index=True)
 
+    # 40, not the 30 sanitize_name_part enforces -- same raw-storage
+    # headroom the icebreaker answer columns below explain at length:
+    # these hold what the visitor actually submitted, before any stage
+    # has checked it.
     first_name = db.Column(db.String(40), nullable=False)
     last_name = db.Column(db.String(40), nullable=False)
 
@@ -502,10 +506,22 @@ class Character(db.Model):
     # same Sanitize -> Security Scan -> Test:Profanity stages the name
     # does. See app/services/validators.py's module docstring for the
     # full reasoning.
-    icebreaker_answer_food = db.Column(db.String(80), nullable=True)
-    icebreaker_answer_movie = db.Column(db.String(80), nullable=True)
-    icebreaker_answer_hobby = db.Column(db.String(80), nullable=True)
-    icebreaker_answer_weekend = db.Column(db.String(80), nullable=True)
+    #
+    # 120, not the 80 that sanitize_icebreaker_answer actually enforces:
+    # these columns hold the visitor's *raw*, not-yet-checked answer,
+    # because the row has to exist before the pipeline can run a stage
+    # against it (see validators.prepare_join_submission). A column
+    # exactly as wide as the limit would mean an over-long answer got
+    # truncated down to a passing 80 characters on the way in, and
+    # Sanitize would approve something the visitor never submitted --
+    # the headroom is what lets an over-limit answer still *look*
+    # over-limit when Sanitize measures it. Kept in step with
+    # validators.MAX_RAW_ICEBREAKER_ANSWER_LENGTH, which is what the
+    # truncation actually uses.
+    icebreaker_answer_food = db.Column(db.String(120), nullable=True)
+    icebreaker_answer_movie = db.Column(db.String(120), nullable=True)
+    icebreaker_answer_hobby = db.Column(db.String(120), nullable=True)
+    icebreaker_answer_weekend = db.Column(db.String(120), nullable=True)
 
     # Longest in-flight value is "testing_uniqueness" (18 chars) -- see
     # CHARACTER_STATUSES above.

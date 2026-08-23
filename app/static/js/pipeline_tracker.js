@@ -240,8 +240,6 @@
     });
   }
 
-  var ICEBREAKER_QUESTION_IDS = window.ICEBREAKER_QUESTION_IDS || ["food", "movie", "hobby", "weekend"];
-
   // Each picker group is scoped to its own container -- all four groups
   // reuse the same ".appearance-swatch" button style, so scoping the
   // selector to "#<container> .appearance-swatch" keeps clicking a head
@@ -274,19 +272,13 @@
 
     form.addEventListener("submit", function (event) {
       event.preventDefault();
-      for (var g = 0; g < PICKER_GROUPS.length; g++) {
-        if (!document.getElementById(PICKER_GROUPS[g].hiddenInputId).value) {
-          showJoinMessage("Please make a pick for every customization option.", "error");
-          return;
-        }
-      }
-      for (var i = 0; i < ICEBREAKER_QUESTION_IDS.length; i++) {
-        var field = document.getElementById("icebreaker_answer_" + ICEBREAKER_QUESTION_IDS[i]);
-        if (field && !field.value.trim()) {
-          showJoinMessage("Please answer every icebreaker question.", "error");
-          return;
-        }
-      }
+      // No client-side completeness/content check before submitting, on
+      // purpose -- this used to bail out early on a missing pick or a
+      // blank answer, which cancelled the submission before any pipeline
+      // run existed. Every rule now belongs to the stage that enforces
+      // it: a blank answer is a real Sanitize failure ("... is required"),
+      // and the visitor gets to watch it fail there rather than being
+      // told off by the form. See validators.prepare_join_submission.
 
       // Not `form.action` -- an unset action attribute reports the
       // *current page URL*, not empty/falsy, so a `form.action ||

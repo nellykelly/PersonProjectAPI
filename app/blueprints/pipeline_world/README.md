@@ -129,11 +129,23 @@ along one edge purely as backdrop.
 - **Test: Profanity stage**: `check_no_profanity` -- a small **hashed** blocklist
   (hashed rather than a plaintext wordlist, so the literal words aren't sitting in a
   public repo), checked against the name and every icebreaker answer.
-- **Not checked upfront, on purpose**: `validate_join_request` (the join form's upfront
-  gate) runs format/injection/profanity checks for good UX, but deliberately does **not**
-  call `check_full_name_collision` -- uniqueness is the pipeline's own Test: Uniqueness
-  stage's job, checked once the job actually runs, not before it's even enqueued. See
-  that function's docstring for the reasoning.
+- **Nothing is checked upfront, on purpose.** There is no validation gate in front of
+  the pipeline: `prepare_join_submission` only strips and truncates each field to its
+  column width, and the submission is stored exactly as typed. Every rule above is
+  enforced in exactly one place -- the stage that owns it. This is a deliberate change
+  from an earlier version that ran the same charset/injection/profanity checks at the
+  join route first: that version turned a blocked word into a red message under the form
+  and **no pipeline run at all**, which cancelled the one thing this project exists to
+  show. A submission that breaks a rule now produces a real run that visibly fails at
+  the responsible stage, in the live build log and the run table -- the same treatment
+  a uniqueness collision already got. The form carries no `required` attributes and no
+  client-side checks for the same reason.
+- **A failed stage ends the run.** `run_pipeline` stops at the first failure: no later
+  stage executes, no later `PipelineRun` row is written (the tracker renders those cells
+  as "not reached", never as a PASS sitting to the right of a FAIL), the character is
+  marked `failed` with the reason, and it never reaches Production Town. If Deploy has
+  already written `status='live'` by the time Verify fails, `_fail` un-lives it and
+  invalidates the world cache.
 - **Join-form-only, not a pipeline stage**: last-name collision is a separate,
   warn-and-confirm UX step ("A Koskela already exists -- continue anyway?") handled before
   a job is even enqueued -- it needs a human's yes/no, which doesn't fit an automated

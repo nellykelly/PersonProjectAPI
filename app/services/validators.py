@@ -31,6 +31,37 @@ from app.extensions import db
 
 MAX_NAME_PART_LENGTH = 30
 
+# ---------- raw storage limits (deliberately NOT validation) ----------
+#
+# A join submission is persisted *before* any content check runs, because
+# the pipeline is what does the checking and there has to be a row for a
+# pipeline run to be about (see prepare_join_submission). So these
+# columns hold genuinely unvalidated visitor text, and each limit below
+# has to sit *above* the length the matching sanitize_* function
+# enforces: truncating an over-long submission down to exactly the
+# allowed length would quietly turn a value Sanitize should reject into
+# one it accepts, and the stage would pass something nobody submitted.
+# Kept in step with the column widths in models.py: Character.
+MAX_RAW_NAME_PART_LENGTH = 40  # vs. MAX_NAME_PART_LENGTH (30)
+MAX_RAW_ICEBREAKER_ANSWER_LENGTH = 120  # vs. MAX_ICEBREAKER_ANSWER_LENGTH (80)
+# The customization ids are matched against fixed option lists, so
+# there's no length rule to leave headroom over -- anything that isn't
+# an exact known id fails validate_*_type_id no matter how long it is.
+# This is purely "make it fit the column instead of raising a database
+# error before the pipeline can run."
+MAX_RAW_TYPE_ID_LENGTH = 20
+
+
+def truncate_for_storage(raw: str | None, limit: int) -> str:
+    """Fits an unchecked submission into its column without rejecting it.
+
+    Not a validation step: it never raises, and (given the limits above)
+    it can never turn an invalid value into a valid one. `None` becomes
+    `""` so a missing field arrives at the Sanitize stage as an empty
+    value that stage can fail on, rather than as a NOT NULL database
+    error that would 500 before any pipeline run existed."""
+    return (raw or "").strip()[:limit]
+
 # Letters, spaces, hyphens, apostrophes only -- this whitelist alone
 # already rejects HTML/script tags and most SQL metacharacters (<, >,
 # ;, --, etc.). Apostrophe and hyphen are allowed because they're
@@ -330,7 +361,7 @@ def find_last_name_collision(last_name: str):
     )
 
 
-def validate_join_request(
+def prepare_join_submission(
     first_name: str | None,
     last_name: str | None,
     appearance_id: str | None,
@@ -340,62 +371,67 @@ def validate_join_request(
     icebreaker_answers: dict,
     confirm_last_name_collision: bool = False,
 ):
-    """Runs the full validation chain for a join submission. Returns the
-    cleaned (first_name, last_name, appearance_id, head_type_id,
-    body_type_id, hand_type_id, icebreaker_answers) tuple on success --
-    icebreaker_answers is a dict keyed by question id (see
-    FIXED_ICEBREAKER_QUESTIONS).
+    """Prepares a join submission for **storage**, not for validation.
 
-    Raises ValidationError for a hard failure (bad input, an injection
-    pattern, or profanity), or LastNameCollision if there's a last-name
-    match the visitor hasn't confirmed past yet (only raised when
-    confirm_last_name_collision is False).
+    Returns the (first_name, last_name, appearance_id, head_type_id,
+    body_type_id, hand_type_id, icebreaker_answers) tuple to persist --
+    every value only stripped and truncated to its column width (see
+    truncate_for_storage), never content-checked. icebreaker_answers is
+    a dict keyed by question id (see FIXED_ICEBREAKER_QUESTIONS).
 
-    Deliberately does **not** check full-name uniqueness here -- that's
-    the pipeline's own Test:Uniqueness stage's job, run later, once the
-    job actually executes (see pipeline.py's _test_uniqueness). Doing it
-    both here and there meant a duplicate name was rejected before a
-    visitor ever saw the pipeline run, which defeated the point of having
-    a real Test:Uniqueness stage: two visitors submitting the same name
-    at nearly the same time should both be accepted and *race* through
-    the pipeline, with the one that actually loses the race failing
-    visibly at Test:Uniqueness -- not silently turned away at the join
-    form. This upfront gate still runs the same format/injection/profanity
-    checks the pipeline's own stages run on their own afterward -- doing
-    those here too is just good UX (reject garbage before enqueueing a
-    job for it), not a substitute for the pipeline independently
-    re-verifying itself once the job actually runs. The icebreaker
-    *questions* are a fixed, identical set for every visitor (no
-    picking); each *answer* is genuinely free text -- a broader input
-    surface than name -- so every one of them goes through the same two
-    checks (injection scan, sanitize) plus profanity the name does, just
-    with its own charset (see sanitize_icebreaker_answer)."""
-    check_no_injection_patterns(first_name or "", "First name")
-    check_no_injection_patterns(last_name or "", "Last name")
-    for question in FIXED_ICEBREAKER_QUESTIONS:
-        check_no_injection_patterns(
-            icebreaker_answers.get(question["id"]) or "", f'"{question["question"]}" answer'
+    **Nothing here rejects a submission for its content, on purpose.**
+    This function used to do exactly that: it ran the same charset,
+    length, injection and profanity checks the pipeline's own stages
+    run, as an upfront "don't enqueue a job for obvious garbage" gate.
+    The problem was what that did to the actual product. A visitor who
+    typed a blocked word got a red error under the form and *no pipeline
+    run at all* -- the submission was cancelled before the thing this
+    entire project exists to show could start. The pipeline is the
+    point: a real submission that violates a real rule should be
+    watchable failing the stage that owns that rule, in the live build
+    log and the run table, exactly the way a uniqueness collision
+    already was. Checking first meant the most interesting case was the
+    one nobody could ever see happen.
+
+    So every content check now runs in exactly one place -- inside its
+    own stage (see pipeline.py) -- and a stage that fails ends the run
+    right there: no later stage runs, the character is marked `failed`,
+    and it never reaches Production Town.
+
+    The one thing still resolved here is the last-name collision confirm
+    (raises LastNameCollision when unconfirmed). That is not a rejection
+    and never cancels a run: it's a warn-and-continue prompt that needs
+    a human yes/no *before* there's anything to enqueue, and answering
+    yes proceeds normally. It has no pass/fail stage of its own
+    precisely because it isn't a pass/fail question -- see
+    find_last_name_collision."""
+    stored_first = truncate_for_storage(first_name, MAX_RAW_NAME_PART_LENGTH)
+    stored_last = truncate_for_storage(last_name, MAX_RAW_NAME_PART_LENGTH)
+    stored_appearance = truncate_for_storage(appearance_id, MAX_RAW_TYPE_ID_LENGTH)
+    stored_head_type = truncate_for_storage(head_type_id, MAX_RAW_TYPE_ID_LENGTH)
+    stored_body_type = truncate_for_storage(body_type_id, MAX_RAW_TYPE_ID_LENGTH)
+    stored_hand_type = truncate_for_storage(hand_type_id, MAX_RAW_TYPE_ID_LENGTH)
+    stored_answers = {
+        question["id"]: truncate_for_storage(
+            icebreaker_answers.get(question["id"]), MAX_RAW_ICEBREAKER_ANSWER_LENGTH
         )
-
-    clean_first = sanitize_name_part(first_name, "First name")
-    clean_last = sanitize_name_part(last_name, "Last name")
-    clean_appearance = validate_appearance_id(appearance_id)
-    clean_head_type = validate_head_type_id(head_type_id)
-    clean_body_type = validate_body_type_id(body_type_id)
-    clean_hand_type = validate_hand_type_id(hand_type_id)
-    clean_answers = sanitize_icebreaker_answers(icebreaker_answers)
-
-    check_no_profanity(clean_first, "First name")
-    check_no_profanity(clean_last, "Last name")
-    for question in FIXED_ICEBREAKER_QUESTIONS:
-        check_no_profanity(clean_answers[question["id"]], f'"{question["question"]}" answer')
+        for question in FIXED_ICEBREAKER_QUESTIONS
+    }
 
     if not confirm_last_name_collision:
-        collision = find_last_name_collision(clean_last)
+        collision = find_last_name_collision(stored_last)
         if collision is not None:
             raise LastNameCollision(collision)
 
-    return clean_first, clean_last, clean_appearance, clean_head_type, clean_body_type, clean_hand_type, clean_answers
+    return (
+        stored_first,
+        stored_last,
+        stored_appearance,
+        stored_head_type,
+        stored_body_type,
+        stored_hand_type,
+        stored_answers,
+    )
 
 
 # ---------- Timed-Squares: a short public leaderboard display name ----------
