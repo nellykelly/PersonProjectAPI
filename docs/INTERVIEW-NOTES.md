@@ -102,6 +102,29 @@ interview as *how* you catch bugs, not just that you can write code without them
   root-caused by checking `read_network_requests` and seeing the POST hit the page URL
   instead of `/join`.
 
+- **A narrow `except` clause let a crashed pipeline stage leave the world in an
+  inconsistent state, live, in production.** `pipeline.py`'s `_run_stage` only caught
+  `validators.ValidationError` around each stage's check function -- reasonable for the
+  *expected* failure modes (a duplicate name, a blocked word), but a stage can fail for
+  reasons that have nothing to do with the input being validated: here, almost certainly
+  the `worker` container getting killed mid-job by one of this same session's own
+  redeploys. Deploy had already written the character's `status = "live"`, but Verify --
+  the very next stage, whose only job is a read-after-write sanity check -- never got the
+  chance to run or fail cleanly, leaving a character genuinely live in Production Town
+  with no Verify `PipelineRun` row at all: not failed, not passed, just missing, which is
+  a state the UI had no way to render as an error because nothing had actually raised one
+  it was watching for. Found from a user-provided screenshot of the Pipeline Runs table
+  showing a blank Verify cell, not a crash log. Fixed with a broad `except Exception`
+  fallback around the same `_fail()` un-live path, so *any* unhandled exception at *any*
+  stage now fails loudly and visibly instead of leaving a half-finished row -- and the one
+  real character already affected was remediated directly in the production database
+  (after confirming the deploy genuinely had succeeded, an honest backfilled Verify
+  *pass*, not a punitive fail, since the character's data was actually fine -- only the
+  bookkeeping about it was missing). The general lesson: a `try/except` scoped to the
+  errors you expect is a correctness statement about the happy path, not a safety net --
+  the safety net is the catch-all at the orchestration boundary, and skipping it because
+  "that shouldn't happen" is exactly the case it exists for.
+
 - **Unhandled exceptions escaping a service boundary.** `edgar.py`'s HTTP calls used
   `requests` directly; any `requests.exceptions.*` (a timeout, a DNS failure, and in
   this specific sandbox, a local antivirus's TLS interception rejecting the connection)
@@ -369,3 +392,102 @@ exactly as designed. Worth remembering for any state machine: a verification scr
 skips the state transition and pokes at intermediate state directly can produce a
 failure that indicts the harness, not the code -- rerunning it through the real
 transition path is what tells you which one is actually wrong.
+
+---
+
+## 8. Taking it to production: real hosting, real bugs found only by shipping it
+
+The site is live at `nelsonkoskela.dev` on a Hetzner CX22 VPS -- Docker Compose running
+`web` (gunicorn), `worker` (RQ), `postgres`, `redis`, and `caddy` (reverse proxy + HTTPS)
+as five containers on one small box. A few things only became visible once the app was
+actually serving real traffic to the real internet, not `localhost`:
+
+- **A single-process, 8-thread gunicorn command was quietly bottlenecking every static
+  asset request through the same pool a live SSE connection can pin.** `Dockerfile` runs
+  `gunicorn -w 1 --worker-class gthread --threads 8` -- one process, deliberately, because
+  Flask-SocketIO's `threading` async_mode keeps a client's session in that one process's
+  memory, and a second gunicorn *process* would round-robin requests for the same
+  Socket.IO session across processes that don't share it. That's a correct, necessary
+  constraint for Pipeline World's live updates -- but the `Caddyfile` was proxying
+  *everything* to that same 8-thread pool, including the ~15-20 static CSS/JS/font/icon
+  requests one page load fires off, all competing with any other visitor's already-open
+  SSE stream (the live watchlist, the network sniffer) permanently occupying a thread for
+  as long as that tab stays open. Reported by the actual user as "the landing page holds
+  for ~4 seconds before I can scroll" -- reproducible every load, not just cold-cache.
+  Fixed by having Caddy's own `file_server` answer `/static/*` directly off a read-only
+  bind mount of `app/static`, bypassing the app process (and its thread limit) entirely
+  for anything that's just a file on disk. Good interview point: a resource limit that's
+  *correct* for the reason it exists (Socket.IO session affinity) can still be a bug
+  everywhere else that same pool gets used for unrelated traffic -- the fix isn't "raise
+  the limit," it's "stop routing traffic through it that never needed to be there."
+
+- **A defense-in-depth blocklist that was still just three placeholder words in
+  production.** `validators.py`'s hashed profanity blocklist (see section 3) was seeded
+  with `("damn", "hell", "crap")` -- explicitly labeled placeholders during development,
+  never swapped for a real wordlist before the site went live. A visitor named a
+  character "Fuck Fuck," it sailed through Test: Profanity, and went live in Production
+  Town. The mechanism itself was never the bug (the hashing, the stage wiring, the
+  hard-fail-and-never-reach-Production-Town path all worked exactly as designed and
+  tested) -- the *data* backing it was a demo, not a real check, and nothing about the
+  passing test suite could have caught that distinction, because the tests only ever
+  asserted the mechanism worked against whatever list was configured. Fixed by replacing
+  the placeholder tuple with an actual wordlist, then retroactively un-living the one
+  character that had gotten through: set `status = "failed"`, wrote a real `PipelineRun`
+  row recording *why* (`stage="test_profanity"`, a fail, with a reason), and invalidated
+  the world cache -- the same shape of fix as the crashed-pipeline-stage incident below
+  (production data that's already wrong needs the affected row corrected directly, not
+  just the code fixed for next time). Worth naming directly in an interview: "defense-in-depth" and
+  "tested" don't mean much if the actual data behind the check was never filled in for
+  real -- a mechanism test passing is not the same claim as the check being effective.
+
+- **The same stat-tile overflow bug came back in a different shape after the first fix.**
+  Line-item bug 4 (section 2 predates this) was originally "long numbers wrap mid-digit"
+  -- fixed by switching `overflow-wrap: anywhere` to `normal` plus a `$1M` abbreviation
+  threshold. That fix was incomplete: a 6-figure *negative* PnL (`$-143,436`, 9
+  characters) is still wide enough to overflow the tile once wrapping is disabled --
+  except this time, instead of visibly breaking mid-digit, the text silently spilled
+  past the tile's edge and got hidden under whatever opaque tile sat next to it in the
+  grid, which reads as "the number got cut off" rather than "the number is too long," a
+  materially different-looking bug from the same root cause. The honest fix wasn't a new
+  CSS rule -- it was extending the *existing* abbreviate-before-it's-too-long strategy one
+  tier lower (a `$100K` cutoff, not just `$1M`), with the same rounding-boundary trap the
+  first fix already knew about (`999,999.99` rounds to `$1.00M`) now needing a matching
+  guard one tier down (a K-tier value that would itself round up to `1,000.0` needs to
+  fall through to M instead of rendering the confusing `"$1,000.0K"`). Good interview
+  point about regression testing: the first fix's test suite passed the whole time,
+  because it tested the exact values it was written against, not the wider class of value
+  ("a value wide enough to overflow *at any tier*") the bug actually generalizes to.
+
+- **Removing obstacles fixed a social feature, not a physics one.** Production Town's
+  characters wander and independently seek out the nearest free neighbor within a notice
+  radius (`findSeekTarget`), then steer straight toward them (`steerToward` +
+  `applyMovement`) -- no pathfinding, just velocity nudged toward the target and a
+  bounce-off-the-wall collision response. That's intentionally cheap: pathfinding
+  (`findGridPath`, a real grid BFS) exists in this file, but only for the one long,
+  rare walk from spawn to the park. The bug report was "none of the characters are ever
+  talking" -- and the actual cause wasn't the seek logic, the notice radius, or the
+  conversation-trigger distance at all: the map was a 4x3 grid of city blocks, each with
+  1-2 hollow buildings, and straight-line steering with wall-bounce has no way to route
+  around an obstacle -- two characters who'd genuinely noticed each other within range
+  would just bounce against whatever wall sat between them indefinitely instead of ever
+  closing the distance. The fix wasn't a smarter seek algorithm; it was replacing the
+  city-block grid with one large, almost entirely obstacle-free open field (keeping a
+  thin decorative row of landmark buildings along one edge, purely as backdrop, never in
+  the path of anything). Worth naming as a pattern: a "two agents aren't finding each
+  other" bug can look like a search/AI problem when it's actually an environment-design
+  problem -- the seek logic was correct the entire time; it just needed a world where
+  correct-but-simple steering was actually sufficient.
+
+- **Taking a site to a real domain surfaces a coupled-certificate trap.** Requesting one
+  Let's Encrypt certificate covering both `nelsonkoskela.dev` and `www.nelsonkoskela.dev`
+  in a single Caddy site block meant `www`'s DNS not being ready yet (still pointed at the
+  registrar's default parking record) failed *that* domain's ACME validation and dragged
+  the *entire* certificate order down to Let's Encrypt's untrusted staging CA as an
+  automatic fallback -- so the bare domain, whose DNS was correct, still ended up serving
+  an untrusted cert too, which looks like "HTTPS is just broken" rather than "one of two
+  domains in this cert isn't ready." Diagnosed by checking the actual issuer
+  (`openssl s_client | openssl x509 -noout -issuer`, looking for `O=Let's Encrypt` vs a
+  "Fake LE" staging root) rather than trusting the browser's padlock icon alone. Fixed by
+  dropping `www` from the Caddyfile until its own DNS record existed, letting the bare
+  domain get a clean production cert on its own, then adding `www` back in once it had
+  real DNS -- a multi-domain certificate is only as good as the least-ready domain in it.

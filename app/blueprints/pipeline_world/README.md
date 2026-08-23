@@ -80,6 +80,15 @@ drifting apart again (see `pipeline_town.js`'s `updateConversations`). It's a sm
 touch, but it only works *because* the questions are fixed and shared rather than picked
 per visitor -- there'd be nothing to match on otherwise.
 
+The town itself is one large, mostly obstacle-free open field (`buildCity`), not a dense
+city grid -- it used to be a 4x3 grid of blocks each with 1-2 buildings, which sounds more
+"town-like" but actively broke conversations: ordinary wandering and neighbor-seeking
+steer straight toward a target with no pathfinding (only the one-time spawn-to-park walk
+uses real pathfinding, see `findGridPath`), so a dense obstacle layout meant two
+characters who'd genuinely noticed each other often couldn't actually close the distance,
+bouncing off whatever wall sat between them instead. A handful of landmark buildings stay
+along one edge purely as backdrop.
+
 ## Why this is a real pipeline, not a progress bar
 
 - **Queued, not synchronous**: joining enqueues an RQ job (Redis) and returns immediately --

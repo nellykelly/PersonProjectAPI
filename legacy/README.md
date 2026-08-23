@@ -19,6 +19,10 @@ HTML templates. None of it is imported by the new `app/` package or run by
   than deleted just in case, not meant to be regenerated or used.
 
 **Not here:** `app/credentials (2).json` and `app/token.pickle` (the Google OAuth
-secrets) were left in their original location rather than moved, and are `.gitignore`d
-going forward. See [`docs/SECURITY-NOTE.md`](../docs/SECURITY-NOTE.md) -- they should be
-rotated regardless of anything in this rebuild.
+secrets) are gone -- removed from the working tree, purged from git history entirely
+(`git-filter-repo`, force-pushed), and no longer on disk. `credentials*.json` /
+`token.pickle` stay in `.gitignore` as a backstop, not because either file still exists.
+See [`docs/SECURITY-NOTE.md`](../docs/SECURITY-NOTE.md) for the full remediation --
+the one step that's still on you regardless of any of this is rotating the actual
+OAuth client, since a git history rewrite doesn't undo whatever already saw the secret
+while it was public.

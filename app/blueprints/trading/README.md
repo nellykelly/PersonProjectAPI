@@ -123,6 +123,19 @@ ticker and watch its PnL update against real (delayed, free-tier) market data.
   caller/route keeps working unchanged. Under `TESTING`, RQ runs the job inline inside
   `enqueue()` (no real worker needed), so the row is already finished before the first
   poll -- same code path as production, just synchronous.
+- **Book overview** (on the section's own index page, above the open-positions table): a stat-grid
+  (net PV/PnL/Delta/Gamma/Theta/Vega) plus a line chart of PnL over time, both pulled from
+  the **last completed book-level `RiskRequest`**, not recomputed on page load -- the same
+  "a risk request is a persisted fact" rule the rest of this feature follows. The chart
+  plots one point per past book-level request (date on the x-axis), not a per-instrument
+  breakdown of a single snapshot -- "how has the book been trending" is the more useful
+  question once there's more than one data point, and it's a real history already sitting
+  in the database rather than something that needs computing fresh. Dollar figures on the
+  overview tiles go through a `money` Jinja filter (`app/template_filters.py`) that
+  abbreviates past `$100K` (`K`) and `$1M` (`M`) rather than printing the full
+  comma-grouped figure -- a 6-figure value, especially a negative one with its own minus
+  sign, is wide enough to overflow a stat-tile's fixed width otherwise (found live, twice,
+  in two different shapes -- see `docs/INTERVIEW-NOTES.md`).
 - **"Live" ticking:** the shared trade book auto-refreshes every 30s; a position's detail
   page polls a JSON quote endpoint every 15s and renders a PnL/price chart (Chart.js via
   CDN) built from `yfinance` history. Free-tier `yfinance` is rate-limited, so this is

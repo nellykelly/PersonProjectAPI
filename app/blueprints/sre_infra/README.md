@@ -54,9 +54,14 @@ tracked in Redis too, shown live on this page.
 
 The character-submission endpoint is public and anonymous, so it needs the same abuse
 protection as the Trading Simulator's position-opening endpoint: rate-limited per IP,
-backed by Redis (`RATELIMIT_STORAGE_URI`) in the Docker deployment so the limit holds
-across every worker process, not just one -- a plain `memory://` backend wouldn't share
-state across gunicorn's multiple worker processes.
+backed by Redis (`RATELIMIT_STORAGE_URI`) in the Docker deployment. Production actually
+runs gunicorn as a single process (`-w 1` in the `Dockerfile`, deliberately, so
+Flask-SocketIO sessions stay in one process's memory), so a plain
+`memory://` backend would technically survive within that one process today, but it
+wouldn't survive a redeploy (a fresh container means a fresh empty limiter) and wouldn't
+generalize if that constraint ever changes -- Redis-backed state is the version of this
+that's actually correct for "the limit holds," not just "happens to work under the
+current process count."
 
 ## Try it
 

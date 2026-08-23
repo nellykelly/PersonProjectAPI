@@ -130,6 +130,17 @@ the graceful-degradation design called for in the build spec.
 
 ## Hosting
 
-Left open per the build spec -- config is 12-factor (env vars, no hardcoded provider
-assumptions), so Render, Fly.io, or a plain VPS all work without code changes, as long as
-the host can also run the Postgres/Redis/worker services docker-compose defines.
+Live at **https://nelsonkoskela.dev** -- a Hetzner CX22 VPS running the full
+`docker-compose.yml` stack (`web`, `worker`, `postgres`, `redis`, `caddy`) as five
+containers on one box. `caddy` is the only service reachable from the public internet
+(ports 80/443, everything else stays on the internal Docker network); it terminates
+automatic Let's Encrypt HTTPS for both the bare domain and `www`, and serves everything
+under `/static/*` directly off disk via its own `file_server` rather than proxying static
+assets through to gunicorn -- gunicorn runs as a single process with a small fixed thread
+pool (deliberately, for Flask-SocketIO session affinity -- see
+[Pipeline World](app/blueprints/pipeline_world/README.md)), so routing 15-20 static
+requests per page load through that same pool was a real, measured bottleneck, not just
+theoretical. Left 12-factor either way (env vars, no hardcoded provider assumptions), so
+this specific choice of host isn't load-bearing -- Render, Fly.io, or any other VPS would
+work without code changes, as long as it can also run the Postgres/Redis/worker services
+docker-compose defines.
