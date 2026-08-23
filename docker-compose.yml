@@ -2,6 +2,12 @@ services:
   web:
     build: .
     image: personal-site:latest
+    # Still published for local dev (docker compose up -> localhost:8000,
+    # per the README), unchanged. In production this stays reachable
+    # only on the VPS itself, not from the internet -- that's enforced
+    # by the firewall (ufw/Hetzner Firewall not allowing inbound 8000),
+    # not by anything here, so this one compose file works for both
+    # local dev and production without needing a separate override file.
     ports:
       - "${PORT:-8000}:8000"
     env_file:
@@ -61,5 +67,26 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # Reverse proxy + automatic HTTPS. Caddy is the only service the
+  # public internet reaches directly (80/443) -- everything else
+  # (web/worker/postgres/redis) only talks over the internal compose
+  # network. It requests and renews its own Let's Encrypt certificate
+  # for whatever domain(s) Caddyfile lists, with no manual cert
+  # management -- that's the entire reason to use it over nginx here.
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+    restart: unless-stopped
+
 volumes:
   postgres_data:
+  caddy_data:
+  caddy_config:

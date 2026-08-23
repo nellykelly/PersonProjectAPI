@@ -1,0 +1,9 @@
+# Caddy automatically requests, installs, and renews a Let's Encrypt
+# certificate for every domain listed as a site address below -- no
+# manual certbot/cron setup. `reverse_proxy` forwards everything to the
+# `web` container by its compose service name, over the internal Docker
+# network (not the public internet), on the port it actually listens on.
+
+nelsonkoskela.dev, www.nelsonkoskela.dev {
+    reverse_proxy web:8000
+}
