@@ -68,6 +68,51 @@
     </form>
 
     <div class="section-title">
+        <h2>Book overview</h2>
+    </div>
+
+    {% if book_request %}
+    {% set bt = book_request.totals %}
+    <p class="muted">
+        Pulled from the last whole-book risk request (<a href="{{ url_for('trading.risk_report', risk_request_id=book_request.id) }}">#{{ book_request.id }}</a>,
+        run {{ book_request.requested_at.strftime("%Y-%m-%d %H:%M:%S") }} UTC) -- not recomputed on
+        every page load, the same "a risk request is a persisted fact" rule the rest of the risk
+        engine follows. <a href="{{ url_for('trading.strategies_index') }}">Run a fresh one</a> any time.
+    </p>
+    <div class="stat-grid">
+        <div class="stat-tile" tabindex="0" data-tooltip="Total value across every open instrument in the book, as of that run.">
+            <div class="value mono">{{ bt.pv|money }}</div><div class="label">Net PV</div>
+        </div>
+        <div class="stat-tile" tabindex="0" data-tooltip="Total profit and loss across every open instrument, as of that run.">
+            <div class="value mono {{ 'pnl-positive' if bt.pnl >= 0 else 'pnl-negative' }}">{{ bt.pnl|money }}</div>
+            <div class="label">Net PnL</div>
+        </div>
+        <div class="stat-tile" tabindex="0" data-tooltip="Net dollars gained per $1 rise in the underlying, after instruments offset each other.">
+            <div class="value mono">{{ "%.2f"|format(bt.delta) }}</div><div class="label">Net Delta</div>
+        </div>
+        <div class="stat-tile" tabindex="0" data-tooltip="Net rate of change of Delta across the book.">
+            <div class="value mono">{{ "%.4f"|format(bt.gamma) }}</div><div class="label">Net Gamma</div>
+        </div>
+        <div class="stat-tile" tabindex="0" data-tooltip="Net dollars lost per day to time decay.">
+            <div class="value mono">{{ "%.2f"|format(bt.theta) }}</div><div class="label">Net Theta</div>
+        </div>
+        <div class="stat-tile" tabindex="0" data-tooltip="Net dollars gained per one point of implied volatility.">
+            <div class="value mono">{{ "%.2f"|format(bt.vega) }}</div><div class="label">Net Vega</div>
+        </div>
+    </div>
+
+    <div class="chart-wrapper">
+        <canvas id="book-pnl-chart" data-legs='{{ bt.legs|tojson }}' height="90"></canvas>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        No whole-book risk request has been run yet.
+        <a href="{{ url_for('trading.strategies_index') }}">Run one from All Positions</a> to see a book
+        overview here.
+    </div>
+    {% endif %}
+
+    <div class="section-title">
         <h2>Open positions (shared book)</h2>
     </div>
 
@@ -139,5 +184,6 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script src="{{ url_for('static', filename='js/trading.js') }}"></script>
 {% endblock %}

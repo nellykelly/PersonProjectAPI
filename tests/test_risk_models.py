@@ -541,3 +541,39 @@ def test_all_positions_page_loads_the_js_that_powers_its_own_button(client, db):
     assert resp.status_code == 200
     assert b'src="/static/js/trading.js"' in resp.data
     assert b'id="book-run-risk"' in resp.data
+
+
+# ---------- book overview on the trade-book page ----------
+
+
+def test_trade_book_shows_empty_state_with_no_book_request_yet(client, db, monkeypatch):
+    _open_call(client, monkeypatch)  # a leg-level position exists, but no book-level request
+    resp = client.get("/projects/trading-simulator")
+    assert b"No whole-book risk request has been run yet" in resp.data
+    assert b"book-pnl-chart" not in resp.data
+
+
+def test_trade_book_shows_overview_from_the_latest_book_request(app, db, client, monkeypatch):
+    with app.app_context():
+        _two_leg_position(client, monkeypatch, db)
+    # submit via the real route, matching how a visitor actually triggers it
+    resp = client.post("/projects/trading-simulator/risk-requests", data={"model_key": "trader_granular"})
+    assert resp.status_code == 200
+    book_request_id = resp.get_json()["risk_request"]["id"]
+
+    page = client.get("/projects/trading-simulator")
+    assert f"#{book_request_id}".encode() in page.data
+    assert b"Net PV" in page.data
+    assert b"book-pnl-chart" in page.data
+    assert b"data-legs=" in page.data
+
+
+def test_trade_book_overview_uses_the_most_recent_book_request_not_the_first(app, db, client, monkeypatch):
+    with app.app_context():
+        _two_leg_position(client, monkeypatch, db)
+    client.post("/projects/trading-simulator/risk-requests", data={"model_key": "trader_granular"})
+    second = client.post("/projects/trading-simulator/risk-requests", data={"model_key": "full_revalue"})
+    second_id = second.get_json()["risk_request"]["id"]
+
+    page = client.get("/projects/trading-simulator")
+    assert f"#{second_id}".encode() in page.data

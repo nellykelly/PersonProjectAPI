@@ -397,10 +397,45 @@
     });
   }
 
+  // Book overview chart on the trade-book page: per-instrument PnL from
+  // the last whole-book risk request, embedded server-side as JSON on
+  // the canvas rather than fetched -- it's already-persisted data the
+  // template had in hand at render time, not something worth a second
+  // round trip for.
+  function initBookOverviewChart() {
+    var canvas = document.getElementById("book-pnl-chart");
+    if (!canvas || !window.Chart) return;
+    var legs;
+    try {
+      legs = JSON.parse(canvas.dataset.legs || "[]");
+    } catch (e) {
+      legs = [];
+    }
+    if (!legs.length) return;
+
+    var labels = legs.map(function (l) { return l.instrument_code || l.ticker; });
+    var pnls = legs.map(function (l) { return l.pnl; });
+    var colors = pnls.map(function (v) { return v >= 0 ? "#4ade80" : "#f87171"; });
+
+    new Chart(canvas.getContext("2d"), {
+      type: "bar",
+      data: {
+        labels: labels,
+        datasets: [{ label: "PnL ($)", data: pnls, backgroundColor: colors }],
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: { y: { title: { display: true, text: "PnL ($)" } } },
+      },
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     initOpenForm();
     initPositionRiskPanel();
     initBookRiskPanel();
+    initBookOverviewChart();
     initAutoRefresh();
     initPositionDetail();
     initRiskPanel();

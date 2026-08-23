@@ -90,6 +90,19 @@ def index():
     open_legs = Leg.query.filter_by(status="open").order_by(Leg.opened_at.desc()).all()
     closed_legs = Leg.query.filter_by(status="closed").order_by(Leg.closed_at.desc()).limit(20).all()
 
+    # The book overview above the instrument table is deliberately NOT a
+    # fresh calculation on every page load -- it's whatever the last
+    # whole-book risk request actually found, the same "a risk request
+    # is a real persisted fact, not a number recomputed for this one
+    # render" rule the rest of position -> risk request -> report
+    # follows. No book-level request yet -> no overview, not a
+    # silently-live number standing in for one.
+    book_request = (
+        RiskRequest.query.filter_by(scope="book", status="complete")
+        .order_by(RiskRequest.id.desc())
+        .first()
+    )
+
     return render_template(
         "trading/index.html",
         rows=_price_positions(open_legs),
@@ -97,6 +110,7 @@ def index():
         whitelist=current_app.config["TICKER_WHITELIST"],
         max_open=current_app.config["TRADING_MAX_OPEN_POSITIONS_PER_SESSION"],
         open_count=_open_strategies_count(_session_id()),
+        book_request=book_request,
     )
 
 
