@@ -34,12 +34,100 @@
 <section class="chunk" id="s31">
   <h3><i>31</i><span>Questions and what a strong answer covers</span></h3>
 
-  <p class="lede">Grouped by what the interviewer is actually probing. Each answer sketch is the shape of a good response, not a script &mdash; the section reference points back at the detail.</p>
+  <p class="lede">Start with the ten core stories below, not the question list. The questions are grouped by what the interviewer is actually probing, and each answer sketch is the shape of a good response rather than a script &mdash; the section reference points back at the detail that supports it.</p>
+
+  <h4>Prepare ten stories, not thirty-nine answers</h4>
+
+  <p>There are 39 questions below. Memorising 39 polished answers is the wrong
+  preparation: it sounds rehearsed, and it collapses the moment an interviewer asks a
+  slightly different question. Almost every question here is a different door into one
+  of ten underlying stories. Learn the ten, and the answers assemble themselves &mdash; the eight core questions below are simply the most common doors into them.</p>
+
+  <div class="tw">
+    <table class="story-table">
+      <thead><tr><th>Core story</th><th>The spine of it</th><th>Doors into it</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>1. The system in one pass</td>
+          <td>One Flask app, ten blueprints, six projects, five containers. Routes thin, services hold logic, models hold state.</td>
+          <td>Walk me through it &middot; hardest part</td>
+        </tr>
+        <tr>
+          <td>2. The queue boundary</td>
+          <td>Work moved off the request path &mdash; and once it crosses a process, exceptions stop being the channel and the database row carries the failure.</td>
+          <td>Separate worker &middot; failure propagation &middot; no Redis locally</td>
+        </tr>
+        <tr>
+          <td>3. One snapshot, one answer</td>
+          <td>Every leg in a request priced against the same instant, so net Greeks describe a position that actually existed. Models supply maths; the engine owns side effects.</td>
+          <td>Market snapshot &middot; two risk models &middot; gamma twice &middot; IR vega</td>
+        </tr>
+        <tr>
+          <td>4. Data and real SQL</td>
+          <td>Window functions where they earn their keep, portable types everywhere else, and migrations that respect a populated table.</td>
+          <td>Rolling pass rate &middot; why Postgres &middot; migration gone wrong &middot; column widths</td>
+        </tr>
+        <tr>
+          <td>5. A finite resource, budgeted</td>
+          <td>Eight threads is the real constraint. Caching, rate limits, SSE caps and the static-file split all trace back to protecting it.</td>
+          <td>Caching &middot; one visitor degrading the site &middot; one gunicorn worker</td>
+        </tr>
+        <tr>
+          <td>6. Found in production</td>
+          <td>Three failures that a green test suite could not have caught, and what each changed about how the code handles the unexpected.</td>
+          <td>Production-only bug &middot; tests passed but wrong &middot; obvious cause wrong</td>
+        </tr>
+        <tr>
+          <td>7. Layers, named honestly</td>
+          <td>Parametrisation is the defence; whitelists are the second layer. Saying which is which is the answer.</td>
+          <td>SQL injection &middot; secrets in the repo &middot; blocklist that was a placeholder</td>
+        </tr>
+        <tr>
+          <td>8. Shipping it</td>
+          <td>One image two roles, health-gated startup, and the deploy loop &mdash; plus a Compose bug that failed by looking configured.</td>
+          <td>Dockerfile &middot; shared image &middot; service_healthy &middot; migrating prod</td>
+        </tr>
+        <tr>
+          <td>9. Removing a check</td>
+          <td>An upfront guard that looked correct was deleting the observability the project existed to show. Fail fast and fail visibly are different goals.</td>
+          <td>Removed a check &middot; is the test stage real</td>
+        </tr>
+        <tr>
+          <td>10. Honest limits</td>
+          <td>What does not scale, what was simplified, and why each was an acceptable trade at this size &mdash; volunteered, not extracted.</td>
+          <td>What would you change &middot; test-stage trade-off &middot; legal scoping</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p><b>Assume the interviewer has not read the codebase.</b> In a normal loop nobody has
+  time to deep-dive a side project, so the questions you actually get are the structural
+  ones &mdash; how it is put together, what you would change, what went wrong &mdash; not
+  "why is this argument keyword-only". The eight questions marked
+  <span class="pill p-core">core</span> below are deliberately the general ones: each is
+  askable about any project, and each lets you reach for this system's specifics as
+  evidence rather than depending on the interviewer to name them.</p>
+
+  <p>The more implementation-specific questions further down are still worth reading, but
+  treat them as <i>supporting detail you can produce on request</i>, not as things you
+  need ready on demand. They are what you use when a structural answer earns a follow-up.</p>
+
+  <div class="note">
+    <b class="tag">On the specific ones</b>
+    <p>Several questions here are phrased tightly around this codebase &mdash; an
+    interviewer who has not read it will ask the general version instead. Those carry a
+    <b>broader framing</b> underneath: the wider question the story actually answers.
+    Prepare the story, watch for either phrasing, and use the specific detail as the
+    evidence rather than the whole answer.</p>
+  </div>
+
+  <hr class="rule">
 
   <h4>Opening &mdash; describe the project</h4>
   <div class="qa">
     <details class="q">
-      <summary>Walk me through this project.</summary>
+      <summary>Walk me through this project. <span class="pill p-core">core</span></summary>
       <div class="answer">
         <p>Lead with structure, not a feature list. One Flask app, ten blueprints, six substantial projects sharing one Postgres, one Redis, one worker pool, deployed as five containers on a VPS. Routes are thin; logic lives in a service layer; models hold state.</p>
         <p>Then pick <b>one</b> project and go deep rather than skimming all six. Pipeline World is the strongest choice because it exercises the most: a queue, a separate worker process, WebSocket push, cache-aside, and real SQL over the data it produces.</p>
@@ -48,7 +136,7 @@
     </details>
 
     <details class="q">
-      <summary>What was the hardest part?</summary>
+      <summary>What was the hardest part? <span class="pill p-core">core</span></summary>
       <div class="answer">
         <p>Good candidates, in rough order of how well they demonstrate systems thinking:</p>
         <ul>
@@ -63,7 +151,7 @@
   <h4>Architecture and design</h4>
   <div class="qa">
     <details class="q">
-      <summary>Why a separate worker process instead of doing the work in the request?</summary>
+      <summary>Why a separate worker process instead of doing the work in the request? <span class="pill p-core">core</span></summary>
       <div class="answer">
         <p>Two different reasons for the two job types, and saying so shows you did not just apply a pattern uniformly:</p>
         <ul>
@@ -88,6 +176,7 @@
       <div class="answer">
         <p>This is the single best correctness answer in the project. Pricing legs one at a time marks a multi-leg position against several different instants, so the net Greeks describe a position that never existed at any one moment. A spread's two legs offsetting each other is only meaningful if both were marked against the same market.</p>
         <p>So <code>take_market_snapshot()</code> fetches one price per <i>distinct</i> ticker up front, and the snapshot is stored in <code>totals</code> so the report can prove what it was marked against. <span class="pill p-info">&sect;10</span></p>
+        <div class="broader"><b>Broader framing</b>How do you keep a multi-part calculation internally consistent?</div>
       </div>
     </details>
 
@@ -96,6 +185,7 @@
       <div class="answer">
         <p>It previously took a leg id positionally. Adding a <code>strategy_id</code> parameter meant a stale <code>submit_risk_request(42)</code> would be silently reinterpreted as "price position 42" &mdash; a wrong answer with no error and nothing to notice.</p>
         <p>The general principle: a signature change that silently changes an existing positional argument's <i>meaning</i> is exactly the case worth making unrepresentable. It turned into an immediate <code>TypeError</code>, and 11 stale call sites in the suite failed loudly instead of quietly pricing the wrong thing. <span class="pill p-info">&sect;10</span></p>
+        <div class="broader"><b>Broader framing</b>Tell me about a time you changed an API and had to keep existing callers safe.</div>
       </div>
     </details>
 
@@ -104,6 +194,7 @@
       <div class="answer">
         <p>Reference data versus transaction data. A hundred visitors trading the same AAPL $230 call should point at one instrument row, not each embed a private copy of the strike, expiry, exercise style and multiplier. That is how real booking systems separate the concerns, and it is what makes the instrument catalogue &mdash; "show me every leg across every position that has ever traded this contract" &mdash; a real query rather than a scan.</p>
         <p>Enforced by a unique constraint on the natural key plus a single <code>get_or_create_instrument()</code> entry point. Passthrough properties on <code>Leg</code> meant the refactor did not touch the routes and templates. <span class="pill p-info">&sect;7 &sect;8</span></p>
+        <div class="broader"><b>Broader framing</b>When is normalising the right call, and when is it premature?</div>
       </div>
     </details>
 
@@ -112,6 +203,7 @@
       <div class="answer">
         <p>Use the simpler tool wherever it suffices. SSE is one-way server&rarr;client over plain HTTP, needs no client library and reconnects on its own &mdash; correct for the watchlist, which only ever pushes prices down.</p>
         <p>Pipeline World uses Socket.IO because the spec asked for it and because a bidirectional protocol is defensible once client-originated events are plausible. Say plainly that the current version is push-only in practice. The answer to avoid is "WebSockets because they are more impressive". <span class="pill p-info">&sect;13 &sect;18</span></p>
+        <div class="broader"><b>Broader framing</b>How do you choose between communication mechanisms?</div>
       </div>
     </details>
   </div>
@@ -132,6 +224,7 @@
       <div class="answer">
         <p>The page exists to demonstrate real SQL. <code>DATE_TRUNC</code>, <code>FILTER</code> and window frames are Postgres dialect; rewriting them in a portable subset would mean dropping the window functions or reimplementing them as Python loops, which would undercut the exact thing being shown.</p>
         <p>The engineering answer is what surrounds it: every ORM model stays on portable types so the rest of the app works either way, the module checks the dialect and raises a clear message telling you how to point <code>DATABASE_URL</code> at Postgres, and the tests <b>skip with a reason</b> rather than silently passing on fake data. <span class="pill p-info">&sect;20 &sect;28</span></p>
+        <div class="broader"><b>Broader framing</b>When is it worth giving up portability?</div>
       </div>
     </details>
 
@@ -156,6 +249,7 @@
       <div class="answer">
         <p>Column widths. SQLite ignores VARCHAR limits entirely; Postgres enforces them. So a too-narrow column is invisible to a green test suite and appears only as a production 500. It happened twice &mdash; <code>PipelineRun.stage</code> at <code>String(10)</code> against the 15-character <code>'test_uniqueness'</code>, and <code>Instrument.instrument_type</code> at <code>String(4)</code> against <code>'stock'</code>.</p>
         <p>The response is the good part: rather than fixing them one outage at a time, a test now audits <b>every</b> string column's declared width against the widest value the code can write, reading from the real constants. It touches no database, so it catches the class of bug under SQLite. It later caught a bug it was not written for. <span class="pill p-info">&sect;28</span></p>
+        <div class="broader"><b>Broader framing</b>How do you catch a class of bug your test environment cannot see?</div>
       </div>
     </details>
   </div>
@@ -163,7 +257,7 @@
   <h4>Concurrency, caching, infrastructure</h4>
   <div class="qa">
     <details class="q">
-      <summary>Explain your caching strategy.</summary>
+      <summary>Explain your caching strategy. <span class="pill p-core">core</span></summary>
       <div class="answer">
         <p>Name the pattern &mdash; cache-aside &mdash; and then explain why <b>both</b> mechanisms are present. Reads try Redis, fall back to Postgres on a miss, repopulate. The cache is explicitly invalidated the moment a character clears Deploy.</p>
         <p>TTL alone would mean a newly-live character might not appear for up to 30 s, which is fine for many caches and wrong here, where "does this feel live" is the product requirement. Explicit invalidation handles the common case; the TTL is the safety net if an invalidation is ever missed. Either alone is a weaker version of the pattern.</p>
@@ -172,7 +266,7 @@
     </details>
 
     <details class="q">
-      <summary>How do you stop one visitor degrading the site for everyone?</summary>
+      <summary>How do you stop one visitor degrading the site for everyone? <span class="pill p-core">core</span></summary>
       <div class="answer">
         <p>Three mechanisms protecting different resources, and the distinction is the answer:</p>
         <ul>
@@ -189,6 +283,7 @@
       <div class="answer">
         <p>Agree that it looks wrong, then give the reason. Flask-SocketIO's threading mode keeps each client's Engine.IO session in the memory of the process that created it. With multiple worker processes, consecutive polling requests for one session get round-robined to a process that has never seen it and return <code>400 unknown session</code> &mdash; live updates break silently while the pipeline itself still completes, because that part only depends on Postgres and Redis.</p>
         <p>So concurrency comes from eight threads instead, and the threads are then treated as a real budget: SSE caps sized against it, and static files moved off it entirely. The honest scaling answer is that a Redis message-queue backend for Socket.IO is what would allow multiple processes. <span class="pill p-info">&sect;2 &sect;26 &sect;30</span></p>
+        <div class="broader"><b>Broader framing</b>Tell me about a constraint you could not design around, only work within.</div>
       </div>
     </details>
 
@@ -206,6 +301,7 @@
       <div class="answer">
         <p>Through the database row, because an exception cannot cross a process boundary &mdash; there is no shared call stack to unwind and no in-memory future to await.</p>
         <p>The worker catches its own exceptions and writes a plain-text reason onto <code>RiskRequest.error</code>. The waiting web process re-derives the same exception type from that string once the row stops reading <code>pending</code>, so every existing <code>except MarketDataError</code> handler keeps working without knowing pricing moved processes. The shared state carries both the result and the failure. <span class="pill p-info">&sect;10</span></p>
+        <div class="broader"><b>Broader framing</b>How do components communicate failure across a boundary they cannot throw across?</div>
       </div>
     </details>
   </div>
@@ -258,7 +354,7 @@
   <h4>Debugging and judgement</h4>
   <div class="qa">
     <details class="q">
-      <summary>Tell me about a bug that only appeared in production.</summary>
+      <summary>Tell me about a bug that only appeared in production. <span class="pill p-core">core</span></summary>
       <div class="answer">
         <p>The strongest one: a pipeline stage crashed for a reason unrelated to validation &mdash; most likely the worker container being killed mid-job by a redeploy. <code>_run_stage</code> only caught <code>ValidationError</code>, so nothing handled it: no run row, no fail event. Because Verify runs <i>after</i> Deploy already committed <code>status='live'</code>, a character was left live with a blank gap in its own history &mdash; not failed, not passed, missing, which the UI could not render as an error because nothing had raised one it was watching for.</p>
         <p>Found from a screenshot of a blank cell, not a log. Fixed with a catch-all at the orchestration boundary, and the already-broken row was corrected directly in production. The lesson: a <code>try/except</code> scoped to the errors you expect is a statement about the happy path, not a safety net. <span class="pill p-info">&sect;17 &sect;27</span></p>
@@ -266,10 +362,11 @@
     </details>
 
     <details class="q">
-      <summary>Tell me about a time your tests passed but the code was wrong.</summary>
+      <summary>Tell me about a time your tests passed but the code was wrong. <span class="pill p-core">core</span></summary>
       <div class="answer">
         <p>The profanity filter. The hashed blocklist mechanism worked exactly as designed and tested &mdash; but it shipped seeded with three placeholder words, so real profanity passed the stage and went live. No test could have caught it, because the tests only ever asserted the mechanism worked against whatever list was configured.</p>
         <p>The generalisable point: <b>a mechanism test is not an effectiveness test.</b> "Defence-in-depth" and "tested" mean little if the data behind the check was never filled in. Remediation had two halves &mdash; fix the list, and fix the row that was already wrong, since production data that is already incorrect needs correcting directly rather than just the code fixed for next time. <span class="pill p-info">&sect;25</span></p>
+        <div class="broader"><b>Broader framing</b>How do you know a control is actually effective, not just present?</div>
       </div>
     </details>
 
@@ -279,6 +376,7 @@
         <p>Pipeline World validated at the join route: charset, injection and profanity ran upfront so bad submissions never became jobs. Sensible-looking, and it broke the product &mdash; a visitor who typed a blocked word got a red message and <b>no pipeline run at all</b>, so the most interesting thing the system does was the one thing nobody could watch.</p>
         <p>Every check moved into the stage that owns it; the route now only strips and truncates. This also required raising the storage caps above the validated limits, or an over-long entry would be truncated into a passing value and the stage would approve something never submitted.</p>
         <p>The point: <b>"fail fast" and "fail visibly" are different goals</b>, and validating early can delete the observability that was the reason for building the thing. <span class="pill p-info">&sect;18 &sect;25</span></p>
+        <div class="broader"><b>Broader framing</b>Tell me about a time the fix was deleting code rather than writing it.</div>
       </div>
     </details>
 
@@ -312,6 +410,7 @@
         <p>Lead with the layer ordering, because that is the part with an actual engineering reason behind it. <code>requirements.txt</code> is copied and installed <b>before</b> the application code. Docker invalidates every layer after the first one that changes; dependencies change rarely and code changes constantly, so this ordering means a normal code edit reuses the cached <code>pip install</code> layer instead of reinstalling the whole tree.</p>
         <p>Then the smaller deliberate choices: <code>--no-cache-dir</code> because pip's cache is dead weight in an image that never installs again; the <code>apt-get install</code> and <code>rm -rf /var/lib/apt/lists/*</code> in one <code>RUN</code>, because deleting in a later layer leaves the bytes in the earlier one; a non-root <code>appuser</code>, with the <code>chown</code> before <code>USER</code> since that switch applies to everything after it; and <code>PYTHONUNBUFFERED=1</code>, or Python buffers stdout when it is not a TTY and a crash looks like silence in <code>docker compose logs</code>.</p>
         <p>Be ready for "why is <code>curl</code> in there" &mdash; only so <code>HEALTHCHECK</code> has something to call, since <code>slim</code> ships without it. <span class="pill p-info">&sect;29</span></p>
+        <div class="broader"><b>Broader framing</b>How do you keep build and deploy times down as a project grows?</div>
       </div>
     </details>
 
@@ -338,6 +437,7 @@
       <div class="answer">
         <p>The obvious answer is <code>postgres_data</code> &mdash; every durable row. The more interesting one is <code>caddy_data</code>, which holds the TLS certificates and the ACME account state. Losing it forces re-issuance on the next boot, and that counts against Let's Encrypt's rate limits, so a few restarts in that state and certificates stop being issued for hours. The site is then down for a reason that has nothing to do with the application.</p>
         <p>Worth adding the read-only detail: <code>./app/static</code> and <code>./Caddyfile</code> are bind-mounted <code>:ro</code>, so a compromised Caddy cannot rewrite the site's assets or its own configuration. Mounts are writable only where the container has a reason to write. <span class="pill p-info">&sect;29</span></p>
+        <div class="broader"><b>Broader framing</b>What is the blast radius if a piece of your infrastructure disappears?</div>
       </div>
     </details>
 
@@ -382,7 +482,7 @@
   <h4>Trade-offs and self-critique</h4>
   <div class="qa">
     <details class="q">
-      <summary>What would you do differently, or what does not scale?</summary>
+      <summary>What would you do differently, or what does not scale? <span class="pill p-core">core</span></summary>
       <div class="answer">
         <p>Have several ready and be specific:</p>
         <ul>

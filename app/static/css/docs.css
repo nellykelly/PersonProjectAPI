@@ -413,6 +413,24 @@
   .answer > :last-child { margin-bottom: 0; }
   .answer ul { margin-bottom: .7rem; }
 
+
+  /* Core-story markers in the interview bank. */
+  .p-core { color: var(--warn); background: var(--warn-soft); border-color: var(--warn); }
+  .broader {
+    margin-top: .85rem;
+    padding: .55rem .75rem;
+    border-left: 2px solid var(--warn);
+    background: var(--warn-soft);
+    border-radius: 0 3px 3px 0;
+    font-size: .89rem;
+  }
+  .broader b {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .64rem; letter-spacing: .13em; text-transform: uppercase;
+    color: var(--warn); display: block; margin-bottom: .2rem; font-weight: 500;
+  }
+  .story-table td:first-child { white-space: nowrap; font-weight: 600; }
+
   hr.rule { border: 0; border-top: 1px solid var(--rule); margin: 2.5rem 0; }
 
   .lede {

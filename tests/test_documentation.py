@@ -186,6 +186,34 @@ def test_interview_bank_includes_container_questions(locked_client):
         assert q in resp.data, f"missing question: {q!r}"
 
 
+def test_interview_bank_leads_with_core_stories_not_a_question_list(locked_client):
+    """39 memorised answers is the wrong preparation -- it sounds rehearsed
+    and collapses on a reworded question. The bank opens with the ten
+    underlying stories, marks the ten highest-value questions, and gives
+    the codebase-specific ones a general framing so the prepared example
+    still lands when the interviewer asks the wider version."""
+    locked_client.post("/documentation/interview", data={"password": PASSWORD})
+    resp = locked_client.get("/documentation/interview")
+
+    assert b"Prepare ten stories" in resp.data
+    assert b"story-table" in resp.data
+
+    # Exactly eight questions carry the core marker. Counted on the
+    # <summary> specifically: the guidance paragraph shows the pill inline
+    # as an example, so a document-wide count is off by one and would make
+    # this assertion quietly meaningless.
+    assert resp.data.count(b'core</span></summary>') == 8
+
+    # The core set has to be the *general* questions -- an interviewer who
+    # hasn't read the codebase asks those, not the implementation trivia.
+    assert b"Walk me through this project." in resp.data
+    assert b"Why one gunicorn worker? That seems wrong.</summary>" in resp.data  # present, not core
+
+    # ...and the specific ones carry a general re-framing.
+    assert resp.data.count(b"Broader framing") >= 10
+    assert b"How do you choose between communication mechanisms?" in resp.data
+
+
 def test_gated_page_is_not_indexable(locked_client):
     locked_client.post("/documentation/interview", data={"password": PASSWORD})
     resp = locked_client.get("/documentation/interview")
