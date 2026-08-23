@@ -80,6 +80,10 @@ services:
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Read-only mount of the same static tree the app serves at
+      # /static/* -- lets Caddy's file_server answer those requests
+      # directly instead of proxying them to the app (see Caddyfile).
+      - ./app/static:/srv/static:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

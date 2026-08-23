@@ -5,5 +5,25 @@
 # network (not the public internet), on the port it actually listens on.
 
 nelsonkoskela.dev, www.nelsonkoskela.dev {
+    # Static assets served directly off disk instead of proxied to the
+    # app -- gunicorn runs as a single process with only 8 threads total
+    # (see Dockerfile, -w 1 --threads 8: deliberately one process so
+    # Flask-SocketIO sessions stay in one process's memory), shared
+    # across every dynamic route, every open live-view SSE connection
+    # (watchlist, network sniffer), AND every one of the ~15-20 static
+    # requests a single page load fires off. That made even a static CSS
+    # or font file queue behind whatever else that thread pool was doing,
+    # a real multi-second bottleneck on every load, not just a cold-cache
+    # first visit. Caddy's file_server has no such limit and serves these
+    # with proper Last-Modified/ETag conditional-GET support on its own,
+    # off the app process entirely. `docker-compose.yml` mounts
+    # ./app/static read-only into this container at /srv/static so the
+    # path matches what the app itself serves at /static/*.
+    handle_path /static/* {
+        root * /srv/static
+        file_server
+        header Cache-Control "public, max-age=3600"
+    }
+
     reverse_proxy web:8000
 }
