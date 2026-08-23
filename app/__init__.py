@@ -93,6 +93,7 @@ def _register_blueprints(app: Flask) -> None:
     from app.blueprints.about import bp as about_bp
     from app.blueprints.contact import bp as contact_bp
     from app.blueprints.projects import bp as projects_bp
+    from app.blueprints.documentation import bp as documentation_bp
     from app.blueprints.trading import bp as trading_bp
     from app.blueprints.qr import bp as qr_bp
     from app.blueprints.sniffer import bp as sniffer_bp
@@ -104,6 +105,7 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(about_bp, url_prefix="/about")
     app.register_blueprint(contact_bp, url_prefix="/contact")
     app.register_blueprint(projects_bp, url_prefix="/projects")
+    app.register_blueprint(documentation_bp, url_prefix="/documentation")
     app.register_blueprint(trading_bp, url_prefix="/projects/trading-simulator")
     app.register_blueprint(qr_bp, url_prefix="/projects/qr-quant-scraper")
     app.register_blueprint(sniffer_bp, url_prefix="/projects/network-sniffer")

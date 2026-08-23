@@ -1,0 +1,2441 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portfolio Site Engineering Reference | Nelson Koskela</title>
+<meta name="description" content="Complete technical walkthrough of the Flask application behind nelsonkoskela.dev: architecture, data model, subsystems, UML diagrams and deployment.">
+<link rel="icon" href="{{ url_for('static', filename='assets/img/favicon.ico') }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,600;1,400&display=swap">
+
+<style>
+  :root {
+    --ground: #E9EDF1;
+    --surface: #FFFFFF;
+    --surface-2: #F3F6F9;
+    --ink: #131A21;
+    --ink-2: #46535F;
+    --ink-3: #6B7A88;
+    --rule: #CBD5DE;
+    --rule-soft: #DFE6EC;
+    --accent: #1A4E86;
+    --accent-ink: #1A4E86;
+    --accent-soft: #E1EBF6;
+    --warn: #A8501B;
+    --warn-soft: #F7EAE0;
+    --good: #1F6B4A;
+    --good-soft: #E2F0E9;
+    --crit: #97291F;
+    --crit-soft: #F8E6E4;
+    --code-bg: #F3F6F9;
+    --diagram-bg: #FFFFFF;
+    --diagram-rule: #CBD5DE;
+    --shadow: 0 1px 2px rgba(19, 26, 33, .06), 0 8px 24px -16px rgba(19, 26, 33, .3);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #10151A;
+      --surface: #171E25;
+      --surface-2: #1D262E;
+      --ink: #E6EDF3;
+      --ink-2: #A6B4C0;
+      --ink-3: #7B8A97;
+      --rule: #2B3641;
+      --rule-soft: #232D36;
+      --accent: #6FA8E8;
+      --accent-ink: #8FBEF2;
+      --accent-soft: #16283C;
+      --warn: #D8935A;
+      --warn-soft: #2E2318;
+      --good: #63C295;
+      --good-soft: #14261E;
+      --crit: #E48376;
+      --crit-soft: #2E1B19;
+      --code-bg: #1B242C;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -16px rgba(0, 0, 0, .8);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #10151A;
+    --surface: #171E25;
+    --surface-2: #1D262E;
+    --ink: #E6EDF3;
+    --ink-2: #A6B4C0;
+    --ink-3: #7B8A97;
+    --rule: #2B3641;
+    --rule-soft: #232D36;
+    --accent: #6FA8E8;
+    --accent-ink: #8FBEF2;
+    --accent-soft: #16283C;
+    --warn: #D8935A;
+    --warn-soft: #2E2318;
+    --good: #63C295;
+    --good-soft: #14261E;
+    --crit: #E48376;
+    --crit-soft: #2E1B19;
+    --code-bg: #1B242C;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -16px rgba(0, 0, 0, .8);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Serif", Georgia, "Times New Roman", serif;
+    font-size: 16.5px;
+    line-height: 1.68;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .shell {
+    display: grid;
+    grid-template-columns: 268px minmax(0, 1fr);
+    gap: 0;
+    max-width: 1320px;
+    margin: 0 auto;
+    align-items: start;
+  }
+
+  /* ---------- masthead ---------- */
+  .masthead {
+    grid-column: 1 / -1;
+    padding: 3.5rem 2.5rem 2.25rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  .kicker {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .7rem;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--accent-ink);
+    margin: 0 0 .9rem;
+  }
+  .masthead h1 {
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-weight: 700;
+    font-size: clamp(1.9rem, 4.2vw, 3rem);
+    line-height: 1.08;
+    letter-spacing: -.02em;
+    margin: 0 0 .8rem;
+    text-wrap: balance;
+    max-width: 20ch;
+  }
+  .masthead p.standfirst {
+    margin: 0;
+    max-width: 62ch;
+    font-size: 1.06rem;
+    color: var(--ink-2);
+  }
+  .meta-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    margin-top: 1.75rem;
+    padding-top: 1.4rem;
+    border-top: 1px solid var(--rule-soft);
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .74rem;
+    color: var(--ink-3);
+  }
+  .meta-strip b {
+    display: block;
+    color: var(--ink);
+    font-weight: 500;
+    letter-spacing: .01em;
+  }
+  .meta-strip span {
+    display: block;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    font-size: .66rem;
+    margin-bottom: .3rem;
+  }
+
+  /* ---------- index rail ---------- */
+  nav.rail {
+    position: sticky;
+    top: 0;
+    max-height: 100vh;
+    overflow-y: auto;
+    padding: 2.25rem 1.25rem 3rem 2.5rem;
+    border-right: 1px solid var(--rule);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-size: .82rem;
+    line-height: 1.45;
+  }
+  nav.rail h2 {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .66rem;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 1.6rem 0 .6rem;
+    font-weight: 500;
+  }
+  nav.rail h2:first-child { margin-top: 0; }
+  nav.rail ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: .1rem;
+  }
+  nav.rail a {
+    display: grid;
+    grid-template-columns: 1.7rem 1fr;
+    gap: .1rem;
+    padding: .3rem .45rem .3rem .1rem;
+    color: var(--ink-2);
+    text-decoration: none;
+    border-radius: 3px;
+  }
+  nav.rail a:hover { color: var(--accent-ink); background: var(--accent-soft); }
+  nav.rail a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  nav.rail a i {
+    font-style: normal;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .7rem;
+    color: var(--ink-3);
+    padding-top: .12em;
+  }
+
+  /* ---------- content ---------- */
+  main {
+    padding: 2.25rem 2.5rem 6rem;
+    min-width: 0;
+  }
+  .part {
+    margin: 0 0 1.75rem;
+    padding-top: 2.5rem;
+  }
+  .part:first-of-type { padding-top: .5rem; }
+  .part-label {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .68rem;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    display: block;
+    margin-bottom: .5rem;
+  }
+  .part h2 {
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 1.75rem;
+    font-weight: 700;
+    letter-spacing: -.015em;
+    margin: 0 0 .5rem;
+    padding-bottom: .7rem;
+    border-bottom: 2px solid var(--ink);
+    text-wrap: balance;
+  }
+
+  section.chunk { margin: 0 0 3rem; scroll-margin-top: 1rem; }
+
+  h3 {
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 1.28rem;
+    font-weight: 600;
+    letter-spacing: -.01em;
+    margin: 2.5rem 0 .75rem;
+    text-wrap: balance;
+    display: grid;
+    grid-template-columns: 2.9rem 1fr;
+    gap: .2rem;
+    align-items: baseline;
+  }
+  h3 i {
+    font-style: normal;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .82rem;
+    font-weight: 500;
+    color: var(--accent-ink);
+  }
+  h4 {
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 1.02rem;
+    font-weight: 600;
+    margin: 1.9rem 0 .5rem;
+    color: var(--ink);
+  }
+  h5 {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .72rem;
+    font-weight: 500;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 1.6rem 0 .5rem;
+  }
+
+  p, ul, ol { max-width: 72ch; }
+  p { margin: 0 0 1rem; }
+  ul, ol { margin: 0 0 1rem; padding-left: 1.35rem; }
+  li { margin-bottom: .42rem; }
+  li::marker { color: var(--ink-3); }
+
+  a { color: var(--accent-ink); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+
+  code {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .845em;
+    background: var(--code-bg);
+    border: 1px solid var(--rule-soft);
+    border-radius: 3px;
+    padding: .08em .34em;
+    word-break: break-word;
+  }
+  pre {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    background: var(--code-bg);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    padding: 1rem 1.15rem;
+    overflow-x: auto;
+    font-size: .805rem;
+    line-height: 1.62;
+    margin: 0 0 1.2rem;
+  }
+  pre code { background: none; border: 0; padding: 0; font-size: inherit; }
+
+  /* ---------- tables ---------- */
+  .tw { overflow-x: auto; margin: 0 0 1.4rem; border: 1px solid var(--rule); border-radius: 4px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-family: "IBM Plex Sans", system-ui, sans-serif; font-size: .845rem; }
+  th, td { text-align: left; padding: .6rem .85rem; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+  thead th {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .68rem; text-transform: uppercase; letter-spacing: .1em;
+    color: var(--ink-3); font-weight: 500; background: var(--surface-2);
+    border-bottom: 1px solid var(--rule); white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  td code { font-size: .82em; }
+  .num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+
+  /* ---------- figures / diagrams ---------- */
+  figure {
+    margin: 1.6rem 0 1.8rem;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: var(--surface);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+  }
+  figcaption {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .69rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    padding: .6rem .95rem;
+    border-bottom: 1px solid var(--rule);
+    background: var(--surface-2);
+  }
+  .diagram {
+    background: var(--diagram-bg);
+    padding: 1.4rem 1rem;
+    overflow-x: auto;
+  }
+  .diagram pre.mermaid {
+    background: none; border: 0; padding: 0; margin: 0;
+    display: flex; justify-content: center; min-width: 0;
+  }
+
+  /* ---------- callouts ---------- */
+  .note {
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent);
+    background: var(--surface);
+    border-radius: 4px;
+    padding: .9rem 1.1rem;
+    margin: 0 0 1.3rem;
+    max-width: 76ch;
+    font-size: .93rem;
+  }
+  .note.warn { border-left-color: var(--warn); }
+  .note.gotcha { border-left-color: var(--crit); }
+  .note > :last-child { margin-bottom: 0; }
+  .note b.tag {
+    display: block;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .66rem; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--accent-ink); margin-bottom: .35rem; font-weight: 500;
+  }
+  .note.warn b.tag { color: var(--warn); }
+  .note.gotcha b.tag { color: var(--crit); }
+
+  /* ---------- pills ---------- */
+  .pill {
+    display: inline-block;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .66rem; letter-spacing: .07em; text-transform: uppercase;
+    padding: .13rem .45rem; border-radius: 3px; border: 1px solid;
+    white-space: nowrap;
+  }
+  .p-pass { color: var(--good); background: var(--good-soft); border-color: var(--good); }
+  .p-fail { color: var(--crit); background: var(--crit-soft); border-color: var(--crit); }
+  .p-info { color: var(--accent-ink); background: var(--accent-soft); border-color: var(--accent); }
+  .p-warn { color: var(--warn); background: var(--warn-soft); border-color: var(--warn); }
+
+  /* ---------- Q&A ---------- */
+  .qa { border-top: 1px solid var(--rule); margin: 1.5rem 0 0; }
+  details.q {
+    border-bottom: 1px solid var(--rule-soft);
+    padding: 0;
+  }
+  details.q > summary {
+    cursor: pointer;
+    list-style: none;
+    padding: .85rem 1rem .85rem 2.4rem;
+    position: relative;
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-size: .96rem;
+    font-weight: 500;
+    color: var(--ink);
+  }
+  details.q > summary::-webkit-details-marker { display: none; }
+  details.q > summary::before {
+    content: "+";
+    position: absolute;
+    left: .85rem; top: .82rem;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    color: var(--accent-ink);
+    font-size: .95rem;
+  }
+  details.q[open] > summary::before { content: "\2212"; }
+  details.q > summary:hover { background: var(--surface-2); }
+  details.q > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .answer {
+    padding: 0 1rem 1.1rem 2.4rem;
+    font-size: .95rem;
+  }
+  .answer > :last-child { margin-bottom: 0; }
+  .answer ul { margin-bottom: .7rem; }
+
+  hr.rule { border: 0; border-top: 1px solid var(--rule); margin: 2.5rem 0; }
+
+  .lede {
+    font-size: 1.05rem;
+    color: var(--ink-2);
+    max-width: 70ch;
+    margin-bottom: 1.5rem;
+  }
+
+  @media (max-width: 940px) {
+    .shell { grid-template-columns: minmax(0, 1fr); }
+    nav.rail {
+      position: static; max-height: none; border-right: 0;
+      border-bottom: 1px solid var(--rule); padding: 1.75rem 1.5rem;
+    }
+    nav.rail ol { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0 1rem; }
+    .masthead { padding: 2.5rem 1.5rem 1.75rem; }
+    main { padding: 1.75rem 1.5rem 4rem; }
+    h3 { grid-template-columns: 2.4rem 1fr; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+
+  .backbar {
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    padding: .7rem 2.5rem; border-bottom: 1px solid var(--rule);
+    background: var(--surface); font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .72rem; letter-spacing: .08em; text-transform: uppercase;
+    position: sticky; top: 0; z-index: 10;
+  }
+  .backbar span { color: var(--ink-3); }
+  .backbar a { color: var(--accent-ink); text-decoration: none; }
+  .backbar a:hover { text-decoration: underline; }
+  .backbar a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  nav.rail { top: 2.6rem; max-height: calc(100vh - 2.6rem); }
+  @media (max-width: 940px) {
+    .backbar { padding: .7rem 1.5rem; }
+    nav.rail { top: 0; max-height: none; }
+  }
+</style>
+
+
+<div class="backbar">
+  <a href="{{ url_for('main.index') }}">&larr; nelsonkoskela.dev</a>
+  <span>Engineering reference</span>
+  <a href="{{ url_for('projects.index') }}">Projects &rarr;</a>
+</div>
+
+<div class="shell">
+
+  <header class="masthead">
+    <p class="kicker">Engineering Reference &middot; nelsonkoskela.dev</p>
+    <h1>Portfolio Site Engineering Reference</h1>
+    <p class="standfirst">A complete walkthrough of the Flask application behind nelsonkoskela.dev &mdash; every subsystem, the data model, the request paths, the maths, and the deployment &mdash; followed by an interview question bank drawn from it.</p>
+    <div class="meta-strip">
+      <div><span>Stack</span><b>Flask 3 &middot; Postgres &middot; Redis &middot; RQ &middot; Socket.IO</b></div>
+      <div><span>Runtime</span><b>5 containers, 1 VPS, Caddy TLS</b></div>
+      <div><span>Surface</span><b>6 projects &middot; 40+ routes &middot; 9 tables</b></div>
+      <div><span>Tests</span><b>347 passing, 1 skipped</b></div>
+    </div>
+  </header>
+
+  <nav class="rail" aria-label="Contents">
+    <h2>Part I &mdash; Foundations</h2>
+    <ol>
+      <li><a href="#s1"><i>1</i><span>What the system is</span></a></li>
+      <li><a href="#s2"><i>2</i><span>Runtime topology</span></a></li>
+      <li><a href="#s3"><i>3</i><span>Request lifecycle</span></a></li>
+      <li><a href="#s4"><i>4</i><span>Application factory</span></a></li>
+      <li><a href="#s5"><i>5</i><span>Configuration</span></a></li>
+    </ol>
+    <h2>Part II &mdash; Data</h2>
+    <ol>
+      <li><a href="#s6"><i>6</i><span>Schema overview</span></a></li>
+      <li><a href="#s7"><i>7</i><span>Table reference</span></a></li>
+    </ol>
+    <h2>Part III &mdash; Trading</h2>
+    <ol>
+      <li><a href="#s8"><i>8</i><span>Booking model</span></a></li>
+      <li><a href="#s9"><i>9</i><span>Pricing &amp; Greeks</span></a></li>
+      <li><a href="#s10"><i>10</i><span>Risk request flow</span></a></li>
+      <li><a href="#s11"><i>11</i><span>Model registry</span></a></li>
+      <li><a href="#s12"><i>12</i><span>Market data</span></a></li>
+      <li><a href="#s13"><i>13</i><span>Watchlist &amp; SSE</span></a></li>
+    </ol>
+    <h2>Part IV &mdash; QR Scorer</h2>
+    <ol>
+      <li><a href="#s14"><i>14</i><span>EDGAR &amp; XBRL</span></a></li>
+      <li><a href="#s15"><i>15</i><span>Scoring engine</span></a></li>
+      <li><a href="#s16"><i>16</i><span>Backtest</span></a></li>
+    </ol>
+    <h2>Part V &mdash; Pipeline World</h2>
+    <ol>
+      <li><a href="#s17"><i>17</i><span>The seven stages</span></a></li>
+      <li><a href="#s18"><i>18</i><span>Join to live</span></a></li>
+      <li><a href="#s19"><i>19</i><span>Cache-aside</span></a></li>
+      <li><a href="#s20"><i>20</i><span>Analytics SQL</span></a></li>
+      <li><a href="#s21"><i>21</i><span>Production Town</span></a></li>
+    </ol>
+    <h2>Part VI &mdash; Supporting</h2>
+    <ol>
+      <li><a href="#s22"><i>22</i><span>SRE Infra Layer</span></a></li>
+      <li><a href="#s23"><i>23</i><span>Traffic analytics</span></a></li>
+      <li><a href="#s24"><i>24</i><span>Timed-Squares</span></a></li>
+    </ol>
+    <h2>Part VII &mdash; Cross-cutting</h2>
+    <ol>
+      <li><a href="#s25"><i>25</i><span>Validation &amp; security</span></a></li>
+      <li><a href="#s26"><i>26</i><span>Limits &amp; back-pressure</span></a></li>
+      <li><a href="#s27"><i>27</i><span>Failure handling</span></a></li>
+      <li><a href="#s28"><i>28</i><span>Testing</span></a></li>
+      <li><a href="#s29"><i>29</i><span>Deployment</span></a></li>
+    </ol>
+    <h2>Part VIII</h2>
+    <ol>
+      <li><a href="#s30"><i>30</i><span>Interview questions</span></a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+<div class="part">
+  <span class="part-label">Part I</span>
+  <h2>Foundations</h2>
+</div>
+
+<section class="chunk" id="s1">
+  <h3><i>1</i><span>What the system is</span></h3>
+
+  <p class="lede">One Flask application serving a personal site plus six self-contained projects. Every project is a blueprint with its own routes, service layer, templates and tests; they share one database, one Redis instance, one worker pool and one deployment.</p>
+
+  <p>The important structural idea: <b>routes are thin, services hold the logic, and models hold the state.</b> A route parses the request, calls one service function, and renders. Nothing in <code>app/blueprints/*/routes.py</code> does maths, network I/O, or multi-step orchestration &mdash; that all lives in <code>app/services/</code>, which is why the service layer is unit-testable without a Flask request at all.</p>
+
+  <div class="tw">
+    <table>
+      <thead>
+        <tr><th>Project</th><th>Route prefix</th><th>What it does</th><th>Core services</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>Trading Simulator</b></td>
+          <td><code>/projects/trading-simulator</code></td>
+          <td>Shared public trade book. Open simulated stock/option positions, price them, and run risk (Greeks, scenarios) against a leg, a position, or the whole book.</td>
+          <td><code>market_data</code>, <code>pricing</code>, <code>instruments</code>, <code>risk_engine</code>, <code>risk_models/</code>, <code>watchlist</code></td>
+        </tr>
+        <tr>
+          <td><b>QR &mdash; Quant Company Scorer</b></td>
+          <td><code>/projects/qr-quant-scraper</code></td>
+          <td>Scores a company 0&ndash;100 across four factor categories from SEC filings plus market data, and backtests whether the score predicted forward returns.</td>
+          <td><code>edgar</code>, <code>quant_score</code>, <code>backtest</code></td>
+        </tr>
+        <tr>
+          <td><b>Pipeline World</b></td>
+          <td><code>/projects/pipeline-world</code></td>
+          <td>Visitors submit a character; it runs through a real queued 7-stage CI/CD-shaped pipeline, streamed live, and only appears in the world if every stage passes.</td>
+          <td><code>validators</code>, <code>pipeline</code>, <code>queue</code>, <code>world_cache</code>, <code>analytics</code></td>
+        </tr>
+        <tr>
+          <td><b>SRE Infra Layer</b></td>
+          <td><code>/projects/sre-infra</code></td>
+          <td>Dashboards the Redis queue depth, cache hit/miss ratio and rate-limit config that the pipeline runs on.</td>
+          <td><code>queue</code>, <code>world_cache</code></td>
+        </tr>
+        <tr>
+          <td><b>Site Traffic Analytics</b></td>
+          <td><code>/projects/network-sniffer</code></td>
+          <td>Aggregate board over the app's own inbound requests and outbound API calls: volume, latency percentiles, error rate, busiest endpoints.</td>
+          <td><code>net_monitor</code></td>
+        </tr>
+        <tr>
+          <td><b>Timed-Squares</b></td>
+          <td><code>/projects/timed-squares</code></td>
+          <td>Turn-based survival game on a 10&times;10 grid with telegraphed obstacle moves and a public leaderboard.</td>
+          <td><code>validators</code> (arcade names)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Alongside those: <code>/</code>, <code>/about</code>, <code>/contact</code>, <code>/projects</code> are ordinary content pages, and <code>/favicon.ico</code> and <code>/robots.txt</code> are served from the root because browsers and crawlers request them there regardless of markup.</p>
+</section>
+
+<section class="chunk" id="s2">
+  <h3><i>2</i><span>Runtime topology</span></h3>
+
+  <p>Production is a single Hetzner CX22 VPS running five containers from one <code>docker-compose.yml</code>. Only Caddy is reachable from the internet; everything else talks over the internal Docker network and is never exposed publicly.</p>
+
+  <figure>
+    <figcaption>Deployment view &mdash; five containers, one host</figcaption>
+    <div class="diagram">
+<pre class="mermaid">
+%%{init: {"theme":"base","themeVariables":{"background":"#FFFFFF","primaryColor":"#E1EBF6","primaryTextColor":"#131A21","primaryBorderColor":"#1A4E86","secondaryColor":"#F3F6F9","tertiaryColor":"#FFFFFF","mainBkg":"#E1EBF6","nodeBorder":"#1A4E86","nodeTextColor":"#131A21","lineColor":"#46535F","textColor":"#131A21","titleColor":"#131A21","clusterBkg":"#F7F9FB","clusterBorder":"#CBD5DE","edgeLabelBackground":"#FFFFFF","actorBkg":"#1A4E86","actorTextColor":"#FFFFFF","actorBorder":"#1A4E86","actorLineColor":"#8C9AA6","signalColor":"#131A21","signalTextColor":"#131A21","labelBoxBkgColor":"#E1EBF6","labelBoxBorderColor":"#1A4E86","labelTextColor":"#131A21","loopTextColor":"#131A21","noteBkgColor":"#FBEFDC","noteTextColor":"#131A21","noteBorderColor":"#A8501B","activationBkgColor":"#CBD5DE","activationBorderColor":"#1A4E86","sequenceNumberColor":"#FFFFFF","altBackground":"#F7F9FB","classText":"#131A21","labelColor":"#131A21","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F3F6F9","transitionColor":"#46535F","transitionLabelColor":"#131A21","stateBkg":"#E1EBF6","stateLabelColor":"#131A21","compositeBackground":"#F7F9FB","compositeBorder":"#CBD5DE","innerEndBackground":"#131A21","cScale0":"#E1EBF6"}}}%%
+flowchart TB
+ subgraph net["Public internet"]
+ B["Browser"]
+ end
+
+ subgraph host["Hetzner CX22 VPS &mdash; Docker network"]
+ C["caddy ports 80 / 443 TLS + static files"]
+ W["web gunicorn -w 1 --threads 8 Flask + Socket.IO"]
+ K["worker RQ SimpleWorker 2 queues"]
+ P[("postgres 16 durable state")]
+ R[("redis 7 queue / cache / limits")]
+ end
+
+ subgraph ext["Third-party APIs"]
+ Y["yfinance"]
+ E["data.sec.gov"]
+ end
+
+ B -->|HTTPS| C
+ C -->|"/static/* served from disk"| C
+ C -->|"everything else"| W
+ W --> P
+ W --> R
+ K --> P
+ K --> R
+ R -.->|"jobs dequeued"| K
+ W --> Y
+ W --> E
+ K --> Y
+</pre>
+    </div>
+  </figure>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Container</th><th>Role</th><th>Why it is separate</th></tr></thead>
+      <tbody>
+        <tr><td><code>caddy</code></td><td>Reverse proxy, automatic Let's Encrypt TLS, static file server</td><td>Terminates HTTPS and answers <code>/static/*</code> straight off disk, so asset requests never consume a gunicorn thread</td></tr>
+        <tr><td><code>web</code></td><td>Flask app under gunicorn, plus the Socket.IO server</td><td>Handles requests and holds live socket sessions</td></tr>
+        <tr><td><code>worker</code></td><td>RQ worker consuming <code>pipeline_world</code> and <code>risk_engine</code> queues</td><td>Pipeline runs and risk pricing genuinely execute off the request path, in a different process</td></tr>
+        <tr><td><code>postgres</code></td><td>All durable state</td><td>Required specifically for the analytics page's window functions and <code>DATE_TRUNC</code></td></tr>
+        <tr><td><code>redis</code></td><td>Job queues, world cache, rate-limit counters, SSE concurrency counters, fast-mode flag</td><td>Shared state that must survive across processes</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <b class="tag">Constraint worth knowing</b>
+    <p>Gunicorn runs <b>one process with eight threads</b>, not multiple processes. Flask-SocketIO's <code>threading</code> async mode keeps each client's Engine.IO session in the memory of whichever process created it. With two or more worker processes, consecutive polling requests for the same session get round-robined to a process that has never heard of it and return <code>400 unknown session</code>, silently breaking Pipeline World's live updates. All concurrency therefore comes from threads, and that eight-slot pool is a real, finite budget &mdash; which is why SSE connections are capped (&sect;26) and static files bypass the app entirely (&sect;29).</p>
+  </div>
+</section>
+
+<section class="chunk" id="s3">
+  <h3><i>3</i><span>Request lifecycle</span></h3>
+
+  <p>Every request passes through the same fixed chain of hooks before and after the view function runs. Two of them are registered app-wide in the factory.</p>
+
+  <figure>
+    <figcaption>Inbound request &mdash; hook order</figcaption>
+    <div class="diagram">
+<pre class="mermaid">
+%%{init: {"theme":"base","themeVariables":{"background":"#FFFFFF","primaryColor":"#E1EBF6","primaryTextColor":"#131A21","primaryBorderColor":"#1A4E86","secondaryColor":"#F3F6F9","tertiaryColor":"#FFFFFF","mainBkg":"#E1EBF6","nodeBorder":"#1A4E86","nodeTextColor":"#131A21","lineColor":"#46535F","textColor":"#131A21","titleColor":"#131A21","clusterBkg":"#F7F9FB","clusterBorder":"#CBD5DE","edgeLabelBackground":"#FFFFFF","actorBkg":"#1A4E86","actorTextColor":"#FFFFFF","actorBorder":"#1A4E86","actorLineColor":"#8C9AA6","signalColor":"#131A21","signalTextColor":"#131A21","labelBoxBkgColor":"#E1EBF6","labelBoxBorderColor":"#1A4E86","labelTextColor":"#131A21","loopTextColor":"#131A21","noteBkgColor":"#FBEFDC","noteTextColor":"#131A21","noteBorderColor":"#A8501B","activationBkgColor":"#CBD5DE","activationBorderColor":"#1A4E86","sequenceNumberColor":"#FFFFFF","altBackground":"#F7F9FB","classText":"#131A21","labelColor":"#131A21","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F3F6F9","transitionColor":"#46535F","transitionLabelColor":"#131A21","stateBkg":"#E1EBF6","stateLabelColor":"#131A21","compositeBackground":"#F7F9FB","compositeBorder":"#CBD5DE","innerEndBackground":"#131A21","cScale0":"#E1EBF6"}}}%%
+sequenceDiagram
+ autonumber
+ participant B as Browser
+ participant C as Caddy
+ participant G as gunicorn thread
+ participant H as before_request hooks
+ participant V as View function
+ participant S as Service layer
+ participant D as Postgres
+
+ B->>C: GET /projects/trading-simulator
+ alt path starts /static/
+ C-->>B: file from disk (never touches Flask)
+ else application route
+ C->>G: proxied to web:8000
+ G->>H: net_monitor start timer
+ H->>H: ensure_session_id (uuid4 cookie)
+ H->>H: Flask-Limiter checks quota
+ H->>V: dispatch
+ V->>S: one service call
+ S->>D: query / write
+ D-->>S: rows
+ S-->>V: plain dicts / models
+ V-->>G: rendered template or JSON
+ G->>G: after_request logs method, path, endpoint, status, duration
+ G-->>C: response
+ C-->>B: response
+ end
+</pre>
+    </div>
+  </figure>
+
+  <ul>
+    <li><b><code>ensure_session_id</code></b> &mdash; assigns a random UUID4 to <code>session["session_id"]</code> on first visit. This is not authentication. It exists only to scope per-visitor caps (how many positions you may open, rate limits) and to let the browser recognise its own in-flight pipeline submission. Every piece of data on the site is public to everyone.</li>
+    <li><b><code>net_monitor</code> hooks</b> &mdash; record method, path, Flask endpoint name, status and duration into an in-memory ring buffer. Requests to <code>static</code> and to the analytics endpoint itself are excluded as noise.</li>
+    <li><b>Flask-Limiter</b> &mdash; keyed on remote address, backed by Redis in production so limits hold across restarts.</li>
+  </ul>
+
+  <p>Outbound calls are logged too, but explicitly at the call site inside <code>market_data.py</code> and <code>edgar.py</code> rather than by a hook, because they are not Flask requests. That is what populates the "outbound" half of the traffic board.</p>
+</section>
+
+<section class="chunk" id="s4">
+  <h3><i>4</i><span>Application factory</span></h3>
+
+  <p><code>create_app(config_name)</code> is the single construction path, used identically by <code>wsgi.py</code>, <code>worker.py</code> and every test. Order matters here, and the sequence is:</p>
+
+<pre><code>1.  Load config class by name (development / production / testing)
+2.  Hard-fail if production is still using the dev SECRET_KEY
+3.  Resolve SQLALCHEMY_DATABASE_URI (falls back to instance/site.db)
+4.  Init extensions:  db, migrate, limiter, socketio
+5.  queue.init_app(app)          -> Redis connection + 2 RQ queues
+6.  register_request_hooks(app)  -> net_monitor before/after
+7.  register_filters(app)        -> the `money` Jinja filter
+8.  Register 10 blueprints with URL prefixes
+9.  before_request: ensure_session_id
+10. context_processor: site-wide links (GitHub, LinkedIn, resume, email)
+11. errorhandler(404)
+12. import app.models          (registers mappers)
+13. if not production: db.create_all()</code></pre>
+
+  <div class="note warn">
+    <b class="tag">Two deliberate asymmetries</b>
+    <p><b>Startup fails loudly on a default secret.</b> If <code>config_name == "production"</code> and <code>SECRET_KEY</code> is still <code>dev-insecure-secret-change-me</code>, the factory raises. That value is in the repo's <code>.env.example</code>, so shipping with it would let anyone forge a session cookie. Making it a startup crash means it cannot be forgotten silently.</p>
+    <p><b><code>db.create_all()</code> only runs outside production.</b> <code>create_all</code> adds missing tables but never alters an existing one, so it silently masks schema drift &mdash; a column whose type changed in the model looks fine and then fails on write. Production goes through <code>flask db upgrade</code> (Alembic) exclusively; dev and test keep the convenience because a throwaway or in-memory database has no history to preserve.</p>
+  </div>
+
+  <h4>Why extensions live in their own module</h4>
+  <p><code>app/extensions.py</code> holds bare, unconfigured instances of <code>SQLAlchemy</code>, <code>Limiter</code>, <code>SocketIO</code> and <code>Migrate</code>. Blueprints and services import <code>db</code> from there rather than from <code>app/__init__.py</code>. Without that split, any module needing <code>db</code> would import the package that imports the blueprints that import that module &mdash; a circular import.</p>
+</section>
+
+<section class="chunk" id="s5">
+  <h3><i>5</i><span>Configuration</span></h3>
+
+  <p>Twelve-factor: everything that varies by environment is an environment variable with a safe local default, so no code changes when the host changes. Three config classes inherit from one base.</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Class</th><th>Key differences</th></tr></thead>
+      <tbody>
+        <tr><td><code>DevelopmentConfig</code></td><td><code>DEBUG=True</code>. No secure-cookie flags &mdash; <code>SESSION_COOKIE_SECURE</code> requires HTTPS, and setting it on plain <code>http://localhost</code> means the cookie is never sent and every session silently breaks.</td></tr>
+        <tr><td><code>ProductionConfig</code></td><td><code>DEBUG=False</code>, <code>SESSION_COOKIE_SECURE=True</code>, <code>SESSION_COOKIE_SAMESITE="Lax"</code>.</td></tr>
+        <tr><td><code>TestingConfig</code></td><td>In-memory SQLite with a <code>StaticPool</code> (otherwise each connection gets its <i>own</i> empty database), rate limiting off, pipeline stage delay forced to 0.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h5>Notable settings</h5>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Setting</th><th>Default</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>TICKER_WHITELIST</code></td><td>~46 large caps/ETFs</td><td>Checked before any ticker reaches yfinance or EDGAR</td></tr>
+        <tr><td><code>QR_WEIGHTS</code></td><td>0.25 &times; 4</td><td>Category weights for the composite score &mdash; config, not hardcoded logic</td></tr>
+        <tr><td><code>PRICE_CACHE_TTL_SECONDS</code></td><td class="num">60</td><td>How long a cached underlying price stays fresh</td></tr>
+        <tr><td><code>WORLD_CACHE_TTL_SECONDS</code></td><td class="num">30</td><td>Safety net behind explicit cache invalidation</td></tr>
+        <tr><td><code>MAX_CONTENT_LENGTH</code></td><td class="num">1 MB</td><td>Caps request bodies; every form here posts a handful of short fields</td></tr>
+        <tr><td><code>PIPELINE_STAGE_DELAY_SECONDS</code></td><td><code>None</code></td><td>Escape-hatch override of the 1&ndash;10 s random per-stage delay</td></tr>
+        <tr><td><code>RATELIMIT_STORAGE_URI</code></td><td><code>memory://</code></td><td>Redis in Docker, so limits survive a restart</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="part">
+  <span class="part-label">Part II</span>
+  <h2>The data model</h2>
+</div>
+
+<section class="chunk" id="s6">
+  <h3><i>6</i><span>Schema overview</span></h3>
+
+  <p>Nine tables in three independent clusters. They share a database but no foreign keys cross between clusters &mdash; trading, Pipeline World and the game are genuinely separate domains.</p>
+
+  <figure>
+    <figcaption>Class diagram &mdash; all persisted entities</figcaption>
+    <div class="diagram">
+<pre class="mermaid">
+%%{init: {"theme":"base","themeVariables":{"background":"#FFFFFF","primaryColor":"#E1EBF6","primaryTextColor":"#131A21","primaryBorderColor":"#1A4E86","secondaryColor":"#F3F6F9","tertiaryColor":"#FFFFFF","mainBkg":"#E1EBF6","nodeBorder":"#1A4E86","nodeTextColor":"#131A21","lineColor":"#46535F","textColor":"#131A21","titleColor":"#131A21","clusterBkg":"#F7F9FB","clusterBorder":"#CBD5DE","edgeLabelBackground":"#FFFFFF","actorBkg":"#1A4E86","actorTextColor":"#FFFFFF","actorBorder":"#1A4E86","actorLineColor":"#8C9AA6","signalColor":"#131A21","signalTextColor":"#131A21","labelBoxBkgColor":"#E1EBF6","labelBoxBorderColor":"#1A4E86","labelTextColor":"#131A21","loopTextColor":"#131A21","noteBkgColor":"#FBEFDC","noteTextColor":"#131A21","noteBorderColor":"#A8501B","activationBkgColor":"#CBD5DE","activationBorderColor":"#1A4E86","sequenceNumberColor":"#FFFFFF","altBackground":"#F7F9FB","classText":"#131A21","labelColor":"#131A21","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F3F6F9","transitionColor":"#46535F","transitionLabelColor":"#131A21","stateBkg":"#E1EBF6","stateLabelColor":"#131A21","compositeBackground":"#F7F9FB","compositeBorder":"#CBD5DE","innerEndBackground":"#131A21","cScale0":"#E1EBF6"}}}%%
+classDiagram
+ direction LR
+
+ class Instrument {
+ +int id
+ +str underlying_ticker
+ +str instrument_type
+ +float strike
+ +date expiry
+ +str exercise_style
+ +str settlement_type
+ +int contract_multiplier
+ +str code
+ +is_option() bool
+ }
+
+ class Strategy {
+ +int id
+ +str session_id
+ +str name
+ +datetime opened_at
+ +str status
+ }
+
+ class Leg {
+ +int id
+ +int strategy_id
+ +int instrument_id
+ +str side
+ +int quantity
+ +float entry_price
+ +float entry_iv
+ +str status
+ +signed_quantity() int
+ +ticker() str
+ +multiplier() int
+ }
+
+ class RiskRequest {
+ +int id
+ +int strategy_id
+ +int leg_id
+ +str scope
+ +json scenario
+ +str status
+ +str model_key
+ +json totals
+ +str error
+ }
+
+ class RiskResult {
+ +int id
+ +int risk_request_id
+ +int leg_id
+ +float pv
+ +float pnl
+ +float delta
+ +float gamma
+ +float theta
+ +float vega
+ +float ir_delta
+ +float scenario_gamma
+ +float ir_vega
+ +json report
+ }
+
+ class PriceCache {
+ +str ticker
+ +float price
+ +datetime fetched_at
+ }
+
+ class Character {
+ +int id
+ +str session_id
+ +str first_name
+ +str last_name
+ +str appearance_id
+ +str status
+ +float world_x
+ +float world_y
+ +str failure_reason
+ }
+
+ class PipelineRun {
+ +int id
+ +int character_id
+ +str stage
+ +str status
+ +datetime started_at
+ +datetime ended_at
+ +bool fast_mode
+ +duration_seconds() float
+ }
+
+ class TimedSquaresScore {
+ +int id
+ +str session_id
+ +str player_name
+ +int turns_survived
+ }
+
+ Strategy "1" *-- "many" Leg : contains
+ Instrument "1" o-- "many" Leg : referenced by
+ Strategy "1" --o "many" RiskRequest : priced
+ Leg "1" --o "many" RiskRequest : priced
+ RiskRequest "1" *-- "many" RiskResult : produces
+ Leg "1" --o "many" RiskResult : measured
+ Character "1" *-- "many" PipelineRun : logs
+</pre>
+    </div>
+  </figure>
+
+  <h4>The three clusters</h4>
+  <ul>
+    <li><b>Trading</b> &mdash; <code>Instrument</code>, <code>Strategy</code>, <code>Leg</code>, <code>RiskRequest</code>, <code>RiskResult</code>, plus <code>PriceCache</code> as an unrelated helper table.</li>
+    <li><b>Pipeline World</b> &mdash; <code>Character</code> and <code>PipelineRun</code>.</li>
+    <li><b>Timed-Squares</b> &mdash; <code>TimedSquaresScore</code> alone.</li>
+  </ul>
+
+  <div class="note">
+    <b class="tag">Portability rule</b>
+    <p>Every column uses a portable type (<code>Integer</code>, <code>String</code>, <code>Float</code>, <code>DateTime</code>, <code>Date</code>, <code>Boolean</code>, <code>JSON</code>), so the whole ORM layer works against SQLite as well as Postgres. Exactly one module breaks that rule on purpose: <code>analytics.py</code>, whose hand-written SQL uses Postgres-only <code>DATE_TRUNC</code> and window-frame syntax (&sect;20).</p>
+  </div>
+</section>
+
+<section class="chunk" id="s7">
+  <h3><i>7</i><span>Table reference</span></h3>
+
+  <h4>Instrument &mdash; contract reference data</h4>
+  <p>One master row per real-world contract. A hundred visitors trading the same AAPL $230 call expiring the same day all point at a single <code>Instrument</code>, instead of each embedding a private copy of the strike and expiry. Deduped through <code>get_or_create_instrument()</code> on the natural key <code>(underlying_ticker, instrument_type, strike, expiry)</code>, which also carries a database-level <code>UniqueConstraint</code> named <code>uq_instrument_identity</code>.</p>
+
+  <p>The <code>code</code> column holds the standard <b>OCC option symbol</b>, derived deterministically from the identity fields:</p>
+
+<pre><code>root ticker + YYMMDD expiry + C|P + 8-digit strike (strike x 1000, zero padded)
+
+  AAPL, call, strike 300, expiry 2027-01-15
+  -> "AAPL"  +  "270115"  +  "C"  +  "00300000"
+  -> AAPL270115C00300000
+
+  stock has no strike or expiry -> code is just "AAPL"</code></pre>
+
+  <p>It is stored rather than computed on read so it can be indexed and searched: the instrument catalogue at <code>/instruments</code> is a real lookup by code, not a normalisation detail.</p>
+
+  <h4>Strategy and Leg &mdash; the booking model</h4>
+  <p>A <code>Strategy</code> is a container; a <code>Leg</code> is one booked transaction inside it. Today's UI only ever creates one leg per strategy (named <code>"Single Leg"</code>), but the schema does not assume that &mdash; a straddle would be one <code>Strategy</code> with two <code>Leg</code>s and needs no structural change.</p>
+
+  <p><code>Leg</code> exposes <b>passthrough properties</b> so routes and templates that used to read a flat <code>position.ticker</code> keep working after the data moved to a separate row:</p>
+
+<pre><code>@property
+def ticker(self):     return self.instrument.underlying_ticker
+@property
+def kind(self):       return self.instrument.instrument_type
+@property
+def multiplier(self): return self.instrument.contract_multiplier
+
+@property
+def signed_quantity(self):
+    """Direction applied. Every leg booked today is 'buy',
+       so this currently equals quantity."""
+    return self.quantity if self.side == "buy" else -self.quantity</code></pre>
+
+  <p><code>side</code> is stored explicitly as <code>'buy'</code>/<code>'sell'</code> rather than folded into a signed quantity, which is how real booking systems record direction. <code>signed_quantity</code> is the value the pricing maths actually scales by, so a short-selling UI would work without touching <code>pricing.py</code>.</p>
+
+  <h4>RiskRequest and RiskResult</h4>
+  <p>The central idea of the trading project: risk is not recomputed silently on every page render. A caller <i>submits a request</i>, and that request is a persisted, queryable fact.</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Column</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>scope</code></td><td><code>'leg'</code>, <code>'position'</code> or <code>'book'</code>. Stored explicitly rather than inferred from which FK is null &mdash; a book-level request has both null and would otherwise be indistinguishable from a corrupt row.</td></tr>
+        <tr><td><code>scenario</code></td><td><code>None</code> for as-of-now, or a shock spec such as <code>{"spot_shock_pct": -10, "vol_shock_pts": 5}</code>. Both in whole percent/points.</td></tr>
+        <tr><td><code>status</code></td><td><code>'pending'</code> &rarr; <code>'complete'</code> or <code>'failed'</code>. This is the channel the worker reports back through.</td></tr>
+        <tr><td><code>model_key</code></td><td>Which registered model answered. Two requests on the same position can legitimately disagree if they ran different models.</td></tr>
+        <tr><td><code>totals</code></td><td>Aggregated net Greeks, PV, PnL, the shared market snapshot, and a per-leg breakdown. Stored, not recomputed, so reopening an old report shows the numbers that run produced.</td></tr>
+        <tr><td><code>error</code></td><td>Plain-text failure reason written by the worker.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note gotcha">
+    <b class="tag">JSON null vs SQL NULL</b>
+    <p>Both JSON columns are declared <code>db.JSON(none_as_null=True)</code>. Without that flag SQLAlchemy stores a Python <code>None</code> as the <i>JSON literal</i> <code>'null'</code>, which is not SQL <code>NULL</code>. A query like <code>.filter(RiskRequest.scenario.isnot(None))</code> would then match every row, making every plain request look like a scenario request.</p>
+  </div>
+
+  <h4>Character and PipelineRun</h4>
+  <p><code>Character</code> holds the submission and its current status; <code>PipelineRun</code> is one row per stage attempt, and is the durable evidence the analytics page queries. The name and icebreaker columns are deliberately wider than the validators allow &mdash; see &sect;25 for why that headroom is load-bearing.</p>
+
+<pre><code>PIPELINE_STAGES = ("sanitize", "security_scan", "test_uniqueness",
+                   "test_profanity", "build", "deploy", "verify")
+
+CHARACTER_STATUSES = ("pending", "sanitizing", "scanning",
+                      "testing_uniqueness", "testing_profanity",
+                      "building", "deploying", "live", "failed")</code></pre>
+
+  <p>There is no <code>"verifying"</code> status. Deploy's own action <i>is</i> writing <code>status="live"</code> &mdash; that is what deploying means &mdash; and Verify runs afterwards as a read-after-write confirmation without the character passing through another transient state.</p>
+</section>
+
+<div class="part">
+  <span class="part-label">Part III</span>
+  <h2>Trading Simulator</h2>
+</div>
+
+<section class="chunk" id="s8">
+  <h3><i>8</i><span>Booking model</span></h3>
+
+  <p class="lede">A shared, anonymous, public trade book. Anyone can open a simulated position; everyone sees every position. No accounts, no real money, prices roughly 15 minutes delayed.</p>
+
+  <h4>Opening a position</h4>
+  <p><code>POST /open</code> is the only write path into the book. Its sequence:</p>
+
+<pre><code>1. Validate ticker against TICKER_WHITELIST      -> 400 if unknown
+2. Enforce per-session open-strategy cap (10)
+3. Fetch the current underlying price            (market_data)
+4. For options: fetch the chain, find the strike, read its implied vol
+5. get_or_create_instrument(...)                 -> dedup on identity
+6. Create Strategy("Single Leg")
+7. Create Leg(side="buy", quantity, entry_price, entry_iv, ...)
+8. Commit</code></pre>
+
+  <p>Entry price for stock is the underlying price. For an option it is the contract's own last traded price, and the contract's implied volatility is captured into <code>entry_iv</code> at that moment. That captured IV is what every later reprice uses.</p>
+
+  <div class="note">
+    <b class="tag">Why entry IV is held constant</b>
+    <p>yfinance exposes an option chain &mdash; strikes, bid, ask, open interest, implied volatility &mdash; but <b>no Greeks</b>. There is also no live volatility surface available. So positions are repriced with a local Black-Scholes calculation fed by the IV captured at entry and the <i>current</i> underlying price. A real desk reprices off a fresh surface; this is a documented simplification, and it is the honest answer to "where do your Greeks come from".</p>
+  </div>
+
+  <h4>Rate limiting on this endpoint</h4>
+  <p>Two independent controls, because they stop different things. Flask-Limiter caps <code>POST /open</code> at 10/hour <b>per IP</b>, which bounds automated abuse. The per-session cap of 10 open strategies bounds how much one visitor can clutter a shared public book, which an IP limit alone would not (the cap persists; the rate limit window rolls).</p>
+</section>
+
+<section class="chunk" id="s9">
+  <h3><i>9</i><span>Pricing and Greeks</span></h3>
+
+  <p><code>app/services/pricing.py</code> is pure maths &mdash; no Flask, no I/O, no database &mdash; which makes it directly unit-testable. It is the module most worth being able to talk through line by line.</p>
+
+  <h4>Black-Scholes price</h4>
+<pre><code>d1 = [ ln(S/K) + (r + sigma^2/2) * T ] / (sigma * sqrt(T))
+d2 = d1 - sigma * sqrt(T)
+
+call = S * N(d1) - K * e^(-rT) * N(d2)
+put  = K * e^(-rT) * N(-d2) - S * N(-d1)</code></pre>
+
+  <p><code>N()</code> is the standard normal CDF, implemented as <code>0.5 * (1 + erf(x / sqrt(2)))</code> using <code>math.erf</code> &mdash; no SciPy dependency for one function. The rate is a flat <code>RISK_FREE_RATE = 0.045</code>, an assumed constant rather than a live curve.</p>
+
+  <p><b>Boundary case:</b> when <code>T &lt;= 0</code> or <code>sigma &lt;= 0</code>, <code>d1</code> and <code>d2</code> are undefined (division by zero), so the function returns intrinsic value: <code>max(S-K, 0)</code> for a call, <code>max(K-S, 0)</code> for a put. An expired option is worth exactly its payoff.</p>
+
+  <h4>Greeks, and the quoting conventions</h4>
+  <p>This is where the code makes a deliberate choice that is worth explaining: the raw calculus units are converted to the units traders actually read.</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Greek</th><th>Meaning</th><th>Conversion applied</th></tr></thead>
+      <tbody>
+        <tr><td><b>Delta</b></td><td>Change in value per $1 move in the underlying</td><td>None &mdash; already in [-1, 1] per share</td></tr>
+        <tr><td><b>Gamma</b></td><td>Rate of change of delta per $1 move</td><td>None</td></tr>
+        <tr><td><b>Theta</b></td><td>Value lost to time decay</td><td><code>/ 365</code> &rarr; per <b>calendar day</b>, not per year</td></tr>
+        <tr><td><b>Vega</b></td><td>Value gained per unit of implied vol</td><td><code>/ 100</code> &rarr; per <b>1 vol point</b> (20%&rarr;21%), not per 100%</td></tr>
+        <tr><td><b>Rho</b></td><td>Value gained per unit of interest rate</td><td><code>/ 100</code> &rarr; per <b>1 percentage point</b></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Gamma and vega have identical formulas for calls and puts; only delta, theta and rho carry a term or sign that flips with option kind:</p>
+
+<pre><code>gamma = pdf(d1) / (S * sigma * sqrt(T))
+vega  = S * pdf(d1) * sqrt(T) / 100
+
+call:  delta = N(d1)
+put:   delta = N(d1) - 1</code></pre>
+
+  <p>At the boundary (expired or zero vol) delta collapses to 0 or 1 for a call, 0 or -1 for a put, and every second-order Greek is 0 &mdash; there is no optionality left to be sensitive to anything.</p>
+
+  <h4>From per-share to position level</h4>
+  <p><code>position_greeks()</code> scales the per-share figures by <code>signed_quantity &times; multiplier</code> (100 for options, 1 for stock). Stock is special-cased entirely: delta 1.0, every other Greek 0 &mdash; holding shares has nothing convex, time-decaying or vol-sensitive about it.</p>
+
+  <h5>Worked example</h5>
+<pre><code>Position: 2 AAPL 230 calls, expiring in 30 days, entry IV 25%
+Underlying now: $235
+
+T          = 30 / 365            = 0.0822
+per-share  delta ~ 0.62,  gamma ~ 0.031,  theta ~ -0.09,  vega ~ 0.11
+multiplier = 100,  quantity = 2  -> scale = 200
+
+position delta = 0.62  * 200 =  124     ($ per $1 AAPL move)
+position gamma = 0.031 * 200 =    6.2
+position theta = -0.09 * 200 =  -18     ($ lost per calendar day)
+position vega  = 0.11  * 200 =   22     ($ per 1 vol point)</code></pre>
+
+  <h4>PnL</h4>
+<pre><code>cost_basis   = entry_price   * signed_quantity * multiplier
+market_value = current_value * signed_quantity * multiplier
+pnl          = market_value - cost_basis
+pnl_pct      = pnl / abs(cost_basis) * 100</code></pre>
+  <p><code>abs()</code> on the denominator matters: a short position has a negative cost basis, and without it the sign of the percentage would invert.</p>
+
+  <h4>The Hull-White extension &mdash; IR Vega</h4>
+  <p>IR Vega is sensitivity to interest-rate <i>volatility</i>. Under a flat constant rate that is structurally impossible: a constant has no volatility to be sensitive to. Rather than fabricate the number or omit it, the module adds a clearly separated one-factor Hull-White short-rate model, used <b>only</b> for this measure.</p>
+
+<pre><code>dr(t) = (theta(t) - a*r) dt + sigma_r dW(t)
+
+Assuming zero correlation between the rate and equity Brownian motions,
+the standard result is: price with ordinary Black-Scholes but replace the
+equity variance with an adjusted total variance --
+
+  adjusted_variance = sigma^2 * T  +  sigma_r^2 * integral[0,T] B(u,T)^2 du
+  B(u,T)            = (1 - e^(-a(T-u))) / a
+
+That integral has a closed form:
+  (1/a^2) * [ T - (2/a)(1 - e^(-aT)) + (1/2a)(1 - e^(-2aT)) ]
+
+ir_vega is then a central finite difference: bump sigma_r up and down,
+reprice both, divide by 2*bump.</code></pre>
+
+  <p>Both parameters (<code>a = 0.03</code> mean reversion, <code>sigma_r = 0.01</code> rate vol) are assumed illustrative constants, not calibrated &mdash; yfinance has no cap or swaption vol surface to calibrate against. Everything else on the same row still comes from the ordinary flat-rate maths.</p>
+</section>
+
+<section class="chunk" id="s10">
+  <h3><i>10</i><span>Risk request flow</span></h3>
+
+  <p>The chain is <b>position &rarr; risk request &rarr; report</b>. A caller submits a request against one of three scopes; the pricing happens on the worker container; the result is persisted and rendered.</p>
+
+  <figure>
+    <figcaption>Sequence &mdash; submitting and fulfilling a risk request</figcaption>
+    <div class="diagram">
+<pre class="mermaid">
+%%{init: {"theme":"base","themeVariables":{"background":"#FFFFFF","primaryColor":"#E1EBF6","primaryTextColor":"#131A21","primaryBorderColor":"#1A4E86","secondaryColor":"#F3F6F9","tertiaryColor":"#FFFFFF","mainBkg":"#E1EBF6","nodeBorder":"#1A4E86","nodeTextColor":"#131A21","lineColor":"#46535F","textColor":"#131A21","titleColor":"#131A21","clusterBkg":"#F7F9FB","clusterBorder":"#CBD5DE","edgeLabelBackground":"#FFFFFF","actorBkg":"#1A4E86","actorTextColor":"#FFFFFF","actorBorder":"#1A4E86","actorLineColor":"#8C9AA6","signalColor":"#131A21","signalTextColor":"#131A21","labelBoxBkgColor":"#E1EBF6","labelBoxBorderColor":"#1A4E86","labelTextColor":"#131A21","loopTextColor":"#131A21","noteBkgColor":"#FBEFDC","noteTextColor":"#131A21","noteBorderColor":"#A8501B","activationBkgColor":"#CBD5DE","activationBorderColor":"#1A4E86","sequenceNumberColor":"#FFFFFF","altBackground":"#F7F9FB","classText":"#131A21","labelColor":"#131A21","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F3F6F9","transitionColor":"#46535F","transitionLabelColor":"#131A21","stateBkg":"#E1EBF6","stateLabelColor":"#131A21","compositeBackground":"#F7F9FB","compositeBorder":"#CBD5DE","innerEndBackground":"#131A21","cScale0":"#E1EBF6"}}}%%
+sequenceDiagram
+ autonumber
+ participant U as Browser
+ participant R as Flask route
+ participant E as risk_engine (web process)
+ participant D as Postgres
+ participant Q as Redis queue
+ participant W as worker process
+ participant M as RiskModel
+
+ U->>R: POST /strategies/12/risk-requests
+ R->>E: submit_risk_request(strategy_id=12, scenario=...)
+ E->>E: validate exactly one scope given
+ E->>E: get_model(model_key) - bad key raises now, not on the worker
+ E->>D: INSERT RiskRequest(status='pending')
+ E->>D: COMMIT (must be visible to the other process)
+ E->>Q: enqueue run_risk_request_job(id)
+ E->>D: poll status every 50 ms
+
+ Q->>W: dequeue job
+ W->>D: SELECT RiskRequest, its legs, its model
+ W->>W: take_market_snapshot(legs) - one price per ticker
+ loop each leg
+ W->>W: apply scenario shock to spot and IV
+ W->>M: model.run(PricingContext)
+ M-->>W: ModelRun(canonical, measures, extras)
+ W->>D: INSERT RiskResult
+ end
+ W->>D: UPDATE status='complete', totals=...
+ W->>D: COMMIT
+
+ D-->>E: status no longer 'pending'
+ E->>D: refresh row
+ E-->>R: RiskRequest
+ R-->>U: 200 + report link
+</pre>
+    </div>
+  </figure>
+
+  <h4>The single market snapshot</h4>
+  <p>This is the reason position-level pricing exists at all:</p>
+
+<pre><code>def take_market_snapshot(legs) -> dict:
+    snapshot = {}
+    for leg in legs:
+        if leg.ticker not in snapshot:
+            snapshot[leg.ticker] = market_data.get_last_price(leg.ticker)
+    return snapshot</code></pre>
+
+  <p>One price per distinct ticker, fetched once, before any leg is priced. Pricing legs one at a time as they are reached would mark a two-legged spread against two different instants, and the net Greeks would then describe a position that never existed at any single moment. The snapshot is stored in <code>totals</code> so the report can prove what it was marked against.</p>
+
+  <h4>Crossing the process boundary</h4>
+  <div class="note gotcha">
+    <b class="tag">Exceptions do not cross processes &mdash; the row does</b>
+    <p>Once pricing moved to the worker, <code>submit_risk_request</code> could no longer wrap the pricing call in <code>try/except</code>: the code that might raise <code>MarketDataError</code> now runs somewhere else with its own database session and its own stack.</p>
+    <p>The protocol instead is: the worker catches its own exceptions and writes a plain-text reason onto the row (<code>error = "market_data: ..."</code>). The waiting web process re-derives the same exception type from that string once the row stops reading <code>pending</code>, so every existing route's <code>except MarketDataError</code> handler keeps working without knowing pricing moved. The shared database row carries both the result and the failure, because there is no shared call stack to unwind.</p>
+  </div>
+
+  <p>The wait itself uses a plain column query, not <code>session.get()</code>:</p>
+
+<pre><code>status = db.session.query(RiskRequest.status).filter_by(id=rid).scalar()</code></pre>
+
+  <p><code>session.get()</code> can be served out of this session's identity map without touching the database at all, so it would keep re-reading the stale <code>'pending'</code> this process already cached and the loop would never terminate. Timeout is 20 s, a ceiling for a dead worker rather than a tuned latency.</p>
+
+  <h4>Keyword-only arguments</h4>
+  <p><code>submit_risk_request</code> takes <b>only</b> keyword arguments. It previously took a leg id positionally; adding <code>strategy_id</code> meant a stale <code>submit_risk_request(42)</code> would silently be reinterpreted as "price <i>position</i> 42" &mdash; a wrong answer with no error. Keyword-only turns exactly that mistake into an immediate <code>TypeError</code>. When the change landed, 11 old call sites in the test suite failed loudly instead of quietly pricing the wrong thing.</p>
+</section>
+
+<section class="chunk" id="s11">
+  <h3><i>11</i><span>Model registry</span></h3>
+
+  <p>A textbook Strategy pattern. A request names which model runs; the report records which one answered. Adding a model means writing a class and registering it &mdash; nothing in the engine, routes or templates hardcodes a model's identity.</p>
+
+  <figure>
+    <figcaption>Class diagram &mdash; risk model plug-in structure</figcaption>
+    <div class="diagram">
+<pre class="mermaid">
+%%{init: {"theme":"base","themeVariables":{"background":"#FFFFFF","primaryColor":"#E1EBF6","primaryTextColor":"#131A21","primaryBorderColor":"#1A4E86","secondaryColor":"#F3F6F9","tertiaryColor":"#FFFFFF","mainBkg":"#E1EBF6","nodeBorder":"#1A4E86","nodeTextColor":"#131A21","lineColor":"#46535F","textColor":"#131A21","titleColor":"#131A21","clusterBkg":"#F7F9FB","clusterBorder":"#CBD5DE","edgeLabelBackground":"#FFFFFF","actorBkg":"#1A4E86","actorTextColor":"#FFFFFF","actorBorder":"#1A4E86","actorLineColor":"#8C9AA6","signalColor":"#131A21","signalTextColor":"#131A21","labelBoxBkgColor":"#E1EBF6","labelBoxBorderColor":"#1A4E86","labelTextColor":"#131A21","loopTextColor":"#131A21","noteBkgColor":"#FBEFDC","noteTextColor":"#131A21","noteBorderColor":"#A8501B","activationBkgColor":"#CBD5DE","activationBorderColor":"#1A4E86","sequenceNumberColor":"#FFFFFF","altBackground":"#F7F9FB","classText":"#131A21","labelColor":"#131A21","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F3F6F9","transitionColor":"#46535F","transitionLabelColor":"#131A21","stateBkg":"#E1EBF6","stateLabelColor":"#131A21","compositeBackground":"#F7F9FB","compositeBorder":"#CBD5DE","innerEndBackground":"#131A21","cScale0":"#E1EBF6"}}}%%
+classDiagram
+ direction TB
+
+ class RiskModel {
+ +str key
+ +str name
+ +str summary
+ +str method
+ +str good_for
+ +str limitations
+ +run(ctx) ModelRun
+ +to_dict() dict
+ }
+
+ class TraderGranularModel {
+ +key = "trader_granular"
+ +run(ctx) ModelRun
+ -_value_at(ctx, spot) float
+ }
+
+ class FullRevalueModel {
+ +key = "full_revalue"
+ +LADDER_STEPS_PCT
+ +run(ctx) ModelRun
+ -_value_at(ctx, spot) float
+ }
+
+ class PricingContext {
+ +Leg leg
+ +float spot
+ +float iv
+ +float live_spot
+ +float spot_shock_pct
+ +float vol_shock_pts
+ +is_option() bool
+ }
+
+ class ModelRun {
+ +dict canonical
+ +list~Measure~ measures
+ +dict extras
+ +list~str~ notes
+ }
+
+ class Measure {
+ +str key
+ +str label
+ +float value
+ +str unit
+ +str explanation
+ }
+
+ RiskModel <|-- TraderGranularModel
+ RiskModel <|-- FullRevalueModel
+ RiskModel ..> PricingContext : consumes
+ RiskModel ..> ModelRun : produces
+ ModelRun *-- Measure
+</pre>
+    </div>
+  </figure>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th></th><th>Trader Granular</th><th>Full Revalue</th></tr></thead>
+      <tbody>
+        <tr><td><b>Method</b></td><td>Reads Greeks straight out of the closed-form Black-Scholes partial derivatives</td><td>Reprices the position at each rung of a spot ladder (&minus;20% to +20%) and reports observed P&amp;L</td></tr>
+        <tr><td><b>Cost</b></td><td>No repricing loop &mdash; a whole book revalues in milliseconds</td><td>One pricing call per rung</td></tr>
+        <tr><td><b>Good for</b></td><td>Live risk on a screen, hedging decisions, anything needing an answer now</td><td>Stress and scenario work, tail risk, sanity-checking the analytic Greeks</td></tr>
+        <tr><td><b>Cannot do</b></td><td>Large moves &mdash; every Greek is a local derivative around today's spot</td><td>Continuous refresh; and the ladder is spot-only, holding IV fixed</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>The separation that makes this work</h4>
+  <p>The engine owns everything with a side effect &mdash; the market fetch, the scenario shock, the database writes. The model owns only the maths and receives a frozen <code>PricingContext</code>. Two consequences:</p>
+  <ul>
+    <li>Two models answering the same request see <b>byte-identical inputs</b>, so a disagreement between them is a real signal about the models, not about the data.</li>
+    <li>A model can be tested with no network and no database &mdash; construct a context, call <code>run</code>, assert on the output.</li>
+  </ul>
+
+  <h4>Canonical vs. measures</h4>
+  <p><code>ModelRun.canonical</code> fills the fixed <code>RiskResult</code> columns that the dashboard and live feed already read. <code>measures</code> is the model's own ordered, self-describing output for the report page, and <code>extras</code> is free-form JSON for structural output such as the revaluation ladder. That split is what lets a new model report something the schema was never designed to hold without a migration.</p>
+
+  <h4>Analytic vs. scenario gamma</h4>
+  <p>Both appear on a report and they are genuinely different computations:</p>
+  <ul>
+    <li><b><code>gamma</code></b> &mdash; the closed-form second derivative. The formula's curvature at a point.</li>
+    <li><b><code>scenario_gamma</code></b> &mdash; empirical bump-and-revalue: reprice at spot &plusmn;1% around the run's own base and measure how much the P&amp;L itself curves. This is what "scenario gamma" means on a risk desk.</li>
+  </ul>
+  <p>For vanilla Black-Scholes with no exotic kinks the two should agree closely, which makes the comparison a useful self-check. <code>ir_delta</code> is simply rho relabelled the way a risk book would name it: sensitivity to the discount rate.</p>
+</section>
+
+<section class="chunk" id="s12">
+  <h3><i>12</i><span>Market data</span></h3>
+
+  <p>Every yfinance call in the app goes through <code>market_data.py</code>, which layers four things around the raw call.</p>
+
+  <figure>
+    <figcaption>Flow &mdash; a price lookup through the wrapper</figcaption>
+    <div class="diagram">
+<pre class="mermaid">
+%%{init: {"theme":"base","themeVariables":{"background":"#FFFFFF","primaryColor":"#E1EBF6","primaryTextColor":"#131A21","primaryBorderColor":"#1A4E86","secondaryColor":"#F3F6F9","tertiaryColor":"#FFFFFF","mainBkg":"#E1EBF6","nodeBorder":"#1A4E86","nodeTextColor":"#131A21","lineColor":"#46535F","textColor":"#131A21","titleColor":"#131A21","clusterBkg":"#F7F9FB","clusterBorder":"#CBD5DE","edgeLabelBackground":"#FFFFFF","actorBkg":"#1A4E86","actorTextColor":"#FFFFFF","actorBorder":"#1A4E86","actorLineColor":"#8C9AA6","signalColor":"#131A21","signalTextColor":"#131A21","labelBoxBkgColor":"#E1EBF6","labelBoxBorderColor":"#1A4E86","labelTextColor":"#131A21","loopTextColor":"#131A21","noteBkgColor":"#FBEFDC","noteTextColor":"#131A21","noteBorderColor":"#A8501B","activationBkgColor":"#CBD5DE","activationBorderColor":"#1A4E86","sequenceNumberColor":"#FFFFFF","altBackground":"#F7F9FB","classText":"#131A21","labelColor":"#131A21","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F3F6F9","transitionColor":"#46535F","transitionLabelColor":"#131A21","stateBkg":"#E1EBF6","stateLabelColor":"#131A21","compositeBackground":"#F7F9FB","compositeBorder":"#CBD5DE","innerEndBackground":"#131A21","cScale0":"#E1EBF6"}}}%%
+flowchart TD
+ A["get_last_price(ticker)"] --> B{"ticker in TICKER_WHITELIST?"}
+ B -->|no| X["raise MarketDataError 'not on the supported whitelist'"]
+ B -->|yes| C{"PriceCache row younger than 60 s?"}
+ C -->|hit| D["return cached price"]
+ C -->|miss| E["attempt 1"]
+ E --> F{"success?"}
+ F -->|yes| J["log_outbound(status 200, ms)"]
+ F -->|no| G["sleep 1.5 s -> attempt 2"]
+ G --> H{"success?"}
+ H -->|yes| J
+ H -->|no| I["sleep 3.0 s -> attempt 3"]
+ I --> K{"success?"}
+ K -->|yes| J
+ K -->|no| L["log_outbound(status 599) raise MarketDataError"]
+ J --> M["upsert PriceCache, commit"]
+ M --> N["return price"]
+</pre>
+    </div>
+  </figure>
+
+  <ol>
+    <li><b>Whitelist first.</b> No user-supplied ticker ever reaches yfinance unvalidated.</li>
+    <li><b>Short-TTL cache.</b> <code>PriceCache</code> is a real table keyed by ticker, 60 s TTL. With a shared public book, many visitors view the same tickers simultaneously.</li>
+    <li><b>Retry with linear backoff.</b> Three attempts, 1.5 s and 3.0 s pauses. yfinance's free tier does return 429s.</li>
+    <li><b>Clean failure.</b> Everything becomes <code>MarketDataError</code>, and routes render "market data temporarily unavailable" rather than a 500.</li>
+  </ol>
+
+  <div class="note gotcha">
+    <b class="tag">NaN is not valid JSON</b>
+    <p>Illiquid option contracts routinely have no bid, and pandas represents that as <code>NaN</code>. Python's own <code>json</code> module accepts a bare <code>NaN</code> token as a non-standard extension &mdash; so testing the endpoint with <code>curl | python -m json.tool</code> looked completely fine. A browser's <code>JSON.parse</code> follows the actual spec, where <code>NaN</code> is a syntax error, and rejected the entire response; one missing bid took out the whole option chain in the UI.</p>
+    <p>The fix converts every NaN to <code>None</code> before serialising:</p>
+<pre><code>df[cols].astype(object).where(df[cols].notna(), None).to_dict("records")</code></pre>
+    <p>The regression test uses a <b>strict</b> JSON parser (<code>parse_constant</code> raising on <code>NaN</code>/<code>Infinity</code>), plus a second test proving that strict parser would itself reject NaN &mdash; otherwise the guard could quietly stop testing anything.</p>
+  </div>
+</section>
+
+<section class="chunk" id="s13">
+  <h3><i>13</i><span>Watchlist and SSE</span></h3>
+
+  <p>There is no free real-time market <i>stream</i>: yfinance is a pull-only wrapper over a REST endpoint, and genuine exchange streaming is a paid integration. The watchlist builds the live feel from polling plus push.</p>
+
+  <figure>
+    <figcaption>Sequence &mdash; watchlist poller lifecycle</figcaption>
+    <div class="diagram">
+<pre class="mermaid">
+%%{init: {"theme":"base","themeVariables":{"background":"#FFFFFF","primaryColor":"#E1EBF6","primaryTextColor":"#131A21","primaryBorderColor":"#1A4E86","secondaryColor":"#F3F6F9","tertiaryColor":"#FFFFFF","mainBkg":"#E1EBF6","nodeBorder":"#1A4E86","nodeTextColor":"#131A21","lineColor":"#46535F","textColor":"#131A21","titleColor":"#131A21","clusterBkg":"#F7F9FB","clusterBorder":"#CBD5DE","edgeLabelBackground":"#FFFFFF","actorBkg":"#1A4E86","actorTextColor":"#FFFFFF","actorBorder":"#1A4E86","actorLineColor":"#8C9AA6","signalColor":"#131A21","signalTextColor":"#131A21","labelBoxBkgColor":"#E1EBF6","labelBoxBorderColor":"#1A4E86","labelTextColor":"#131A21","loopTextColor":"#131A21","noteBkgColor":"#FBEFDC","noteTextColor":"#131A21","noteBorderColor":"#A8501B","activationBkgColor":"#CBD5DE","activationBorderColor":"#1A4E86","sequenceNumberColor":"#FFFFFF","altBackground":"#F7F9FB","classText":"#131A21","labelColor":"#131A21","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F3F6F9","transitionColor":"#46535F","transitionLabelColor":"#131A21","stateBkg":"#E1EBF6","stateLabelColor":"#131A21","compositeBackground":"#F7F9FB","compositeBorder":"#CBD5DE","innerEndBackground":"#131A21","cScale0":"#E1EBF6"}}}%%
+sequenceDiagram
+ autonumber
+ participant T1 as Browser tab 1
+ participant T2 as Browser tab 2
+ participant S as SSE route
+ participant L as sse_limits (Redis)
+ participant P as poller thread
+ participant Y as yfinance
+
+ T1->>S: GET /api/watchlist/stream
+ S->>L: acquire slot (global / category / per-IP)
+ L-->>S: ok
+ S->>S: subscribe() -> own Queue
+ S->>P: ensure_poller_running(app)
+ activate P
+ P->>P: market open?
+ loop every 20 s while subscribers exist
+ loop each whitelisted ticker
+ P->>Y: get_last_price (cached, 0.3 s apart)
+ Y-->>P: price
+ P->>P: compute direction vs previous
+ P->>T1: broadcast into every subscriber queue
+ end
+ end
+ T2->>S: GET /api/watchlist/stream
+ S->>L: acquire slot
+ P->>T2: same broadcast, no second poller
+
+ T1->>S: tab closed
+ S->>S: unsubscribe() in finally
+ S->>L: release slot
+ T2->>S: tab closed
+ S->>S: unsubscribe() -> set now empty
+ P->>P: no subscribers -> thread returns
+ deactivate P
+</pre>
+    </div>
+  </figure>
+
+  <p>Two guards keep this from burning rate-limit budget for nobody:</p>
+  <ul>
+    <li><b>Lazy start/stop.</b> The poller thread only exists while at least one tab is subscribed, and checks mid-sweep so it stops early if the last viewer leaves halfway through the ticker list.</li>
+    <li><b>Market hours only.</b> A plain Mon&ndash;Fri 09:30&ndash;16:00 America/New_York check. It deliberately does not know about market holidays &mdash; a documented simplification, not a real trading calendar.</li>
+  </ul>
+
+  <p>Broadcast uses <code>put_nowait</code> into each subscriber's bounded queue and swallows <code>queue.Full</code>: a stalled viewer must not block updates for everyone else.</p>
+
+  <div class="note warn">
+    <b class="tag">The <code>current_app</code> trap in a generator</b>
+    <p>Flask pops the request context as soon as a view function <i>returns</i>. An SSE view returns <code>Response(generator(), ...)</code> immediately, and the generator body only executes later when the WSGI server iterates it &mdash; by which point the context is gone, and any <code>current_app</code> access inside raises <code>RuntimeError: Working outside of application context</code>.</p>
+    <p>The fix is always the same: capture the real object with <code>current_app._get_current_object()</code> <i>before</i> defining the generator, and pass it in. The background poller thread needs the same treatment, since it has no request context of its own to resolve the proxy through.</p>
+  </div>
+</section>
+
+<div class="part">
+  <span class="part-label">Part IV</span>
+  <h2>QR &mdash; Quant Company Scorer</h2>
+</div>
+
+<section class="chunk" id="s14">
+  <h3><i>14</i><span>EDGAR and XBRL</span></h3>
+
+  <p class="lede">Scores a company 0&ndash;100 across four factor categories, combining SEC filing fundamentals with market data, then validates the score against realised forward returns.</p>
+
+  <h4>Data sources</h4>
+  <ul>
+    <li><b>SEC EDGAR</b> &mdash; <code>data.sec.gov</code>'s official public XBRL "company facts" API plus the published ticker&rarr;CIK mapping. This is SEC's own programmatic API, not HTML scraping, and requires only an identifying <code>User-Agent</code> per their fair-access policy. Revenue, net income, assets, liabilities, equity, current assets/liabilities, operating income, interest expense, D&amp;A, cost of revenue.</li>
+    <li><b>yfinance</b> &mdash; price, market cap, trailing P/E, price-to-book, and historical prices for the backtest.</li>
+  </ul>
+
+  <h4>Concept aliasing</h4>
+  <p>XBRL tag names vary by filer. One company reports <code>Revenues</code>; another reports <code>RevenueFromContractWithCustomerExcludingAssessedTax</code>; a third uses <code>SalesRevenueNet</code>. Each logical concept is therefore resolved through an ordered alias list, first tag that has data wins:</p>
+
+<pre><code>CONCEPT_ALIASES = {
+    "Revenues": ["Revenues",
+                 "RevenueFromContractWithCustomerExcludingAssessedTax",
+                 "SalesRevenueNet"],
+    "NetIncomeLoss": ["NetIncomeLoss", "ProfitLoss"],
+    "InterestExpense": ["InterestExpense", "InterestExpenseDebt",
+                        "InterestAndDebtExpense"],
+    ...
+}</code></pre>
+
+  <p>Facts are then filtered to annual 10-K filings in USD, deduplicated by fiscal year keeping the latest-filed version (so a restatement supersedes the original), and sorted oldest to newest.</p>
+
+  <h4>Point-in-time correctness</h4>
+  <div class="note">
+    <b class="tag">Avoiding look-ahead bias</b>
+    <p><code>get_fundamentals(ticker, as_of_date)</code> filters by <b>filing date</b>, not period-end date:</p>
+<pre><code>annual = [f for f in _annual_facts(facts, key)
+          if datetime.strptime(f["filed"], "%Y-%m-%d").date() &lt;= as_of_date]</code></pre>
+    <p>Scoring a company "as of one year ago" needs the fundamentals that were <i>actually public</i> then. A fiscal year ending in December is not filed until the following February or March; using period-end would hand the backtest information nobody had at the time, and any correlation it found would be an artefact. This one filter is what makes the backtest honest.</p>
+  </div>
+</section>
+
+<section class="chunk" id="s15">
+  <h3><i>15</i><span>Scoring engine</span></h3>
+
+  <figure>
+    <figcaption>Dataflow &mdash; raw filings to a single score</figcaption>
+    <div class="diagram">
+<pre class="mermaid">
+%%{init: {"theme":"base","themeVariables":{"background":"#FFFFFF","primaryColor":"#E1EBF6","primaryTextColor":"#131A21","primaryBorderColor":"#1A4E86","secondaryColor":"#F3F6F9","tertiaryColor":"#FFFFFF","mainBkg":"#E1EBF6","nodeBorder":"#1A4E86","nodeTextColor":"#131A21","lineColor":"#46535F","textColor":"#131A21","titleColor":"#131A21","clusterBkg":"#F7F9FB","clusterBorder":"#CBD5DE","edgeLabelBackground":"#FFFFFF","actorBkg":"#1A4E86","actorTextColor":"#FFFFFF","actorBorder":"#1A4E86","actorLineColor":"#8C9AA6","signalColor":"#131A21","signalTextColor":"#131A21","labelBoxBkgColor":"#E1EBF6","labelBoxBorderColor":"#1A4E86","labelTextColor":"#131A21","loopTextColor":"#131A21","noteBkgColor":"#FBEFDC","noteTextColor":"#131A21","noteBorderColor":"#A8501B","activationBkgColor":"#CBD5DE","activationBorderColor":"#1A4E86","sequenceNumberColor":"#FFFFFF","altBackground":"#F7F9FB","classText":"#131A21","labelColor":"#131A21","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F3F6F9","transitionColor":"#46535F","transitionLabelColor":"#131A21","stateBkg":"#E1EBF6","stateLabelColor":"#131A21","compositeBackground":"#F7F9FB","compositeBorder":"#CBD5DE","innerEndBackground":"#131A21","cScale0":"#E1EBF6"}}}%%
+flowchart LR
+ A["SEC EDGAR companyfacts"] --> C["compute_metrics()"]
+ B["yfinance info"] --> C
+ C -->|"13 raw ratios"| D["_normalize() clamp to [lo,hi] scale to 0-100 invert if lower_better"]
+ D -->|"13 sub-scores"| E["category average over available metrics"]
+ E -->|"4 category scores"| F["compute_overall() weighted, renormalised"]
+ F --> G["overall 0-100"]
+
+ D -.->|"metric is None"| H["dropped"]
+ E -.->|"whole category None"| I["weight redistributed"]
+</pre>
+    </div>
+  </figure>
+
+  <h4>The four categories and their metrics</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Category</th><th>Metrics</th><th>Direction</th></tr></thead>
+      <tbody>
+        <tr><td><b>Valuation</b></td><td>P/E, P/B, EV/EBITDA</td><td>Lower is better</td></tr>
+        <tr><td><b>Leverage</b></td><td>Debt/Equity, Current Ratio, Interest Coverage</td><td>Mixed</td></tr>
+        <tr><td><b>Growth</b></td><td>Revenue growth YoY, Earnings growth YoY</td><td>Higher is better</td></tr>
+        <tr><td><b>Profitability</b></td><td>Gross / Operating / Net margin, ROE, ROA</td><td>Higher is better</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>Normalisation</h4>
+<pre><code>clamped = max(lo, min(hi, value))
+frac    = (clamped - lo) / (hi - lo)
+if direction == "lower_better":
+    frac = 1 - frac
+score = round(frac * 100, 1)</code></pre>
+
+  <p>Bounds are deliberately broad heuristics, not sector-tuned &mdash; a documented v1 choice. Example: P/E has <code>lo=5, hi=40</code> and is <code>lower_better</code>, so a P/E of 12 gives <code>frac = (12-5)/35 = 0.2</code>, inverted to 0.8, scoring <b>80</b>.</p>
+
+  <h4>Renormalising weights &mdash; the part worth explaining</h4>
+  <p>Missing XBRL tags are common in practice. Three possible responses, only one of which is defensible:</p>
+  <ul>
+    <li>Error out &mdash; makes the tool useless for real companies.</li>
+    <li>Treat missing as zero &mdash; actively wrong; it scores the company as terrible at something unmeasured.</li>
+    <li><b>Drop the metric and renormalise over what remains</b> &mdash; what the code does.</li>
+  </ul>
+
+<pre><code>def compute_overall(category_scores, weights):
+    available   = {c: w for c, w in weights.items()
+                   if category_scores.get(c) is not None}
+    total       = sum(available.values())
+    if total == 0:
+        return None, {}
+    normalized  = {c: w / total for c, w in available.items()}
+    overall     = sum(category_scores[c] * normalized[c] for c in available)
+    return round(overall, 1), normalized</code></pre>
+
+  <p>With equal 0.25 weights and growth unavailable, the remaining three each become 0.333. The response returns both <code>weights_configured</code> and <code>weights_used</code>, so the page can show that the composite was computed over three categories rather than four.</p>
+
+  <p>Weights themselves come from <code>app.config["QR_WEIGHTS"]</code>, overridable per-category by environment variable &mdash; configuration, not hardcoded logic.</p>
+</section>
+
+<section class="chunk" id="s16">
+  <h3><i>16</i><span>Backtest</span></h3>
+
+  <p>For each ticker in a small basket: score it using only fundamentals filed on or before ~1 year ago, take the actual price then and now, and compare the historical score to the realised forward return. Reports a per-ticker table plus a Pearson correlation across the basket.</p>
+
+<pre><code>r = sum((x - mean_x)(y - mean_y)) / sqrt( sum((x - mean_x)^2) * sum((y - mean_y)^2) )</code></pre>
+
+  <p>Hand-rolled rather than importing numpy for one function &mdash; the same call made for the traffic board's percentile function. Returns <code>None</code> for fewer than two points or zero variance, rather than dividing by zero.</p>
+
+  <p>The basket is deliberately smaller than the full trading whitelist (12 tickers) because each one costs two EDGAR calls plus two yfinance calls, and both are rate-limited on unauthenticated use. The endpoint is capped at 5 requests/hour and results are cached for an hour.</p>
+
+  <p>This is presented as demo-scale validation &mdash; a handful of tickers, one lookback window &mdash; not a rigorous research backtest.</p>
+</section>
+
+<div class="part">
+  <span class="part-label">Part V</span>
+  <h2>Pipeline World</h2>
+</div>
+
+<section class="chunk" id="s17">
+  <h3><i>17</i><span>The seven stages</span></h3>
+
+  <p class="lede">A visitor submits a character &mdash; a name, a pick from fixed appearance lists, and answers to four fixed icebreaker questions. No code is ever submitted or executed. That submission runs through a real queued seven-stage pipeline, streamed live to every connected viewer, and only reaches the world if every stage passes.</p>
+
+  <figure>
+    <figcaption>State machine &mdash; character status through the pipeline</figcaption>
+    <div class="diagram">
+<pre class="mermaid">
+%%{init: {"theme":"base","themeVariables":{"background":"#FFFFFF","primaryColor":"#E1EBF6","primaryTextColor":"#131A21","primaryBorderColor":"#1A4E86","secondaryColor":"#F3F6F9","tertiaryColor":"#FFFFFF","mainBkg":"#E1EBF6","nodeBorder":"#1A4E86","nodeTextColor":"#131A21","lineColor":"#46535F","textColor":"#131A21","titleColor":"#131A21","clusterBkg":"#F7F9FB","clusterBorder":"#CBD5DE","edgeLabelBackground":"#FFFFFF","actorBkg":"#1A4E86","actorTextColor":"#FFFFFF","actorBorder":"#1A4E86","actorLineColor":"#8C9AA6","signalColor":"#131A21","signalTextColor":"#131A21","labelBoxBkgColor":"#E1EBF6","labelBoxBorderColor":"#1A4E86","labelTextColor":"#131A21","loopTextColor":"#131A21","noteBkgColor":"#FBEFDC","noteTextColor":"#131A21","noteBorderColor":"#A8501B","activationBkgColor":"#CBD5DE","activationBorderColor":"#1A4E86","sequenceNumberColor":"#FFFFFF","altBackground":"#F7F9FB","classText":"#131A21","labelColor":"#131A21","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F3F6F9","transitionColor":"#46535F","transitionLabelColor":"#131A21","stateBkg":"#E1EBF6","stateLabelColor":"#131A21","compositeBackground":"#F7F9FB","compositeBorder":"#CBD5DE","innerEndBackground":"#131A21","cScale0":"#E1EBF6"}}}%%
+stateDiagram-v2
+ direction TB
+ [*] --> pending: POST /join row stored as typed
+
+ pending --> sanitizing: job dequeued
+ sanitizing --> scanning: Sanitize passes
+ scanning --> testing_uniqueness: Security Scan passes
+ testing_uniqueness --> testing_profanity: Uniqueness passes
+ testing_profanity --> building: Profanity passes
+ building --> deploying: Build passes
+ deploying --> live: Deploy writes status='live'
+ live --> live: Verify read-after-write passes
+
+ sanitizing --> failed: bad charset / length / missing
+ scanning --> failed: injection pattern
+ testing_uniqueness --> failed: name already exists
+ testing_profanity --> failed: blocked word
+ building --> failed: unexpected error
+ deploying --> failed: write error
+ live --> failed: Verify mismatch (un-lived, cache invalidated)
+
+ failed --> [*]: never enters Production Town
+ live --> [*]: visible in Production Town
+</pre>
+    </div>
+  </figure>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>#</th><th>Stage</th><th>Concern</th><th>Touches DB</th></tr></thead>
+      <tbody>
+        <tr><td class="num">1</td><td><code>sanitize</code></td><td>Input hygiene only: format, length, charset for names and all four answers, plus valid-option checks for the appearance ids</td><td>No</td></tr>
+        <tr><td class="num">2</td><td><code>security_scan</code></td><td>Explicit regex scan for HTML/script tags and SQL metacharacters, run against the <b>raw</b> input</td><td>No</td></tr>
+        <tr><td class="num">3</td><td><code>test_uniqueness</code></td><td>Does this exact full name already exist on a non-failed character</td><td>Read</td></tr>
+        <tr><td class="num">4</td><td><code>test_profanity</code></td><td>Hashed blocklist check on the name and every answer</td><td>No</td></tr>
+        <tr><td class="num">5</td><td><code>build</code></td><td>Assemble the spawn payload: world position, appearance render data, composed speech-bubble text</td><td>Write (position)</td></tr>
+        <tr><td class="num">6</td><td><code>deploy</code></td><td>Apply the change &mdash; write <code>status='live'</code> and invalidate the world cache</td><td>Write</td></tr>
+        <tr><td class="num">7</td><td><code>verify</code></td><td>Re-read the row and confirm it landed correctly &mdash; a genuine read-after-write check</td><td>Read</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>What makes each stage real</h4>
+  <p>Every stage does four things, in order: emit a <code>start</code> event carrying the actual pseudo-commands it is about to run (this is what fills the live build log), sleep its delay, run its check function, and emit <code>pass</code> or <code>fail</code> while writing a <code>PipelineRun</code> row.</p>
+
+<pre><code>STAGE_COMMANDS["test_uniqueness"] = [
+  "SELECT id FROM characters WHERE lower(full_name) = lower(:name) AND status != 'failed'"
+]
+STAGE_COMMANDS["deploy"] = [
+  "UPDATE characters SET status='live', world_x=:x, world_y=:y WHERE id=:id"
+]</code></pre>
+
+  <p>The check functions are the <b>same functions</b> covered by <code>tests/test_validators.py</code> &mdash; not a parallel "pretend" implementation. The spec asked the test stage to run "an actual small test suite"; invoking <code>pytest.main()</code> per character inside a worker loop is slow, fragile, and awkward to feed data into, so the choice made instead was to reuse genuinely tested code. That is a documented trade-off, not a free lunch.</p>
+
+  <h4>Failure stops the run</h4>
+<pre><code>if not _run_stage(character, "sanitize", "scanning", _sanitize, "...", fast_mode):
+    return                      # <- no later stage executes
+if not _run_stage(character, "security_scan", ...):
+    return
+...</code></pre>
+
+  <p>Because a failed stage returns early, no later <code>PipelineRun</code> row is ever written. The tracker table renders those cells as "not reached" &mdash; a PASS can never appear to the right of a FAIL. <code>_fail()</code> sets <code>status='failed'</code>, records the reason, invalidates the world cache (defensively, in case Deploy had already gone live) and emits the fail event.</p>
+
+  <div class="note gotcha">
+    <b class="tag">Why the catch-all except exists</b>
+    <p><code>_run_stage</code> originally caught only <code>ValidationError</code>, on the assumption that was the only way a check could fail. In production a stage crashed for an unrelated reason &mdash; most likely the worker container being killed mid-job by a redeploy. That bypassed the handler entirely: no <code>PipelineRun</code> row, no fail event, and because Verify runs <i>after</i> Deploy already committed <code>status='live'</code>, a character was left stranded live with a blank gap in its own history. Not failed, not passed &mdash; missing, which the UI had no way to render as an error because nothing had raised one it was watching for.</p>
+    <p>Now any exception ends the stage the same way, with a generic visitor-facing message and the real traceback sent to the app logger. The lesson: a <code>try/except</code> scoped to the errors you expect is a statement about the happy path, not a safety net.</p>
+  </div>
+
+  <h4>Fast mode</h4>
+  <p>Normally each stage sleeps a fresh random 1&ndash;10 s so the run is watchable. A Redis-backed flag toggles that off at runtime, and the page shows real per-stage benchmarks computed only from <code>fast_mode=True</code> runs &mdash; slow-mode durations include the artificial sleep and would make the numbers meaningless.</p>
+</section>
+
+<section class="chunk" id="s18">
+  <h3><i>18</i><span>Join to live</span></h3>
+
+  <figure>
+    <figcaption>Sequence &mdash; submission through to every connected browser</figcaption>
+    <div class="diagram">
+<pre class="mermaid">
+%%{init: {"theme":"base","themeVariables":{"background":"#FFFFFF","primaryColor":"#E1EBF6","primaryTextColor":"#131A21","primaryBorderColor":"#1A4E86","secondaryColor":"#F3F6F9","tertiaryColor":"#FFFFFF","mainBkg":"#E1EBF6","nodeBorder":"#1A4E86","nodeTextColor":"#131A21","lineColor":"#46535F","textColor":"#131A21","titleColor":"#131A21","clusterBkg":"#F7F9FB","clusterBorder":"#CBD5DE","edgeLabelBackground":"#FFFFFF","actorBkg":"#1A4E86","actorTextColor":"#FFFFFF","actorBorder":"#1A4E86","actorLineColor":"#8C9AA6","signalColor":"#131A21","signalTextColor":"#131A21","labelBoxBkgColor":"#E1EBF6","labelBoxBorderColor":"#1A4E86","labelTextColor":"#131A21","loopTextColor":"#131A21","noteBkgColor":"#FBEFDC","noteTextColor":"#131A21","noteBorderColor":"#A8501B","activationBkgColor":"#CBD5DE","activationBorderColor":"#1A4E86","sequenceNumberColor":"#FFFFFF","altBackground":"#F7F9FB","classText":"#131A21","labelColor":"#131A21","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F3F6F9","transitionColor":"#46535F","transitionLabelColor":"#131A21","stateBkg":"#E1EBF6","stateLabelColor":"#131A21","compositeBackground":"#F7F9FB","compositeBorder":"#CBD5DE","innerEndBackground":"#131A21","cScale0":"#E1EBF6"}}}%%
+sequenceDiagram
+ autonumber
+ participant A as Submitter's browser
+ participant B as Another viewer
+ participant R as POST /join
+ participant D as Postgres
+ participant Q as Redis (RQ)
+ participant W as worker process
+ participant S as Socket.IO
+ participant C as world_cache
+
+ A->>R: form fields
+ R->>R: prepare_join_submission() strip + truncate only, no content checks
+ alt last name already exists and unconfirmed
+ R-->>A: {needs_confirmation: true}
+ A->>R: resubmit with confirm=1
+ end
+ R->>D: INSERT Character(status='pending')
+ R->>Q: enqueue run_pipeline(character_id)
+ R-->>A: 200 {ok: true} immediately
+
+ Q->>W: dequeue
+ loop each of 7 stages
+ W->>S: emit start + pseudo-commands
+ S-->>A: live build log line
+ S-->>B: live build log line
+ W->>W: run check function
+ alt check raises
+ W->>D: status='failed', PipelineRun(fail)
+ W->>S: emit fail + reason
+ S-->>A: red row, run stops here
+ S-->>B: red row
+ else check passes
+ W->>D: PipelineRun(pass)
+ W->>S: emit pass + duration
+ end
+ end
+ W->>D: Deploy: status='live', world_x/y
+ W->>C: invalidate_world_cache()
+ W->>S: emit deploy pass
+ S-->>B: Production Town spawns the character
+</pre>
+    </div>
+  </figure>
+
+  <h4>Nothing is validated before enqueueing</h4>
+  <div class="note">
+    <b class="tag">A deliberate design correction</b>
+    <p>The first version validated at the route: charset, injection and profanity checks ran upfront so an obviously-bad submission never became a job. It looked sensible and it broke the product. A visitor who typed a blocked word got a red message under the form and <b>no pipeline run at all</b> &mdash; so the single most interesting thing the project does was the one thing nobody could ever watch happen.</p>
+    <p>Now <code>prepare_join_submission()</code> only strips whitespace and truncates each field to its column width. Every rule lives in exactly one place: the stage that owns it. The form carries no <code>required</code> attributes and no client-side checks for the same reason.</p>
+    <p>The generalisable point: <b>"fail fast" and "fail visibly" are different goals</b>, and validating early can delete the observability that was the point of building the thing.</p>
+  </div>
+
+  <h4>The one exception: last-name collision</h4>
+  <p>Still resolved at the route, because it is not a rejection. It is a warn-and-continue prompt ("A Koskela already exists &mdash; continue anyway?") that needs a human yes/no before there is anything to enqueue. Answering yes proceeds normally. It has no pass/fail stage precisely because it is not a pass/fail question.</p>
+
+  <h4>Uniqueness is checked only in its stage</h4>
+  <p>Two visitors submitting the same name back-to-back are both accepted and genuinely race through the pipeline; whichever loses fails visibly at Test: Uniqueness. Checking upfront would have turned that race into a silent rejection at the form.</p>
+
+  <div class="note warn">
+    <b class="tag">Self-collision</b>
+    <p><code>check_full_name_collision</code> takes an <code>exclude_character_id</code> parameter. By the time the pipeline's own stage runs, the character <i>is already the row in the database being checked against</i> &mdash; without the exclusion every single run failed at that stage, 100% of the time. The same function is called from two places with different correctness requirements: pre-insert at the form, post-insert inside the pipeline.</p>
+  </div>
+</section>
+
+<section class="chunk" id="s19">
+  <h3><i>19</i><span>Cache-aside</span></h3>
+
+  <p>The live world state &mdash; which characters exist and where &mdash; is cached in Redis using the cache-aside pattern with <b>both</b> a TTL and explicit invalidation.</p>
+
+  <figure>
+    <figcaption>Flow &mdash; read path and invalidation</figcaption>
+    <div class="diagram">
+<pre class="mermaid">
+%%{init: {"theme":"base","themeVariables":{"background":"#FFFFFF","primaryColor":"#E1EBF6","primaryTextColor":"#131A21","primaryBorderColor":"#1A4E86","secondaryColor":"#F3F6F9","tertiaryColor":"#FFFFFF","mainBkg":"#E1EBF6","nodeBorder":"#1A4E86","nodeTextColor":"#131A21","lineColor":"#46535F","textColor":"#131A21","titleColor":"#131A21","clusterBkg":"#F7F9FB","clusterBorder":"#CBD5DE","edgeLabelBackground":"#FFFFFF","actorBkg":"#1A4E86","actorTextColor":"#FFFFFF","actorBorder":"#1A4E86","actorLineColor":"#8C9AA6","signalColor":"#131A21","signalTextColor":"#131A21","labelBoxBkgColor":"#E1EBF6","labelBoxBorderColor":"#1A4E86","labelTextColor":"#131A21","loopTextColor":"#131A21","noteBkgColor":"#FBEFDC","noteTextColor":"#131A21","noteBorderColor":"#A8501B","activationBkgColor":"#CBD5DE","activationBorderColor":"#1A4E86","sequenceNumberColor":"#FFFFFF","altBackground":"#F7F9FB","classText":"#131A21","labelColor":"#131A21","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F3F6F9","transitionColor":"#46535F","transitionLabelColor":"#131A21","stateBkg":"#E1EBF6","stateLabelColor":"#131A21","compositeBackground":"#F7F9FB","compositeBorder":"#CBD5DE","innerEndBackground":"#131A21","cScale0":"#E1EBF6"}}}%%
+flowchart TD
+ A["get_live_world()"] --> B{"GET pipeline_world:live_characters"}
+ B -->|hit| C["INCR cache:hits"]
+ C --> D["json.loads -> return"]
+ B -->|miss| E["INCR cache:misses"]
+ E --> F["SELECT * FROM characters WHERE status = 'live'"]
+ F --> G["SETEX key, TTL 30 s, payload"]
+ G --> H["return"]
+
+ I["Deploy stage passes"] --> J["invalidate_world_cache() DEL key"]
+ K["Any stage fails after deploy"] --> J
+ J -.->|"next read is a miss"| B
+
+ style I fill:#E1EBF6,stroke:#1A4E86
+ style K fill:#F8E6E4,stroke:#97291F
+</pre>
+    </div>
+  </figure>
+
+  <p>TTL alone would mean a newly-deployed character might not appear for up to 30 seconds. That is fine for many caches and wrong here, where "does this feel live" is the actual product requirement. Explicit invalidation handles the common case; the TTL is the safety net if an invalidation is ever missed. <b>Both mechanisms together are the pattern</b> &mdash; either alone is a weaker version of it.</p>
+
+  <p>Hit and miss counters are plain Redis <code>INCR</code>s, surfaced on the SRE Infra dashboard as a live hit-rate.</p>
+</section>
+
+<section class="chunk" id="s20">
+  <h3><i>20</i><span>Analytics SQL</span></h3>
+
+  <p>Five hand-written queries over <code>pipeline_runs</code>, each rendered on the page alongside its own SQL in a <code>&lt;details&gt;</code> block so a reader can check the claim. This is the one Postgres-only part of the app.</p>
+
+  <h5>Mean time between failures &mdash; window function</h5>
+<pre><code>WITH failures AS (
+    SELECT started_at,
+           started_at - LAG(started_at) OVER (ORDER BY started_at) AS gap
+    FROM pipeline_runs
+    WHERE status = 'fail'
+)
+SELECT AVG(EXTRACT(EPOCH FROM gap)) AS mean_seconds_between_failures,
+       COUNT(*) AS failure_count
+FROM failures
+WHERE gap IS NOT NULL</code></pre>
+  <p><code>LAG</code> pairs each failure with the previous one; the first row has a null gap and is excluded from the average.</p>
+
+  <h5>Rolling 7-day pass rate &mdash; window frame</h5>
+<pre><code>WITH daily AS (
+    SELECT DATE_TRUNC('day', started_at)::date AS day,
+           COUNT(*) FILTER (WHERE status = 'pass')::float / COUNT(*) AS pass_rate
+    FROM pipeline_runs
+    GROUP BY 1
+)
+SELECT day, pass_rate,
+       AVG(pass_rate) OVER (
+           ORDER BY day
+           ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+       ) AS rolling_7day_pass_rate
+FROM daily
+ORDER BY day</code></pre>
+  <p><code>COUNT(*) FILTER (WHERE ...)</code> is the SQL-standard conditional aggregate; the <code>::float</code> cast avoids integer division. The explicit <code>ROWS BETWEEN 6 PRECEDING AND CURRENT ROW</code> frame is what makes it a true trailing seven-row window rather than a running average.</p>
+
+  <p>The other three: success rate over time (<code>DATE_TRUNC</code> + <code>GROUP BY</code>), slowest stage (<code>AVG(EXTRACT(EPOCH FROM ended_at - started_at))</code> grouped by stage), and appearance duplication counts.</p>
+
+  <div class="note">
+    <b class="tag">Why Postgres specifically</b>
+    <p><code>DATE_TRUNC</code>, <code>FILTER</code> and the window-frame syntax are Postgres dialect. Rewriting them in a database-agnostic subset would mean either dropping the window functions or faking them with Python loops &mdash; which would undercut the exact thing the page exists to demonstrate. <code>run_metric()</code> checks <code>db.engine.dialect.name</code> and raises a clear <code>AnalyticsUnavailable</code> explaining how to point <code>DATABASE_URL</code> at Postgres, rather than failing obscurely on SQLite. <code>run_all_metrics()</code> isolates each query so one failure does not take down the others.</p>
+  </div>
+</section>
+
+<section class="chunk" id="s21">
+  <h3><i>21</i><span>Production Town</span></h3>
+
+  <p>A canvas viewer on its own page, drawing only characters that cleared Deploy. Split from the tracker page because cramming pipeline mechanics and the world into one small canvas made neither read clearly.</p>
+
+  <h4>Movement</h4>
+  <p>Two different movement systems, chosen by cost:</p>
+  <ul>
+    <li><b>Grid BFS pathfinding</b> (<code>findGridPath</code>) &mdash; used once per spawn, for the long walk from the spawn point to the park. Straight-line steering genuinely gets stuck oscillating against a wall over a walk that long; a coarse BFS on a 6 px grid guarantees arrival.</li>
+    <li><b>Direct steering with wall-bounce</b> (<code>steerToward</code> + <code>applyMovement</code>) &mdash; used for ordinary wandering and for seeking a nearby character. Cheap, runs every frame, no pathfinding.</li>
+  </ul>
+
+  <p><code>applyMovement</code> is axis-separated collision: it tests each axis independently so a character sliding along a boundary keeps moving on the other axis instead of stopping dead &mdash; standard 2D tile collision.</p>
+
+  <h4>Conversations</h4>
+  <p>Because every visitor answers the <b>same four fixed questions</b>, two characters who wander close enough can match on a topic and hold a scripted back-and-forth built from both of their answers. That only works because the question set is fixed and shared rather than picked per visitor &mdash; there would be nothing to match on otherwise. Cooldowns and a busy-set prevent a character being in two conversations at once.</p>
+
+  <div class="note warn">
+    <b class="tag">An environment bug that looked like an AI bug</b>
+    <p>The reported symptom was "none of the characters are ever talking". The seek logic, notice radius and conversation trigger distance were all correct. The cause was the <i>map</i>: it was a 4&times;3 grid of city blocks with buildings, and direct steering with wall-bounce has no way to route around an obstacle &mdash; two characters who had genuinely noticed each other would bounce against the wall between them indefinitely.</p>
+    <p>The fix was not a smarter algorithm. It was replacing the block grid with one large open field, keeping a thin row of landmark buildings along one edge as backdrop. A "two agents cannot find each other" bug can look like a search problem when it is an environment-design problem.</p>
+  </div>
+</section>
+
+<div class="part">
+  <span class="part-label">Part VI</span>
+  <h2>Supporting projects</h2>
+</div>
+
+<section class="chunk" id="s22">
+  <h3><i>22</i><span>SRE Infra Layer</span></h3>
+
+  <p>The Redis-backed queueing, caching and rate-limiting layer underneath Pipeline World, written up and dashboarded as its own project because it demonstrates a distinct skill set from the application engineering above it.</p>
+
+  <h4>Three environments, three behaviours</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Environment</th><th>Redis</th><th>Job execution</th></tr></thead>
+      <tbody>
+        <tr><td><b>Docker</b> (<code>REDIS_URL</code> set)</td><td>Real Redis</td><td>Async, consumed by the separate <code>worker.py</code> container</td></tr>
+        <tr><td><b>Local, no Docker</b></td><td><code>fakeredis</code> in-memory</td><td>Async, via a worker <b>thread</b> in the same Flask process</td></tr>
+        <tr><td><b>Tests</b> (<code>TESTING</code>)</td><td><code>fakeredis</code></td><td><b>Synchronous</b> &mdash; <code>is_async=False</code> runs the job inside <code>.enqueue()</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <b class="tag">The point of the middle row</b>
+    <p>The interesting claim is not "I used fakeredis as a mock". It is that the fallback <b>preserves the property under test</b>. A shortcut would run the pipeline inline when Redis is absent &mdash; that demos fine and lies about the architecture. Running a real worker in a background thread means the request still returns immediately and stages still progress over real wall-clock time. Verified during development by enqueueing, confirming the character was still <code>pending</code> right after the HTTP response returned, then watching the status advance over ~6 real seconds.</p>
+  </div>
+
+  <h4>Two Windows-specific findings</h4>
+  <ul>
+    <li><b>RQ's default <code>Worker</code> forks.</b> It calls <code>os.fork()</code> per job, which does not exist on Windows. Naively "just run an RQ worker" would have worked only in Docker and never on the dev machine. <code>SimpleWorker</code> (no forking) is used <b>everywhere</b>, including the real <code>worker.py</code>, so it is one tested code path rather than two &mdash; one of which would only ever run in production and never see a test.</li>
+    <li><b>Signal handlers only install on the main thread.</b> Running that worker in a background thread made RQ raise <code>signal only works in main thread of the main interpreter</code> &mdash; a Python stdlib restriction, not an RQ bug. Fixed with a one-method subclass overriding <code>_install_signal_handlers</code> to a no-op.</li>
+  </ul>
+
+  <h4>Two queues, one worker pool</h4>
+  <p><code>worker.py</code> listens on both <code>pipeline_world</code> and <code>risk_engine</code>. One process, two job types, rather than a second bespoke worker for the second feature. The dashboard reports queue depth, failed-job count, whether real Redis is in use, and the cache hit rate.</p>
+</section>
+
+<section class="chunk" id="s23">
+  <h3><i>23</i><span>Site Traffic Analytics</span></h3>
+
+  <p>An aggregate board over the application's <b>own</b> traffic. The scoping is the point of the project.</p>
+
+  <div class="note warn">
+    <b class="tag">Legal scoping, decided first</b>
+    <p>Capturing arbitrary visitors' browsing traffic is treated as wiretapping in most jurisdictions regardless of intent, and would violate essentially any host's terms of service. So this captures exactly two things: <b>inbound</b> requests the app receives on its own routes (via app-wide hooks) and <b>outbound</b> calls the app itself makes (logged at the call site in <code>market_data.py</code> and <code>edgar.py</code>). It never touches a visitor's browsing.</p>
+  </div>
+
+  <h4>Implementation</h4>
+  <ul>
+    <li><b>Bounded ring buffer</b> &mdash; a thread-safe <code>collections.deque(maxlen=500)</code> behind a lock. Not persisted: this is a rollup over recent traffic, not an audit trail, and resetting on restart is an acceptable simplification.</li>
+    <li><b>Percentiles hand-rolled</b> &mdash; linear interpolation matching numpy's default convention, ~12 lines rather than a dependency. p50 alone hides the slow tail that actually matters; p99 surfaces it.</li>
+    <li><b>Grouped by Flask endpoint name</b>, not raw path. Grouping by path would fragment every dynamic route (<code>/positions/7</code>, <code>/positions/8</code>, ...) into its own row instead of one meaningful <code>trading.position_detail</code> row.</li>
+    <li><b>4xx and 5xx counted separately</b> &mdash; a wave of not-founds and a wave of server errors mean very different things.</li>
+    <li><b>Adaptive volume buckets</b> &mdash; a fixed number of equal-width buckets spanning the buffer's own oldest-to-newest timestamps, so a quiet site and a busy one both render sensibly instead of mostly-empty buckets.</li>
+  </ul>
+
+  <div class="note gotcha">
+    <b class="tag">The pseudo-URL host-grouping bug</b>
+    <p>yfinance manages its own HTTP client, so there is no real URL to log &mdash; calls are recorded as <code>yfinance://AAPL/info</code>. The "group outbound calls by host" logic did a naive <code>target.split("/")[2]</code>, correct for <code>https://host/path</code> but reading the <b>ticker</b> as the host for the synthetic scheme. The dashboard grouped by ticker symbol instead of by service. Fixed by branching on whether the target is a real <code>http(s)://</code> URL (extract hostname) or anything else (use the scheme name).</p>
+  </div>
+
+  <p>The page polls <code>/api/analytics</code> every 5 s rather than holding an SSE connection &mdash; an aggregate rollup does not need a push per entry, and 5 s staleness is unnoticeable for a board of averages. That removed a whole SSE category and its concurrency cap.</p>
+</section>
+
+<section class="chunk" id="s24">
+  <h3><i>24</i><span>Timed-Squares</span></h3>
+
+  <p>A turn-based survival game on a 10&times;10 grid, recreated in HTML5 Canvas and vanilla JS. Originally built in Processing and Pygame.</p>
+
+  <h4>The core rule</h4>
+  <p>Strictly turn-based, not real-time. One key press moves the player one cell; the instant that resolves, every obstacle takes its own move; then it is the player's turn again. A move into a wall is a no-op &mdash; nothing advances, because nothing actually moved.</p>
+
+  <h4>Telegraphing</h4>
+  <p>Every obstacle shows what it is about to do <i>before</i> doing it, with an arrow rotated to the exact <code>{dx, dy}</code> it will execute. This is the design constraint, not decoration: the game is meant to be dodgeable by reading the board rather than memorising it, so the arrow must point at the real upcoming move. <code>nextMove</code> is decided once at spawn (so the first render already shows an arrow) and re-decided immediately after each execution &mdash; never both in the same step, which is what keeps "shown, then resolved next turn" true turn over turn.</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Obstacle</th><th>Pattern</th></tr></thead>
+      <tbody>
+        <tr><td>Standard</td><td>1 cell/turn, straight line</td></tr>
+        <tr><td>Jumper</td><td>2 cells/turn &mdash; can jump over an intervening cell, including the player, without colliding</td></tr>
+        <tr><td>L-mover</td><td>Knight-style hop; always makes net progress along its spawn-edge axis, perpendicular sign chosen fresh each turn</td></tr>
+        <tr><td>Diagonal</td><td>1 cell/turn diagonally, keeping the inward component from its spawn edge</td></tr>
+        <tr><td>Bouncer</td><td>Reverses the instant its <i>next</i> step would leave the board &mdash; decided at telegraph time, so it never executes an exiting move</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>The leaderboard's deliberate asymmetry</h4>
+  <p><code>sanitize_arcade_name</code> allows digits (<code>"P1AYER"</code>) and, on anything invalid, <b>falls back to <code>"ANON"</code> rather than rejecting the submission</b>. The reasoning: the score was already earned by actually playing, and a malformed name should not cost the player that &mdash; the way a malformed field should block a <i>form</i> before anything of value has happened.</p>
+
+  <p><b>No server-side replay validation.</b> <code>POST /api/scores</code> only checks the submitted turn count is a plausible non-negative integer under a ceiling. A determined visitor could POST a fabricated score. Accepted as a documented simplification at this scope &mdash; the same "simulation only" spirit as the trading book having no real money, applied to a leaderboard number.</p>
+</section>
+
+<div class="part">
+  <span class="part-label">Part VII</span>
+  <h2>Cross-cutting concerns</h2>
+</div>
+
+<section class="chunk" id="s25">
+  <h3><i>25</i><span>Validation and security</span></h3>
+
+  <h4>The layering, stated precisely</h4>
+  <div class="note">
+    <b class="tag">If asked "how do you prevent SQL injection"</b>
+    <p>The honest answer is <b>parametrised queries</b> &mdash; every query in the app uses SQLAlchemy bound parameters, including the raw SQL in <code>analytics.py</code>, which takes no user input at all. The input whitelists are defence-in-depth <i>on top of</i> that, not the mechanism. Claiming the whitelist is what stops injection would be the wrong answer even though the whitelist is real and does reject those characters.</p>
+  </div>
+
+  <h4>Character sets</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Field</th><th>Pattern</th><th>Max</th></tr></thead>
+      <tbody>
+        <tr><td>Name part</td><td><code>^[A-Za-z][A-Za-z '\-]{0,29}$</code></td><td class="num">30</td></tr>
+        <tr><td>Icebreaker answer</td><td><code>^[A-Za-z0-9 .,!?'\-()&amp;:]{1,80}$</code></td><td class="num">80</td></tr>
+        <tr><td>Arcade name</td><td><code>^[A-Za-z0-9][A-Za-z0-9 \-]{0,11}$</code></td><td class="num">12</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Apostrophes and hyphens are allowed in names because they are legitimate (O'Brien, Smith-Jones). They are not an injection vector here because parametrisation is doing that job. Names must <i>start</i> with a letter.</p>
+
+  <h4>Raw storage headroom &mdash; a subtle and load-bearing detail</h4>
+  <p>Since submissions are now stored before any stage checks them, the columns hold unvalidated text. Each raw cap therefore sits <b>above</b> the validated limit:</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Field</th><th>Validated limit</th><th>Raw cap / column width</th></tr></thead>
+      <tbody>
+        <tr><td>Name part</td><td class="num">30</td><td class="num">40</td></tr>
+        <tr><td>Icebreaker answer</td><td class="num">80</td><td class="num">120</td></tr>
+        <tr><td>Customization ids</td><td>fixed option list</td><td class="num">20</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>If the cap equalled the limit, a 500-character name would be truncated to exactly 30 and <b>pass</b> Sanitize &mdash; the stage would approve a value the visitor never submitted. The headroom is what keeps an over-long entry still visibly over-long when the stage measures it. <code>truncate_for_storage()</code> never raises and turns <code>None</code> into <code>""</code>, so a missing field reaches Sanitize as an empty value it can fail on rather than as a NOT NULL error before any run exists.</p>
+
+  <h4>Stage ordering has an observable consequence</h4>
+  <p>Sanitize runs before Security Scan, so most obvious attack strings never reach the scan &mdash; <code>&lt;script&gt;</code> in a name fails the charset whitelist first. Security Scan is reachable only by input that is <i>pure letters and spaces</i> yet still matches an injection pattern:</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Input</th><th>Fails at</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td>First name <code>Test123</code></td><td><span class="pill p-fail">Sanitize</span></td><td>Digits not in the name charset</td></tr>
+        <tr><td>First name <code>&lt;script&gt;</code></td><td><span class="pill p-fail">Sanitize</span></td><td>Angle brackets rejected before the scan sees it</td></tr>
+        <tr><td>First name <code>Script</code></td><td><span class="pill p-fail">Security Scan</span></td><td>Pure letters, passes charset, matches <code>script</code></td></tr>
+        <tr><td>First name <code>Drop Table</code></td><td><span class="pill p-fail">Security Scan</span></td><td>Matches <code>drop\s+table</code></td></tr>
+        <tr><td>Answer <code>select tacos from menu</code></td><td><span class="pill p-fail">Security Scan</span></td><td>Matches <code>\bselect\b.*\bfrom\b</code></td></tr>
+        <tr><td>First name <code>O'Brien-Smith</code></td><td><span class="pill p-pass">Passes all 7</span></td><td>Apostrophe and hyphen are legitimate</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>This is exactly why the scan exists as an independent layer: by the time input reaches it, the whitelist has removed most attack shapes &mdash; but the whitelist has no objection to the word "Script", and the scan does.</p>
+
+  <h4>Hashed profanity blocklist</h4>
+  <p>The blocklist stores SHA-256 hashes and hashes each candidate token the same way, so the literal words are not sitting in plaintext in a public repository's history. The mechanism is real.</p>
+
+  <div class="note gotcha">
+    <b class="tag">A mechanism test is not an effectiveness test</b>
+    <p>That blocklist shipped to production seeded with three deliberately-mild placeholder words. A visitor named a character with real profanity, it passed Test: Profanity, and went live. The hashing, the stage wiring and the never-reach-the-world path all worked exactly as designed and tested &mdash; the <b>data</b> backing the check was a demo. No passing test could have caught that, because the tests only ever asserted the mechanism worked against whatever list was configured.</p>
+    <p>Remediation had two halves: replace the list, and fix the row that was already wrong &mdash; set <code>status='failed'</code>, write a real <code>PipelineRun</code> recording <i>why</i>, invalidate the cache. Production data that is already wrong needs correcting directly, not just the code fixed for next time.</p>
+  </div>
+
+  <h4>Other posture</h4>
+  <ul>
+    <li><b>No code execution surface.</b> Pipeline World's entire input is a name, picks from fixed lists, and four text answers. There is no path that treats visitor input as anything but a string to validate and store &mdash; a stronger guarantee than "we sandboxed it".</li>
+    <li><b>Secrets.</b> Production refuses to boot on the default <code>SECRET_KEY</code>. Real OAuth credentials found in the legacy repo were purged from git history with <code>git-filter-repo</code> and force-pushed after verifying by path <i>and</i> by grepping every blob for the client ID string &mdash; a rename would have defeated a path-only check.</li>
+    <li><b>Request size.</b> <code>MAX_CONTENT_LENGTH</code> caps bodies at 1 MB.</li>
+  </ul>
+</section>
+
+<section class="chunk" id="s26">
+  <h3><i>26</i><span>Limits and back-pressure</span></h3>
+
+  <p>Three independent mechanisms, protecting different resources.</p>
+
+  <h4>1. Rate limiting (Flask-Limiter, Redis-backed)</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Endpoint</th><th>Limit</th><th>Cost of one call</th></tr></thead>
+      <tbody>
+        <tr><td><code>POST /open</code></td><td>10/hour</td><td>Market fetch + option chain + 3 DB writes</td></tr>
+        <tr><td>Trading reads</td><td>300/hour</td><td>Cached price lookup &mdash; a tab polling every 15 s never comes close</td></tr>
+        <tr><td>Risk requests</td><td>30/hour</td><td>Real Black-Scholes + 2 DB rows</td></tr>
+        <tr><td>QR score</td><td>20/hour</td><td>2 EDGAR + 2 yfinance calls</td></tr>
+        <tr><td>QR backtest</td><td>5/hour</td><td>That many calls <i>per ticker</i> across the basket</td></tr>
+        <tr><td>Pipeline join</td><td>10/hour</td><td>Enqueues a 7-stage job</td></tr>
+        <tr><td>Game score</td><td>60/hour</td><td>One INSERT &mdash; and it is the normal end of every round</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Limits are proportional to what one call actually costs downstream, not uniform.</p>
+
+  <h4>2. SSE concurrency caps</h4>
+  <p>The scarce resource is the eight-slot gunicorn thread pool. Each SSE connection holds one thread for as long as the tab stays open, so without a cap a handful of connections could occupy every slot and hang <b>the entire site</b>, not just degrade one feature.</p>
+
+<pre><code>GLOBAL_SSE_CAP     = 4   # across all feeds, leaves 4 threads for page loads
+CATEGORY_SSE_CAP   = 3   # one feed cannot eat the whole global budget
+PER_CLIENT_SSE_CAP = 2   # one visitor cannot exhaust either of the above</code></pre>
+
+  <p>All three are checked on every connection attempt. Counters are Redis <code>INCR</code>/<code>DECR</code> pairs released in the generator's <code>finally</code> block, so a normal disconnect always cleans up. As a safety net against a worker crashing and skipping that <code>finally</code>, each counter gets a TTL the <b>first</b> time it is created &mdash; deliberately not refreshed on later connections, or continued traffic would push the expiry out forever and a leaked count would never self-heal.</p>
+
+  <p>Redis rather than an in-process semaphore, because an in-memory counter would only cap this one process's share and would not hold if the app ever scaled to multiple replicas.</p>
+
+  <h4>3. Per-session caps</h4>
+  <p>Ten open strategies per session. Bounds how much one visitor can clutter a shared public book &mdash; a persistent limit, which a rolling rate-limit window cannot express.</p>
+</section>
+
+<section class="chunk" id="s27">
+  <h3><i>27</i><span>Failure handling patterns</span></h3>
+
+  <p>Four recurring patterns, each with a specific reason.</p>
+
+  <h4>Graceful degradation at every integration point</h4>
+  <p>Both external clients wrap their network calls broadly and re-raise one clean domain exception &mdash; <code>MarketDataError</code>, <code>EdgarError</code> &mdash; so routes can render an "unavailable" state rather than a 500. The lesson that produced this: <code>market_data.py</code> already did it, <code>edgar.py</code> did not, and a <code>requests</code> timeout sailed straight past the route's <code>except (MarketDataError, EdgarError)</code> handler. <b>A graceful-degradation pattern has to be applied at every integration point individually</b> &mdash; copying it to one call site does not protect the others.</p>
+
+  <h4>Catch-all at orchestration boundaries</h4>
+  <p><code>_run_stage</code> catches <code>ValidationError</code> for expected failures <i>and</i> a bare <code>Exception</code> for everything else, logging the real traceback while showing the visitor a generic message. Every stage must end in a real pass or fail; there is no third state.</p>
+
+  <h4>Failures stay queryable</h4>
+  <p>A failed <code>RiskRequest</code> is persisted with <code>status='failed'</code> and its reason, not deleted. A failed character keeps its <code>PipelineRun</code> history and <code>failure_reason</code>. A failed attempt is a fact worth keeping &mdash; the same way a real risk run failing does not erase that it was attempted.</p>
+
+  <h4>Never leak internals to the visitor</h4>
+  <p>Stage crashes surface as <code>"internal error -- this stage did not complete"</code>. The traceback goes to <code>current_app.logger.exception</code>. Validation failures, by contrast, <i>are</i> shown verbatim because they are actionable and contain nothing internal.</p>
+</section>
+
+<section class="chunk" id="s28">
+  <h3><i>28</i><span>Testing</span></h3>
+
+  <p>347 tests, one skipped, running fully offline in under ten seconds.</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Layer</th><th>Approach</th></tr></thead>
+      <tbody>
+        <tr><td>Pure maths (<code>pricing</code>, <code>quant_score</code>, percentiles, <code>format_money</code>)</td><td>Direct unit tests. Black-Scholes is verified against a textbook reference case (S=K=100, T=1yr, r=5%, vol=20%).</td></tr>
+        <tr><td>External APIs</td><td>Monkeypatched at the service boundary. No test touches yfinance or SEC &mdash; both are flaky and rate-limited.</td></tr>
+        <tr><td>Queue and cache</td><td><code>fakeredis</code> with RQ in synchronous mode, so a full character join runs to completion inline with no sleeps or polling.</td></tr>
+        <tr><td>Routes</td><td>Flask test client against an in-memory SQLite database.</td></tr>
+        <tr><td>Postgres-only analytics</td><td>Detects a non-Postgres <code>DATABASE_URL</code> and <b>skips with a clear reason</b> rather than silently passing on fake data.</td></tr>
+        <tr><td>Client-side JS</td><td>No runner wired up. Verified by driving the real engine in a browser &mdash; dispatching genuine <code>keydown</code> events, asserting an obstacle's post-move position matches the arrow it showed.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>Two tests worth describing on their own</h4>
+
+  <h5>Column widths &mdash; a guard against an invisible class of bug</h5>
+  <p>Tests run on SQLite, which <b>ignores VARCHAR length limits entirely</b>. Postgres enforces them. So a too-narrow column is invisible to every other test and only appears as a 500 in production. It happened twice: <code>PipelineRun.stage</code> was <code>String(10)</code> while <code>'test_uniqueness'</code> is 15 characters, breaking the pipeline mid-run; <code>Instrument.instrument_type</code> was <code>String(4)</code> while <code>'stock'</code> is 5, breaking every stock position.</p>
+
+  <p><code>tests/test_models_column_widths.py</code> checks the declared width of <b>every</b> string column against the widest value the code can put in it, reading from the actual constants and registries rather than copies. It touches no database, so it catches the problem under SQLite just as well as Postgres. It has since caught a bug it was not written for: adding <code>Instrument.code</code> at <code>String(24)</code> tripped it immediately, because the real worst case is 25 characters. A coverage-style guard beating a bug-specific one is the whole argument for writing it that way.</p>
+
+  <h5>No PASS to the right of a FAIL</h5>
+  <p>A test submits a submission that fails at stage 4 and asserts every stage after it is <code>None</code> in the tracker payload &mdash; encoding the invariant "a failed pipeline stops" as something the suite enforces, not just something the code happens to do.</p>
+
+  <h4>Migrations</h4>
+  <p>Alembic through Flask-Migrate. The recurring trap, hit four times: <b>adding a <code>nullable=False</code> column to a populated table</b> generates SQL that fails immediately, because Postgres backfills existing rows with NULL before checking the constraint. The fix is always the same shape &mdash; add nullable, backfill with a real value in the same migration, then tighten to NOT NULL. Two flavours of backfill: a single constant works via <code>server_default</code>; a value that varies per row (each instrument's own OCC code) needs an actual loop.</p>
+</section>
+
+<section class="chunk" id="s29">
+  <h3><i>29</i><span>Deployment</span></h3>
+
+  <h4>The deploy loop</h4>
+<pre><code>local edit -> pytest -> git commit -> git push
+ssh nelson@host
+  cd ~/PersonProjectAPI
+  git pull
+  docker compose up -d --build
+  docker compose exec web flask db upgrade   # when a migration landed
+verify live via the real domain</code></pre>
+
+  <h4>Caddy</h4>
+<pre><code>nelsonkoskela.dev, www.nelsonkoskela.dev {
+    handle_path /static/* {
+        root * /srv/static
+        file_server
+        header Cache-Control "public, max-age=3600"
+    }
+    reverse_proxy web:8000
+}</code></pre>
+
+  <p>Automatic Let's Encrypt certificates with no certbot or cron. <code>app/static</code> is bind-mounted read-only into the Caddy container so <code>file_server</code> answers asset requests directly.</p>
+
+  <div class="note gotcha">
+    <b class="tag">The static-asset bottleneck</b>
+    <p>Reported symptom: the landing page held for about four seconds before it could be scrolled, on <b>every</b> load, not just a cold cache. Cause: Caddy was proxying everything &mdash; including the ~15&ndash;20 CSS/JS/font/icon requests one page load fires &mdash; into the same eight-thread pool, competing with any other visitor's already-open SSE stream permanently occupying a thread.</p>
+    <p>The thread limit was <i>correct</i> for the reason it exists (Socket.IO session affinity). It was still a bug everywhere else that pool got used for unrelated traffic. The fix is not "raise the limit", it is "stop routing traffic through it that never needed to be there".</p>
+  </div>
+
+  <div class="note gotcha">
+    <b class="tag">The coupled-certificate trap</b>
+    <p>Requesting one certificate covering both the apex and <code>www</code> in a single site block meant <code>www</code>'s DNS not being ready failed that domain's ACME validation and dragged the <b>entire order</b> down to Let's Encrypt's untrusted staging CA. The apex, whose DNS was correct, therefore also served an untrusted certificate &mdash; which presents as "HTTPS is just broken" rather than "one of two domains is not ready".</p>
+    <p>Diagnosed by checking the actual issuer rather than trusting the padlock:</p>
+<pre><code>openssl s_client -connect nelsonkoskela.dev:443 | openssl x509 -noout -issuer
+# looking for  O=Let's Encrypt  vs a "Fake LE" staging root</code></pre>
+    <p>Fixed by dropping <code>www</code> until its record existed, letting the apex get a clean production certificate, then re-adding it. <b>A multi-domain certificate is only as good as the least-ready domain in it.</b></p>
+  </div>
+
+  <h4>Firewall</h4>
+  <p>Two layers: Hetzner's cloud firewall in front of the host, and <code>ufw</code> on it. Only 22, 80 and 443 are open. Port 8000 is still published in <code>docker-compose.yml</code> for local development &mdash; production exposure is controlled by the firewall, so one compose file serves both.</p>
+</section>
+
+<div class="part">
+  <span class="part-label">Part VIII</span>
+  <h2>Interview question bank</h2>
+</div>
+
+<section class="chunk" id="s30">
+  <h3><i>30</i><span>Questions and what a strong answer covers</span></h3>
+
+  <p class="lede">Grouped by what the interviewer is actually probing. Each answer sketch is the shape of a good response, not a script &mdash; the section reference points back at the detail.</p>
+
+  <h4>Opening &mdash; describe the project</h4>
+  <div class="qa">
+    <details class="q">
+      <summary>Walk me through this project.</summary>
+      <div class="answer">
+        <p>Lead with structure, not a feature list. One Flask app, ten blueprints, six substantial projects sharing one Postgres, one Redis, one worker pool, deployed as five containers on a VPS. Routes are thin; logic lives in a service layer; models hold state.</p>
+        <p>Then pick <b>one</b> project and go deep rather than skimming all six. Pipeline World is the strongest choice because it exercises the most: a queue, a separate worker process, WebSocket push, cache-aside, and real SQL over the data it produces.</p>
+        <p>Close with the constraint that shaped the deployment: gunicorn runs a single process because Socket.IO sessions live in process memory, which makes the eight-thread pool a real budget and explains the SSE caps and the static-file split. <span class="pill p-info">&sect;1 &sect;2</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>What was the hardest part?</summary>
+      <div class="answer">
+        <p>Good candidates, in rough order of how well they demonstrate systems thinking:</p>
+        <ul>
+          <li><b>Moving risk pricing to a separate process.</b> The interesting part is not "I added a queue" &mdash; it is that exceptions stop working as a communication channel across a process boundary, and the shared database row has to carry both the result and the failure. <span class="pill p-info">&sect;10</span></li>
+          <li><b>Realising the upfront validation was the bug.</b> A correct-looking guard was deleting the observability the project existed to demonstrate. <span class="pill p-info">&sect;18</span></li>
+          <li><b>The static-asset bottleneck.</b> A resource limit that was correct for its own reason was still a bug everywhere else that resource got used. <span class="pill p-info">&sect;29</span></li>
+        </ul>
+      </div>
+    </details>
+  </div>
+
+  <h4>Architecture and design</h4>
+  <div class="qa">
+    <details class="q">
+      <summary>Why a separate worker process instead of doing the work in the request?</summary>
+      <div class="answer">
+        <p>Two different reasons for the two job types, and saying so shows you did not just apply a pattern uniformly:</p>
+        <ul>
+          <li><b>Pipeline World</b> is genuinely fire-and-forget. The request returns immediately, and progress reaches the browser over WebSockets. Stages take 1&ndash;10 s each by design; holding a thread for a minute would be indefensible.</li>
+          <li><b>Risk pricing</b> is submitted and then <i>awaited</i> &mdash; the caller still gets a finished report back synchronously. The win there is that the compute happens off the web process, echoing how a desk distributes to a grid, while callers keep a simple synchronous contract.</li>
+        </ul>
+        <p>Be ready for the follow-up: the wait polls the row's status every 50 ms with a 20 s ceiling, and must use a column query rather than <code>session.get()</code>, which would be served from the identity map and never re-read. <span class="pill p-info">&sect;10</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>You have two risk models. Why, and how is that structured?</summary>
+      <div class="answer">
+        <p>Strategy pattern with a registry. <code>RiskModel</code> defines <code>run(ctx) -&gt; ModelRun</code> plus self-describing metadata; the request stores which key answered.</p>
+        <p>The models answer genuinely different questions: closed-form Greeks are local derivatives around today's spot and cannot tell you what a 20% gap does; full revalue reprices across a ladder and measures the P&amp;L it observes. A desk runs both and treats a disagreement as a signal.</p>
+        <p>The key design point: the <b>engine owns all side effects</b> &mdash; market fetch, scenario shock, DB writes &mdash; and hands the model a frozen <code>PricingContext</code>. So two models see byte-identical inputs, and a model is testable with no network and no database. <span class="pill p-info">&sect;11</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Why one market snapshot per request instead of pricing each leg as you reach it?</summary>
+      <div class="answer">
+        <p>This is the single best correctness answer in the project. Pricing legs one at a time marks a multi-leg position against several different instants, so the net Greeks describe a position that never existed at any one moment. A spread's two legs offsetting each other is only meaningful if both were marked against the same market.</p>
+        <p>So <code>take_market_snapshot()</code> fetches one price per <i>distinct</i> ticker up front, and the snapshot is stored in <code>totals</code> so the report can prove what it was marked against. <span class="pill p-info">&sect;10</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Why keyword-only arguments on <code>submit_risk_request</code>?</summary>
+      <div class="answer">
+        <p>It previously took a leg id positionally. Adding a <code>strategy_id</code> parameter meant a stale <code>submit_risk_request(42)</code> would be silently reinterpreted as "price position 42" &mdash; a wrong answer with no error and nothing to notice.</p>
+        <p>The general principle: a signature change that silently changes an existing positional argument's <i>meaning</i> is exactly the case worth making unrepresentable. It turned into an immediate <code>TypeError</code>, and 11 stale call sites in the suite failed loudly instead of quietly pricing the wrong thing. <span class="pill p-info">&sect;10</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Why is <code>Instrument</code> separate from <code>Leg</code>?</summary>
+      <div class="answer">
+        <p>Reference data versus transaction data. A hundred visitors trading the same AAPL $230 call should point at one instrument row, not each embed a private copy of the strike, expiry, exercise style and multiplier. That is how real booking systems separate the concerns, and it is what makes the instrument catalogue &mdash; "show me every leg across every position that has ever traded this contract" &mdash; a real query rather than a scan.</p>
+        <p>Enforced by a unique constraint on the natural key plus a single <code>get_or_create_instrument()</code> entry point. Passthrough properties on <code>Leg</code> meant the refactor did not touch the routes and templates. <span class="pill p-info">&sect;7 &sect;8</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Why SSE in some places and WebSockets in others?</summary>
+      <div class="answer">
+        <p>Use the simpler tool wherever it suffices. SSE is one-way server&rarr;client over plain HTTP, needs no client library and reconnects on its own &mdash; correct for the watchlist, which only ever pushes prices down.</p>
+        <p>Pipeline World uses Socket.IO because the spec asked for it and because a bidirectional protocol is defensible once client-originated events are plausible. Say plainly that the current version is push-only in practice. The answer to avoid is "WebSockets because they are more impressive". <span class="pill p-info">&sect;13 &sect;18</span></p>
+      </div>
+    </details>
+  </div>
+
+  <h4>Databases and SQL</h4>
+  <div class="qa">
+    <details class="q">
+      <summary>Walk me through the rolling 7-day pass rate query.</summary>
+      <div class="answer">
+        <p>A CTE aggregates runs into one row per day using <code>DATE_TRUNC('day', started_at)</code> and <code>COUNT(*) FILTER (WHERE status='pass')::float / COUNT(*)</code> &mdash; the cast matters or integer division floors it to zero.</p>
+        <p>The outer query applies <code>AVG(...) OVER (ORDER BY day ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)</code>. Be ready to explain that the explicit frame is what makes it a trailing seven-row window; the default frame would give a running average over all prior rows.</p>
+        <p>Also be ready for <code>ROWS</code> vs <code>RANGE</code>: <code>ROWS</code> counts rows, so a day with no runs is skipped rather than counted as a gap &mdash; acceptable here, and worth naming as a known property. <span class="pill p-info">&sect;20</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Why does one page require Postgres when everything else runs on SQLite?</summary>
+      <div class="answer">
+        <p>The page exists to demonstrate real SQL. <code>DATE_TRUNC</code>, <code>FILTER</code> and window frames are Postgres dialect; rewriting them in a portable subset would mean dropping the window functions or reimplementing them as Python loops, which would undercut the exact thing being shown.</p>
+        <p>The engineering answer is what surrounds it: every ORM model stays on portable types so the rest of the app works either way, the module checks the dialect and raises a clear message telling you how to point <code>DATABASE_URL</code> at Postgres, and the tests <b>skip with a reason</b> rather than silently passing on fake data. <span class="pill p-info">&sect;20 &sect;28</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Tell me about a migration that went wrong.</summary>
+      <div class="answer">
+        <p>Adding a <code>nullable=False</code> column to a populated table &mdash; hit four separate times. Alembic's autogenerated SQL fails immediately because Postgres backfills existing rows with NULL before checking the constraint.</p>
+        <p>The fix is always the same shape: add nullable, backfill in the same migration, then tighten. Distinguish the two backfill flavours: a single constant works via <code>server_default</code>; a value that varies per row &mdash; each instrument's own OCC code &mdash; needs a real loop, which <code>server_default</code> cannot express. <span class="pill p-info">&sect;28</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>How do you prevent SQL injection?</summary>
+      <div class="answer">
+        <p>Parametrised queries &mdash; SQLAlchemy bound parameters everywhere, including the raw SQL in the analytics module, which takes no user input at all.</p>
+        <p>Then the important qualifier: the input whitelists and the injection scan are defence-in-depth <i>on top of</i> that, not the mechanism. Claiming the whitelist is what stops injection would be the wrong answer even though it is real and does reject those characters. <span class="pill p-info">&sect;25</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>You tested on SQLite and deployed on Postgres. What broke?</summary>
+      <div class="answer">
+        <p>Column widths. SQLite ignores VARCHAR limits entirely; Postgres enforces them. So a too-narrow column is invisible to a green test suite and appears only as a production 500. It happened twice &mdash; <code>PipelineRun.stage</code> at <code>String(10)</code> against the 15-character <code>'test_uniqueness'</code>, and <code>Instrument.instrument_type</code> at <code>String(4)</code> against <code>'stock'</code>.</p>
+        <p>The response is the good part: rather than fixing them one outage at a time, a test now audits <b>every</b> string column's declared width against the widest value the code can write, reading from the real constants. It touches no database, so it catches the class of bug under SQLite. It later caught a bug it was not written for. <span class="pill p-info">&sect;28</span></p>
+      </div>
+    </details>
+  </div>
+
+  <h4>Concurrency, caching, infrastructure</h4>
+  <div class="qa">
+    <details class="q">
+      <summary>Explain your caching strategy.</summary>
+      <div class="answer">
+        <p>Name the pattern &mdash; cache-aside &mdash; and then explain why <b>both</b> mechanisms are present. Reads try Redis, fall back to Postgres on a miss, repopulate. The cache is explicitly invalidated the moment a character clears Deploy.</p>
+        <p>TTL alone would mean a newly-live character might not appear for up to 30 s, which is fine for many caches and wrong here, where "does this feel live" is the product requirement. Explicit invalidation handles the common case; the TTL is the safety net if an invalidation is ever missed. Either alone is a weaker version of the pattern.</p>
+        <p>Separately, <code>PriceCache</code> is a plain read-through TTL cache in Postgres &mdash; different problem (third-party rate limits), different solution. <span class="pill p-info">&sect;12 &sect;19</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>How do you stop one visitor degrading the site for everyone?</summary>
+      <div class="answer">
+        <p>Three mechanisms protecting different resources, and the distinction is the answer:</p>
+        <ul>
+          <li><b>Rate limits</b> bound request frequency per IP, sized to what each call costs downstream &mdash; 5/hour for a backtest that makes four API calls per ticker, 300/hour for a cached read.</li>
+          <li><b>SSE concurrency caps</b> bound something a rate limit cannot express: a connection that holds a thread indefinitely. Global 4, per-category 3, per-client 2, against an eight-thread pool.</li>
+          <li><b>Per-session caps</b> bound accumulated state &mdash; ten open positions &mdash; which a rolling window cannot.</li>
+        </ul>
+        <p>Follow-up worth pre-empting: the counters are in Redis, not process memory, because an in-process semaphore only caps one process's share and would not survive scaling out. And the TTL is set only on first creation, or continued traffic would push the expiry out forever and a leaked count would never self-heal. <span class="pill p-info">&sect;26</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Why one gunicorn worker? That seems wrong.</summary>
+      <div class="answer">
+        <p>Agree that it looks wrong, then give the reason. Flask-SocketIO's threading mode keeps each client's Engine.IO session in the memory of the process that created it. With multiple worker processes, consecutive polling requests for one session get round-robined to a process that has never seen it and return <code>400 unknown session</code> &mdash; live updates break silently while the pipeline itself still completes, because that part only depends on Postgres and Redis.</p>
+        <p>So concurrency comes from eight threads instead, and the threads are then treated as a real budget: SSE caps sized against it, and static files moved off it entirely. The honest scaling answer is that a Redis message-queue backend for Socket.IO is what would allow multiple processes. <span class="pill p-info">&sect;2 &sect;26 &sect;29</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Your dev machine has no Redis. How do tests and local dev work?</summary>
+      <div class="answer">
+        <p>Three environments, three behaviours: real Redis with a separate worker container in Docker; <code>fakeredis</code> with a worker <b>thread</b> locally; <code>fakeredis</code> with RQ synchronous in tests.</p>
+        <p>The point to make is about the middle one: the fallback <b>preserves the property under test</b>. Running the pipeline inline when Redis is absent would demo identically and lie about the architecture. A real worker in a background thread means the request still returns immediately and stages still progress over wall-clock time.</p>
+        <p>Two portability findings came out of it: RQ's default worker forks per job and <code>os.fork()</code> does not exist on Windows, so <code>SimpleWorker</code> is used everywhere &mdash; one tested path, not two, one of which would only run in production; and signal handlers only install on a main thread, needing a one-method override. <span class="pill p-info">&sect;22</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>How does a failure travel from the worker back to the web process?</summary>
+      <div class="answer">
+        <p>Through the database row, because an exception cannot cross a process boundary &mdash; there is no shared call stack to unwind and no in-memory future to await.</p>
+        <p>The worker catches its own exceptions and writes a plain-text reason onto <code>RiskRequest.error</code>. The waiting web process re-derives the same exception type from that string once the row stops reading <code>pending</code>, so every existing <code>except MarketDataError</code> handler keeps working without knowing pricing moved processes. The shared state carries both the result and the failure. <span class="pill p-info">&sect;10</span></p>
+      </div>
+    </details>
+  </div>
+
+  <h4>Quantitative and domain</h4>
+  <div class="qa">
+    <details class="q">
+      <summary>Where do your Greeks come from?</summary>
+      <div class="answer">
+        <p>Computed locally from Black-Scholes closed forms &mdash; yfinance exposes an option chain but no Greeks. Be able to write <code>d1</code> and <code>d2</code> and say the CDF is <code>0.5*(1+erf(x/sqrt(2)))</code>, no SciPy for one function.</p>
+        <p>The part that shows domain awareness is the <b>quoting conventions</b>: theta divided by 365 so it reads per calendar day, vega and rho divided by 100 so they read per one point. Raw annualised numbers are correct and useless to a trader.</p>
+        <p>Then the honest limitation, unprompted: implied vol is captured at entry and held constant, because there is no live vol surface available. A real desk reprices off a fresh surface. <span class="pill p-info">&sect;9</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>You report gamma twice. Why?</summary>
+      <div class="answer">
+        <p>They are different computations. Analytic <code>gamma</code> is the closed-form second derivative &mdash; the formula's curvature at a point. <code>scenario_gamma</code> is empirical: reprice at spot &plusmn;1% around the run's own base and measure how much the P&amp;L actually curves, which is what "scenario gamma" means on a risk desk.</p>
+        <p>For a vanilla option with no exotic kinks they should agree closely, which makes the comparison a free self-check &mdash; a disagreement is a real signal that something is wrong. <span class="pill p-info">&sect;11</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>What is IR Vega and how can you compute it under a flat rate?</summary>
+      <div class="answer">
+        <p>You cannot &mdash; that is the honest opening. A constant rate has no volatility to be sensitive to, so IR Vega is structurally impossible under the model everything else uses.</p>
+        <p>So a minimal Hull-White one-factor short-rate extension is added <b>only</b> for this measure. Assuming zero correlation between rate and equity Brownian motions, the standard result is to price with ordinary Black-Scholes but replace the equity variance with an adjusted total variance that adds the rate process's contribution; that integral has a closed form. IR Vega is then a central finite difference on the rate-vol parameter.</p>
+        <p>State the limitation plainly: both parameters are assumed illustrative constants, not calibrated, because yfinance has no cap or swaption vol surface to calibrate against &mdash; the same situation the flat risk-free rate is already in. Every other number on the row still uses the flat-rate maths. <span class="pill p-info">&sect;9</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>How does your backtest avoid look-ahead bias?</summary>
+      <div class="answer">
+        <p>By filtering SEC facts on <b>filing date</b>, not period-end date. A fiscal year ending in December is not filed until February or March; scoring "as of a year ago" with period-end data would hand the model information nobody had at the time, and any correlation found would be an artefact of that leak.</p>
+        <p>Be honest about scope: a handful of tickers and one lookback window is demo-scale validation, not research-grade. Naming that limitation is stronger than overselling it. <span class="pill p-info">&sect;14 &sect;16</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>A company is missing a metric. What does your score do?</summary>
+      <div class="answer">
+        <p>Drops the metric and renormalises the remaining weights over what is actually available. Walk through why the alternatives are worse: erroring out makes the tool useless against real filings, and treating missing as zero is actively wrong &mdash; it scores the company as terrible at something that was simply not measured.</p>
+        <p>The response returns both <code>weights_configured</code> and <code>weights_used</code>, so the page can show the composite was computed over three categories rather than four. Weights are config, overridable per category by environment variable, not hardcoded. <span class="pill p-info">&sect;15</span></p>
+      </div>
+    </details>
+  </div>
+
+  <h4>Debugging and judgement</h4>
+  <div class="qa">
+    <details class="q">
+      <summary>Tell me about a bug that only appeared in production.</summary>
+      <div class="answer">
+        <p>The strongest one: a pipeline stage crashed for a reason unrelated to validation &mdash; most likely the worker container being killed mid-job by a redeploy. <code>_run_stage</code> only caught <code>ValidationError</code>, so nothing handled it: no run row, no fail event. Because Verify runs <i>after</i> Deploy already committed <code>status='live'</code>, a character was left live with a blank gap in its own history &mdash; not failed, not passed, missing, which the UI could not render as an error because nothing had raised one it was watching for.</p>
+        <p>Found from a screenshot of a blank cell, not a log. Fixed with a catch-all at the orchestration boundary, and the already-broken row was corrected directly in production. The lesson: a <code>try/except</code> scoped to the errors you expect is a statement about the happy path, not a safety net. <span class="pill p-info">&sect;17 &sect;27</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Tell me about a time your tests passed but the code was wrong.</summary>
+      <div class="answer">
+        <p>The profanity filter. The hashed blocklist mechanism worked exactly as designed and tested &mdash; but it shipped seeded with three placeholder words, so real profanity passed the stage and went live. No test could have caught it, because the tests only ever asserted the mechanism worked against whatever list was configured.</p>
+        <p>The generalisable point: <b>a mechanism test is not an effectiveness test.</b> "Defence-in-depth" and "tested" mean little if the data behind the check was never filled in. Remediation had two halves &mdash; fix the list, and fix the row that was already wrong, since production data that is already incorrect needs correcting directly rather than just the code fixed for next time. <span class="pill p-info">&sect;25</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Describe a time you removed a check rather than adding one.</summary>
+      <div class="answer">
+        <p>Pipeline World validated at the join route: charset, injection and profanity ran upfront so bad submissions never became jobs. Sensible-looking, and it broke the product &mdash; a visitor who typed a blocked word got a red message and <b>no pipeline run at all</b>, so the most interesting thing the system does was the one thing nobody could watch.</p>
+        <p>Every check moved into the stage that owns it; the route now only strips and truncates. This also required raising the storage caps above the validated limits, or an over-long entry would be truncated into a passing value and the stage would approve something never submitted.</p>
+        <p>The point: <b>"fail fast" and "fail visibly" are different goals</b>, and validating early can delete the observability that was the reason for building the thing. <span class="pill p-info">&sect;18 &sect;25</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Tell me about a debugging session where the obvious cause was wrong.</summary>
+      <div class="answer">
+        <p>Two good ones:</p>
+        <ul>
+          <li><b>NaN in JSON.</b> An option chain failed in the browser but looked perfect through <code>curl | python -m json.tool</code> &mdash; because Python's <code>json</code> accepts a bare <code>NaN</code> as a non-standard extension and the browser's <code>JSON.parse</code> correctly does not. Two tools disagreeing about what "valid JSON" means. The regression test uses a strict parser, plus a second test proving that parser would reject NaN &mdash; otherwise the guard could quietly stop testing anything.</li>
+          <li><b>Characters not talking.</b> Reported as a broken conversation feature. The seek logic, notice radius and trigger distance were all correct; the map was a grid of buildings, and direct steering with wall-bounce cannot route around an obstacle, so two characters who had noticed each other bounced against the wall between them forever. The fix was an open field, not a smarter algorithm. An agent-interaction bug that was really environment design.</li>
+        </ul>
+        <span class="pill p-info">&sect;12 &sect;21</span>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>How did you handle finding secrets in the repository?</summary>
+      <div class="answer">
+        <p>In stages, each matched to its blast radius. First remove from the working tree with an ordinary commit &mdash; non-destructive and safe immediately. Then, when clearing history was authorised, clone into an isolated directory and run <code>git-filter-repo</code>.</p>
+        <p>Two details that show rigour: diffing which paths had <i>ever</i> existed found a second, older exposure at a path that predated a reorganisation; and verification grepped every blob in history for the actual client ID string, not just paths, because a rename would defeat a path-only check. Force-push only after that passed.</p>
+        <p>Close with the part people forget: <b>rewriting history does not rotate the secret.</b> It stops future clones finding it; it does not invalidate anything that already saw it. Rotation is still required. <span class="pill p-info">&sect;25</span></p>
+      </div>
+    </details>
+  </div>
+
+  <h4>Trade-offs and self-critique</h4>
+  <div class="qa">
+    <details class="q">
+      <summary>What would you do differently, or what does not scale?</summary>
+      <div class="answer">
+        <p>Have several ready and be specific:</p>
+        <ul>
+          <li><b>Single gunicorn process.</b> The Socket.IO constraint that forces it is solvable with a Redis message-queue backend; until then horizontal scaling is blocked.</li>
+          <li><b>Traffic buffer is in-memory and per-process.</b> Fine for a rollup, wrong for an audit trail, and it would fragment across replicas.</li>
+          <li><b>Synchronous wait on risk requests.</b> Simple contract, but it still ties up a request thread. A job-id-plus-poll or push-on-complete API would free it.</li>
+          <li><b>Entry IV held constant.</b> The right fix is a vol surface, which needs a paid data source.</li>
+          <li><b>No replay validation on game scores.</b> Deliberate at this scope and openly documented.</li>
+          <li><b>Scoring bounds are broad heuristics,</b> not sector-tuned &mdash; a P/E of 12 means different things for a bank and a software company.</li>
+        </ul>
+        <p>Naming these unprompted reads as judgement. Waiting to be caught on them does not.</p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Is the pipeline's "test stage" actually running tests?</summary>
+      <div class="answer">
+        <p>Answer directly: no, it does not shell out to pytest. It calls the same validator functions that <code>tests/test_validators.py</code> covers.</p>
+        <p>The reasoning: invoking <code>pytest.main()</code> per character inside a worker loop is slow, fragile, and awkward to feed per-character data into, since test functions are designed for pytest's collection mechanism. The choice is genuinely tested code running live rather than a parallel fake implementation.</p>
+        <p>It is a documented trade-off, not a free lunch &mdash; and saying that is much stronger than overclaiming "it is literally pytest under the hood". <span class="pill p-info">&sect;17</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Why does the traffic project only log your own traffic?</summary>
+      <div class="answer">
+        <p>Because capturing arbitrary visitors' browsing is treated as wiretapping in most jurisdictions regardless of intent, and would violate essentially any host's terms of service. The scope was set by that constraint first, then built to it: inbound requests to the app's own routes, and outbound calls the app itself makes.</p>
+        <p>This is a "how do you think about constraints" question more than a technical one. The good version shows the limit was designed around deliberately, not discovered late. <span class="pill p-info">&sect;23</span></p>
+      </div>
+    </details>
+  </div>
+
+  <hr class="rule">
+
+  <h4>Questions worth asking them</h4>
+  <p>Drawn from problems this project actually raised, so they lead somewhere real rather than sounding rehearsed:</p>
+  <ul>
+    <li>How do you handle schema migrations against large populated tables &mdash; is there a standard pattern, or is it per-team?</li>
+    <li>When something only reproduces in production, what does the path from symptom to root cause usually look like here?</li>
+    <li>Where does the boundary sit between what runs in a request and what gets queued?</li>
+    <li>How much of the risk or pricing logic is shared across teams versus reimplemented, and how do you keep numbers consistent between systems that price the same thing?</li>
+    <li>What does code review optimise for on this team &mdash; correctness, readability, or knowledge spread?</li>
+  </ul>
+</section>
+
+
+
+
+
+  </main>
+</div>
+
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  // startOnLoad:false + explicit run(), so a diagram that fails to parse
+  // reports itself in the console instead of silently leaving a blank card.
+  mermaid.initialize({ startOnLoad: false, securityLevel: "loose" });
+  try {
+    await mermaid.run({ querySelector: "pre.mermaid" });
+  } catch (err) {
+    console.error("mermaid render failed", err);
+  }
+</script>
+
+</body>
+</html>
