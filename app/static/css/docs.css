@@ -1,6 +1,9 @@
 /* Styles for the engineering reference at /documentation and its
-   password-gated interview section. Extracted from the templates so
-   both share one definition and Caddy can serve it off disk. */
+   password-gated interview section.
+
+   GENERATED from the reference source by build_site_docs.py -- both
+   pages share one definition, and Caddy serves it off disk rather
+   than it being inlined into two large templates. */
 
   :root {
     --ground: #E9EDF1;
@@ -435,34 +438,34 @@
     * { animation: none !important; transition: none !important; }
   }
 
-  .backbar {
-    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
-    padding: .7rem 2.5rem; border-bottom: 1px solid var(--rule);
-    background: var(--surface); font-family: "IBM Plex Mono", ui-monospace, monospace;
-    font-size: .72rem; letter-spacing: .08em; text-transform: uppercase;
-    position: sticky; top: 0; z-index: 10;
-  }
-  .backbar span { color: var(--ink-3); }
-  .backbar a { color: var(--accent-ink); text-decoration: none; }
-  .backbar a:hover { text-decoration: underline; }
-  .backbar a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  nav.rail { top: 2.6rem; max-height: calc(100vh - 2.6rem); }
-  @media (max-width: 940px) {
-    .backbar { padding: .7rem 1.5rem; }
-    nav.rail { top: 0; max-height: none; }
-  }
+/* ---------- added by build_site_docs.py (not in the standalone source) ---------- */
+
+/* Bar replacing the site chrome this document deliberately doesn't inherit. */
+.backbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: .7rem 2.5rem; border-bottom: 1px solid var(--rule);
+  background: var(--surface); font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: .72rem; letter-spacing: .08em; text-transform: uppercase;
+  position: sticky; top: 0; z-index: 10;
+}
+.backbar span { color: var(--ink-3); }
+.backbar a { color: var(--accent-ink); text-decoration: none; }
+.backbar a:hover { text-decoration: underline; }
+.backbar a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+nav.rail { top: 2.6rem; max-height: calc(100vh - 2.6rem); }
+@media (max-width: 940px) {
+  .backbar { padding: .7rem 1.5rem; }
+  nav.rail { top: 0; max-height: none; }
+}
 
 /* Link from the public reference into the gated interview section. */
 .gate-link {
   display: inline-block;
   font-family: "IBM Plex Sans", system-ui, sans-serif;
-  font-size: .9rem;
-  font-weight: 600;
+  font-size: .9rem; font-weight: 600;
   padding: .5rem .95rem;
-  color: #FFFFFF;
-  background: var(--accent);
-  border: 1px solid var(--accent);
-  border-radius: 4px;
+  color: #FFFFFF; background: var(--accent);
+  border: 1px solid var(--accent); border-radius: 4px;
   text-decoration: none;
 }
 .gate-link:hover { filter: brightness(1.08); }

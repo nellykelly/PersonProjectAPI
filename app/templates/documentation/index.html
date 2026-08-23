@@ -3,16 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Portfolio Site Engineering Reference | Nelson Koskela</title>
-<meta name="description" content="Complete technical walkthrough of the Flask application behind nelsonkoskela.dev: architecture, data model, subsystems, UML diagrams and deployment.">
 <link rel="icon" href="{{ url_for('static', filename='assets/img/favicon.ico') }}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,600;1,400&display=swap">
-
 <link rel="stylesheet" href="{{ url_for('static', filename='css/docs.css') }}">
-
-
+<title>Portfolio Site Engineering Reference | Nelson Koskela</title>
+<meta name="description" content="Complete technical walkthrough of the Flask application behind nelsonkoskela.dev: architecture, data model, subsystems, UML diagrams and deployment.">
+</head>
+<body>
 <div class="backbar">
   <a href="{{ url_for('main.index') }}">&larr; nelsonkoskela.dev</a>
   <span>Engineering reference</span>
@@ -82,7 +81,8 @@
       <li><a href="#s26"><i>26</i><span>Limits &amp; back-pressure</span></a></li>
       <li><a href="#s27"><i>27</i><span>Failure handling</span></a></li>
       <li><a href="#s28"><i>28</i><span>Testing</span></a></li>
-      <li><a href="#s29"><i>29</i><span>Deployment</span></a></li>
+      <li><a href="#s29"><i>29</i><span>Containerisation</span></a></li>
+      <li><a href="#s30"><i>30</i><span>Deployment</span></a></li>
     </ol>
     <h2>Part VIII</h2>
     <ol>
@@ -211,7 +211,7 @@ flowchart TB
 
   <div class="note">
     <b class="tag">Constraint worth knowing</b>
-    <p>Gunicorn runs <b>one process with eight threads</b>, not multiple processes. Flask-SocketIO's <code>threading</code> async mode keeps each client's Engine.IO session in the memory of whichever process created it. With two or more worker processes, consecutive polling requests for the same session get round-robined to a process that has never heard of it and return <code>400 unknown session</code>, silently breaking Pipeline World's live updates. All concurrency therefore comes from threads, and that eight-slot pool is a real, finite budget &mdash; which is why SSE connections are capped (&sect;26) and static files bypass the app entirely (&sect;29).</p>
+    <p>Gunicorn runs <b>one process with eight threads</b>, not multiple processes. Flask-SocketIO's <code>threading</code> async mode keeps each client's Engine.IO session in the memory of whichever process created it. With two or more worker processes, consecutive polling requests for the same session get round-robined to a process that has never heard of it and return <code>400 unknown session</code>, silently breaking Pipeline World's live updates. All concurrency therefore comes from threads, and that eight-slot pool is a real, finite budget &mdash; which is why SSE connections are capped (&sect;26) and static files bypass the app entirely (&sect;30).</p>
   </div>
 </section>
 
@@ -1598,7 +1598,159 @@ PER_CLIENT_SSE_CAP = 2   # one visitor cannot exhaust either of the above</code>
 </section>
 
 <section class="chunk" id="s29">
-  <h3><i>29</i><span>Deployment</span></h3>
+  <h3><i>29</i><span>Containerisation</span></h3>
+
+  <p class="lede">One image serves two roles, five services compose into a stack, and the whole thing comes up from a clone plus a <code>.env</code>.</p>
+
+  <h4>The Dockerfile</h4>
+
+<pre><code>FROM python:3.12-slim
+
+RUN apt-get update \
+    &amp;&amp; apt-get install -y --no-install-recommends curl \
+    &amp;&amp; rm -rf /var/lib/apt/lists/*
+
+RUN useradd --create-home --shell /bin/bash appuser
+WORKDIR /app
+
+COPY requirements.txt ./              # dependencies first, on their own layer
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY app ./app                        # application code after
+COPY migrations ./migrations
+COPY wsgi.py worker.py ./
+
+RUN mkdir -p /app/instance &amp;&amp; chown -R appuser:appuser /app
+USER appuser
+
+ENV FLASK_ENV=production \
+    PYTHONUNBUFFERED=1
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8000/ || exit 1
+
+CMD ["gunicorn", "-w", "1", "--worker-class", "gthread", "--threads", "8", \
+     "--access-logfile", "-", "--error-logfile", "-", \
+     "-b", "0.0.0.0:8000", "wsgi:app"]</code></pre>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Choice</th><th>Reason</th></tr></thead>
+      <tbody>
+        <tr><td>Requirements copied and installed <b>before</b> the app code</td><td>Docker caches layers and invalidates everything after the first change. Dependencies change rarely; application code changes constantly. This ordering means an ordinary code edit reuses the cached <code>pip install</code> layer instead of reinstalling the whole dependency tree on every build.</td></tr>
+        <tr><td><code>--no-cache-dir</code></td><td>pip's download cache is dead weight in an image that never installs again.</td></tr>
+        <tr><td>Install and <code>rm -rf /var/lib/apt/lists/*</code> in <b>one</b> <code>RUN</code></td><td>Each <code>RUN</code> is a layer. Deleting the lists in a later layer leaves them in the earlier one, so the image still carries the bytes.</td></tr>
+        <tr><td><code>curl</code> installed at all</td><td>Only so <code>HEALTHCHECK</code> has something to call &mdash; <code>slim</code> ships without it.</td></tr>
+        <tr><td>Non-root <code>appuser</code></td><td>A compromised process running as root is root inside the container, sharing a UID namespace with the host by default. The <code>chown</code> runs before <code>USER</code>, since that switch applies to every instruction after it.</td></tr>
+        <tr><td><code>PYTHONUNBUFFERED=1</code></td><td>Python buffers stdout when it is not a TTY, so logs would sit in a buffer rather than appearing in <code>docker compose logs</code> &mdash; which makes a crash look like silence.</td></tr>
+        <tr><td><code>EXPOSE 8000</code></td><td>Documentation only. It publishes nothing; <code>ports:</code> does that.</td></tr>
+        <tr><td>Logs to <code>-</code></td><td>stdout/stderr, so the runtime owns log collection instead of files growing inside the container.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <b class="tag">What the start period actually does</b>
+    <p><code>--start-period=10s</code> is not a delay before checking. It is a grace window in which a <i>failing</i> check does not count against <code>--retries</code>. Without it, a slow first boot &mdash; waiting on Postgres, importing the app &mdash; burns all three retries and marks a healthy container unhealthy. That status is exactly what <code>depends_on</code> reads below.</p>
+  </div>
+
+  <h4>docker-compose.yml</h4>
+
+  <figure>
+    <figcaption>Compose &mdash; service dependencies and volumes</figcaption>
+    <div class="diagram">
+<pre class="mermaid">
+%%{init: {"theme":"base","themeVariables":{"background":"#FFFFFF","primaryColor":"#E1EBF6","primaryTextColor":"#131A21","primaryBorderColor":"#1A4E86","secondaryColor":"#F3F6F9","tertiaryColor":"#FFFFFF","mainBkg":"#E1EBF6","nodeBorder":"#1A4E86","nodeTextColor":"#131A21","lineColor":"#46535F","textColor":"#131A21","titleColor":"#131A21","clusterBkg":"#F7F9FB","clusterBorder":"#CBD5DE","edgeLabelBackground":"#FFFFFF","actorBkg":"#1A4E86","actorTextColor":"#FFFFFF","actorBorder":"#1A4E86","actorLineColor":"#8C9AA6","signalColor":"#131A21","signalTextColor":"#131A21","labelBoxBkgColor":"#E1EBF6","labelBoxBorderColor":"#1A4E86","labelTextColor":"#131A21","loopTextColor":"#131A21","noteBkgColor":"#FBEFDC","noteTextColor":"#131A21","noteBorderColor":"#A8501B","activationBkgColor":"#CBD5DE","activationBorderColor":"#1A4E86","sequenceNumberColor":"#FFFFFF","altBackground":"#F7F9FB","classText":"#131A21","labelColor":"#131A21","attributeBackgroundColorOdd":"#FFFFFF","attributeBackgroundColorEven":"#F3F6F9","transitionColor":"#46535F","transitionLabelColor":"#131A21","stateBkg":"#E1EBF6","stateLabelColor":"#131A21","compositeBackground":"#F7F9FB","compositeBorder":"#CBD5DE","innerEndBackground":"#131A21","cScale0":"#E1EBF6"}}}%%
+flowchart TB
+    IMG["build: . -- one image, personal-site:latest"]
+    W["web -- default CMD: gunicorn"]
+    K["worker -- command override: python worker.py"]
+    C["caddy -- caddy:2-alpine"]
+    P["postgres:16-alpine -- healthcheck pg_isready"]
+    R["redis:7-alpine -- healthcheck redis-cli ping"]
+
+    IMG --> W
+    IMG --> K
+
+    W -.->|"depends_on: service_healthy"| P
+    W -.->|"depends_on: service_healthy"| R
+    K -.->|"depends_on: service_healthy"| P
+    K -.->|"depends_on: service_healthy"| R
+    C -.->|"depends_on"| W
+
+    V1[("postgres_data -- every durable row")] --- P
+    V2[("caddy_data -- TLS certificates")] --- C
+    B1["./app/static -- read-only bind"] --- C
+    B2["./Caddyfile -- read-only bind"] --- C
+
+    HOST["published to host: 80 and 443 only"] --- C
+</pre>
+    </div>
+  </figure>
+
+  <h5>One image, two roles</h5>
+  <p><code>web</code> and <code>worker</code> both declare <code>build: .</code> and <code>image: personal-site:latest</code>. The image builds once and is reused; <code>worker</code> overrides <code>command</code> to run <code>worker.py</code> instead of gunicorn. There is no second Dockerfile to drift, and the worker is guaranteed to be running byte-identical code to the web process &mdash; which matters, because the two share the service layer and a mismatch would show up as jobs behaving differently from the routes that enqueued them.</p>
+
+  <h5>depends_on, with a condition</h5>
+<pre><code>depends_on:
+  postgres:
+    condition: service_healthy
+  redis:
+    condition: service_healthy</code></pre>
+
+  <p>Plain <code>depends_on</code> orders <i>startup</i> only, and a started Postgres is not a Postgres accepting connections &mdash; the app would race it and die on the first query. <code>condition: service_healthy</code> waits on the dependency's own healthcheck (<code>pg_isready</code>, <code>redis-cli ping</code>), so web and worker do not start until their dependencies genuinely answer.</p>
+
+  <h5>env_file versus environment</h5>
+<pre><code>env_file:
+  - .env
+environment:
+  FLASK_ENV: production
+  DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+  REDIS_URL: redis://redis:6379/0
+  RATELIMIT_STORAGE_URI: redis://redis:6379/1</code></pre>
+
+  <p>Values in <code>environment</code> take precedence over <code>env_file</code>, deliberately: the connection strings are <i>derived</i> from the <code>POSTGRES_*</code> credentials plus the compose service names, so they are correct by construction instead of being a fourth value in <code>.env</code> that can disagree with the other three. Note the hostnames &mdash; <code>postgres</code> and <code>redis</code> are service names resolved on the internal network, never <code>localhost</code>.</p>
+
+  <h5>Volumes, and which one actually matters</h5>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Volume</th><th>Type</th><th>Holds</th></tr></thead>
+      <tbody>
+        <tr><td><code>postgres_data</code></td><td>Named</td><td>Every durable row. Losing it loses the site's data.</td></tr>
+        <tr><td><code>caddy_data</code></td><td>Named</td><td><b>TLS certificates and ACME account state.</b> Losing it forces re-issuance on next boot, which counts against Let's Encrypt's rate limits &mdash; enough restarts without it and certificates stop being issued for hours.</td></tr>
+        <tr><td><code>caddy_config</code></td><td>Named</td><td>Caddy's autosaved runtime config.</td></tr>
+        <tr><td><code>./app/static</code></td><td>Bind, read-only</td><td>What Caddy serves straight off disk (&sect;30).</td></tr>
+        <tr><td><code>./Caddyfile</code></td><td>Bind, read-only</td><td>Proxy config, editable without a rebuild.</td></tr>
+        <tr><td><code>./instance</code></td><td>Bind</td><td>SQLite path for non-Docker runs; unused against Postgres.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Bind mounts are read-only wherever the container has no reason to write, so a compromised Caddy cannot rewrite the site's assets or its own configuration.</p>
+
+  <h5>Ports and restart policy</h5>
+  <p>Only <code>caddy</code> publishes to the host, on 80 and 443. <code>web</code> still maps <code>8000</code> so <code>docker compose up</code> works for local development; in production that port is closed at the firewall rather than deleted from the file, which is what lets a single compose file serve both environments. Every service is <code>restart: unless-stopped</code>, so a crash or a host reboot brings the stack back without intervention.</p>
+
+  <div class="note gotcha">
+    <b class="tag">Compose interpolates <code>$</code> in .env</b>
+    <p>Adding a password hash to <code>.env</code> broke the very feature it was for. Werkzeug hashes look like <code>scrypt:32768:8:1$salt$digest</code>, and Compose read <code>$salt</code> and <code>$digest</code> as variable references, substituting empty strings for both. The container received <code>scrypt:32768:8:1</code> &mdash; 16 characters of a 162-character value.</p>
+    <p>It failed in the worst available way: not with an error, but by looking correctly configured and rejecting every password, because a truncated string is still truthy. The fix is Compose's own escape, <code>$$</code> for a literal <code>$</code>. Worth auditing any secret that is not plain hex &mdash; here <code>SECRET_KEY</code> and <code>POSTGRES_PASSWORD</code> are hex, so neither was ever affected.</p>
+  </div>
+
+  <h5>Working with the stack</h5>
+<pre><code>docker compose up -d --build                  # rebuild changed layers, recreate changed services
+docker compose up -d --force-recreate web     # env changed but no layer did
+docker compose logs -f worker                 # follow one service
+docker compose exec -T web flask db upgrade   # run a migration inside the app image
+docker compose ps                             # health status per service</code></pre>
+
+  <p><code>--force-recreate</code> matters more than it looks. Editing <code>.env</code> changes no image layer, so a plain <code>up -d</code> can reasonably conclude nothing needs recreating and leave the previous environment in place &mdash; the change appears to have been applied and has not been.</p>
+</section>
+
+<section class="chunk" id="s30">
+  <h3><i>30</i><span>Deployment</span></h3>
 
   <h4>The deploy loop</h4>
 <pre><code>local edit -> pytest -> git commit -> git push
@@ -1648,7 +1800,7 @@ verify live via the real domain</code></pre>
 <section class="chunk">
   <div class="note">
     <b class="tag">Private section</b>
-    <p>The interview question bank &mdash; 25 questions grouped by what an interviewer is
+    <p>The interview question bank &mdash; questions grouped by what an interviewer is
     probing, each with the shape of a strong answer, plus a candid list of what this
     system does not do well &mdash; lives behind a password.</p>
     <p style="margin-top:.9rem;"><a class="gate-link" href="{{ url_for('documentation.interview') }}">Unlock the interview section &rarr;</a></p>

@@ -3,22 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Interview Question Bank | Nelson Koskela</title>
-<meta name="robots" content="noindex, nofollow">
 <link rel="icon" href="{{ url_for('static', filename='assets/img/favicon.ico') }}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,600;1,400&display=swap">
-
 <link rel="stylesheet" href="{{ url_for('static', filename='css/docs.css') }}">
-
-
-<div class="backbar">
-  <a href="{{ url_for('main.index') }}">&larr; nelsonkoskela.dev</a>
-  <span>Engineering reference</span>
-  <a href="{{ url_for('projects.index') }}">Projects &rarr;</a>
-</div>
-
+<title>Interview Question Bank | Nelson Koskela</title>
+<meta name="robots" content="noindex, nofollow">
+</head>
+<body>
 <div class="backbar">
   <a href="{{ url_for('documentation.index') }}">&larr; Engineering reference</a>
   <span>Private &middot; interview prep</span>
@@ -29,7 +22,7 @@
   <header class="masthead">
     <p class="kicker">Private section &middot; not linked publicly</p>
     <h1>Interview Question Bank</h1>
-    <p class="standfirst">Twenty-five questions grouped by what the interviewer is actually probing, each with the shape of a strong answer and a pointer back into the reference. Plus questions worth asking them.</p>
+    <p class="standfirst">Questions grouped by what the interviewer is actually probing, each with the shape of a strong answer and a pointer back into the reference. Plus questions worth asking them.</p>
   </header>
 
   <main style="grid-column: 1 / -1;">
@@ -38,8 +31,8 @@
   <h2>Interview question bank</h2>
 </div>
 
-<section class="chunk" id="s30">
-  <h3><i>30</i><span>Questions and what a strong answer covers</span></h3>
+<section class="chunk" id="s31">
+  <h3><i>31</i><span>Questions and what a strong answer covers</span></h3>
 
   <p class="lede">Grouped by what the interviewer is actually probing. Each answer sketch is the shape of a good response, not a script &mdash; the section reference points back at the detail.</p>
 
@@ -61,7 +54,7 @@
         <ul>
           <li><b>Moving risk pricing to a separate process.</b> The interesting part is not "I added a queue" &mdash; it is that exceptions stop working as a communication channel across a process boundary, and the shared database row has to carry both the result and the failure. <span class="pill p-info">&sect;10</span></li>
           <li><b>Realising the upfront validation was the bug.</b> A correct-looking guard was deleting the observability the project existed to demonstrate. <span class="pill p-info">&sect;18</span></li>
-          <li><b>The static-asset bottleneck.</b> A resource limit that was correct for its own reason was still a bug everywhere else that resource got used. <span class="pill p-info">&sect;29</span></li>
+          <li><b>The static-asset bottleneck.</b> A resource limit that was correct for its own reason was still a bug everywhere else that resource got used. <span class="pill p-info">&sect;30</span></li>
         </ul>
       </div>
     </details>
@@ -195,7 +188,7 @@
       <summary>Why one gunicorn worker? That seems wrong.</summary>
       <div class="answer">
         <p>Agree that it looks wrong, then give the reason. Flask-SocketIO's threading mode keeps each client's Engine.IO session in the memory of the process that created it. With multiple worker processes, consecutive polling requests for one session get round-robined to a process that has never seen it and return <code>400 unknown session</code> &mdash; live updates break silently while the pipeline itself still completes, because that part only depends on Postgres and Redis.</p>
-        <p>So concurrency comes from eight threads instead, and the threads are then treated as a real budget: SSE caps sized against it, and static files moved off it entirely. The honest scaling answer is that a Redis message-queue backend for Socket.IO is what would allow multiple processes. <span class="pill p-info">&sect;2 &sect;26 &sect;29</span></p>
+        <p>So concurrency comes from eight threads instead, and the threads are then treated as a real budget: SSE caps sized against it, and static files moved off it entirely. The honest scaling answer is that a Redis message-queue backend for Socket.IO is what would allow multiple processes. <span class="pill p-info">&sect;2 &sect;26 &sect;30</span></p>
       </div>
     </details>
 
@@ -307,6 +300,81 @@
         <p>In stages, each matched to its blast radius. First remove from the working tree with an ordinary commit &mdash; non-destructive and safe immediately. Then, when clearing history was authorised, clone into an isolated directory and run <code>git-filter-repo</code>.</p>
         <p>Two details that show rigour: diffing which paths had <i>ever</i> existed found a second, older exposure at a path that predated a reorganisation; and verification grepped every blob in history for the actual client ID string, not just paths, because a rename would defeat a path-only check. Force-push only after that passed.</p>
         <p>Close with the part people forget: <b>rewriting history does not rotate the secret.</b> It stops future clones finding it; it does not invalidate anything that already saw it. Rotation is still required. <span class="pill p-info">&sect;25</span></p>
+      </div>
+    </details>
+  </div>
+
+  <h4>Containers and deployment</h4>
+  <div class="qa">
+    <details class="q">
+      <summary>Walk me through your Dockerfile.</summary>
+      <div class="answer">
+        <p>Lead with the layer ordering, because that is the part with an actual engineering reason behind it. <code>requirements.txt</code> is copied and installed <b>before</b> the application code. Docker invalidates every layer after the first one that changes; dependencies change rarely and code changes constantly, so this ordering means a normal code edit reuses the cached <code>pip install</code> layer instead of reinstalling the whole tree.</p>
+        <p>Then the smaller deliberate choices: <code>--no-cache-dir</code> because pip's cache is dead weight in an image that never installs again; the <code>apt-get install</code> and <code>rm -rf /var/lib/apt/lists/*</code> in one <code>RUN</code>, because deleting in a later layer leaves the bytes in the earlier one; a non-root <code>appuser</code>, with the <code>chown</code> before <code>USER</code> since that switch applies to everything after it; and <code>PYTHONUNBUFFERED=1</code>, or Python buffers stdout when it is not a TTY and a crash looks like silence in <code>docker compose logs</code>.</p>
+        <p>Be ready for "why is <code>curl</code> in there" &mdash; only so <code>HEALTHCHECK</code> has something to call, since <code>slim</code> ships without it. <span class="pill p-info">&sect;29</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Why do your web and worker containers share one image?</summary>
+      <div class="answer">
+        <p>Both declare <code>build: .</code> and the same <code>image:</code> tag; the worker overrides <code>command</code> to run <code>worker.py</code> instead of gunicorn. The image builds once and is reused.</p>
+        <p>The reason that matters here specifically: the worker and the web process share the entire service layer &mdash; the worker runs <code>pipeline.run_pipeline</code> and <code>risk_engine.run_risk_request_job</code>, which call the same validators and pricing code the routes call. Two images could drift, and the symptom would be jobs behaving differently from the routes that enqueued them, which is a genuinely confusing bug to chase. One image makes that unrepresentable.</p>
+        <p>It also halves build time and image storage, but that is the lesser reason. <span class="pill p-info">&sect;29</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>What does <code>condition: service_healthy</code> buy you over plain <code>depends_on</code>?</summary>
+      <div class="answer">
+        <p>Plain <code>depends_on</code> orders <i>startup</i> and nothing else. A started Postgres is not a Postgres accepting connections &mdash; there is a window during initialisation where the container is running and the socket is not ready. The app would race it and die on its first query, which then looks like an intermittent startup failure.</p>
+        <p><code>condition: service_healthy</code> waits on the dependency's own healthcheck instead: <code>pg_isready</code> for Postgres, <code>redis-cli ping</code> for Redis. Web and worker do not start until those genuinely answer.</p>
+        <p>Good follow-up to have ready: the app image's own healthcheck uses <code>--start-period=10s</code>, which is not a delay before checking but a grace window where a failing check does not count against <code>--retries</code>. Without it a slow first boot burns all three retries and marks a healthy container unhealthy. <span class="pill p-info">&sect;29</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Which volume would hurt most to lose, and why?</summary>
+      <div class="answer">
+        <p>The obvious answer is <code>postgres_data</code> &mdash; every durable row. The more interesting one is <code>caddy_data</code>, which holds the TLS certificates and the ACME account state. Losing it forces re-issuance on the next boot, and that counts against Let's Encrypt's rate limits, so a few restarts in that state and certificates stop being issued for hours. The site is then down for a reason that has nothing to do with the application.</p>
+        <p>Worth adding the read-only detail: <code>./app/static</code> and <code>./Caddyfile</code> are bind-mounted <code>:ro</code>, so a compromised Caddy cannot rewrite the site's assets or its own configuration. Mounts are writable only where the container has a reason to write. <span class="pill p-info">&sect;29</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>How do secrets get into the containers?</summary>
+      <div class="answer">
+        <p>Environment variables, from a <code>.env</code> that is gitignored and lives only on the host &mdash; nothing secret is in the image or the repository. The app reads them through <code>config.py</code>, and production refuses to boot if <code>SECRET_KEY</code> is still the checked-in development default.</p>
+        <p>Be honest about the limits rather than overselling it: environment variables are visible to anyone who can run <code>docker inspect</code> or read <code>/proc</code> on the host, so this is appropriate for a single-owner VPS and would be a real secrets manager (Vault, AWS Secrets Manager, Docker secrets) on a team or a multi-tenant host.</p>
+        <p>There is also a good war story here &mdash; see the next question. <span class="pill p-info">&sect;29</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Tell me about a deployment bug that was hard to spot.</summary>
+      <div class="answer">
+        <p>Adding a password hash to <code>.env</code> broke the feature it was for. Werkzeug hashes are <code>scrypt:32768:8:1$salt$digest</code>, and Docker Compose interpolates <code>$</code> in <code>.env</code> &mdash; it read <code>$salt</code> and <code>$digest</code> as undefined variable references and substituted empty strings. The container received 16 characters of a 162-character value.</p>
+        <p>The part worth emphasising is the failure mode: it did not error. The truncated string is still truthy, so the gate looked correctly configured and simply rejected every password &mdash; indistinguishable from typing the wrong one. Diagnosed by checking what the container actually received rather than what the file contained, which is the general lesson: <b>verify the value at the point of use, not the point of definition.</b></p>
+        <p>Fix is Compose's own escape, <code>$$</code>. Then audit anything else non-hex; <code>SECRET_KEY</code> and <code>POSTGRES_PASSWORD</code> here are hex, so neither was affected. <span class="pill p-info">&sect;29</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>How do you run a migration against production?</summary>
+      <div class="answer">
+        <p><code>docker compose exec -T web flask db upgrade</code> &mdash; inside the app image, so Alembic runs with exactly the code and dependencies the app is running, against the same <code>DATABASE_URL</code>.</p>
+        <p>The deploy order is pull, rebuild, then migrate. Have the failure mode ready: a migration generated against a freshly-built image, copied out to the host, and then applied without rebuilding again runs from an image that predates the file, so <code>flask db upgrade</code> reports success while the container silently sits one migration behind. The established sequence has a rebuild on <i>both</i> sides of the copy for exactly that reason.</p>
+        <p>And the schema-change trap itself: adding a <code>NOT NULL</code> column to a populated table fails immediately, because Postgres backfills existing rows with NULL before checking the constraint. Add nullable, backfill, then tighten. <span class="pill p-info">&sect;28 &sect;29</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>How would you know if the app were unhealthy?</summary>
+      <div class="answer">
+        <p>Answer at two levels, and be candid about where it stops.</p>
+        <p><b>What exists:</b> each container declares a healthcheck, so <code>docker compose ps</code> reports per-service health; <code>restart: unless-stopped</code> brings a crashed service back automatically; gunicorn's access and error logs go to stdout so <code>docker compose logs</code> has them; and the app's own traffic board tracks p50/p90/p99 latency and 4xx versus 5xx rates.</p>
+        <p><b>What does not:</b> there is no external uptime monitor, no alerting, and no log aggregation &mdash; if the host went down, I would find out by visiting the site. For a personal site that is a reasonable place to stop; on anything with users it would need at minimum an external check and somewhere for alerts to go.</p>
+        <p>Volunteering the second half is the point of the answer. <span class="pill p-info">&sect;23 &sect;29</span></p>
       </div>
     </details>
   </div>

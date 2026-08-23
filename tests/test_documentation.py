@@ -54,7 +54,7 @@ def test_documentation_links_back_into_the_site(client):
 def test_documentation_loads_mermaid_and_has_diagrams_to_render(client):
     resp = client.get("/documentation")
     assert b"mermaid.esm.min.mjs" in resp.data
-    assert resp.data.count(b'<pre class="mermaid">') == 11
+    assert resp.data.count(b'<pre class="mermaid">') == 12
 
 
 def test_every_diagram_pins_its_own_theme(client):
@@ -63,6 +63,25 @@ def test_every_diagram_pins_its_own_theme(client):
     rather than merely ugly, and silent, since it still 'renders'."""
     resp = client.get("/documentation")
     assert resp.data.count(b"%%{init:") == resp.data.count(b'<pre class="mermaid">')
+
+
+def test_documentation_covers_the_container_setup(client):
+    """Docker is a large part of how this app actually runs and is prime
+    interview ground, so the reference has to explain it rather than just
+    naming the services."""
+    resp = client.get("/documentation")
+    for topic in (
+        b"Containerisation",
+        b"Dockerfile",
+        b"HEALTHCHECK",
+        b"service_healthy",
+        b"docker-compose.yml",
+        b"appuser",              # non-root user
+        b"PYTHONUNBUFFERED",
+        b"caddy_data",           # the volume whose loss actually hurts
+        b"--force-recreate",
+    ):
+        assert topic in resp.data, f"missing from the reference: {topic!r}"
 
 
 def test_documentation_covers_every_project(client):
@@ -150,6 +169,21 @@ def test_no_password_hash_is_committed_to_the_repo():
     from app.config import Config
 
     assert Config.DOCS_PASSWORD_HASH in (None, "")
+
+
+def test_interview_bank_includes_container_questions(locked_client):
+    locked_client.post("/documentation/interview", data={"password": PASSWORD})
+    resp = locked_client.get("/documentation/interview")
+    assert b"Containers and deployment" in resp.data
+    for q in (
+        b"Walk me through your Dockerfile",
+        b"share one image",
+        b"service_healthy",
+        b"volume would hurt most",
+        b"How do secrets get into the containers",
+        b"run a migration against production",
+    ):
+        assert q in resp.data, f"missing question: {q!r}"
 
 
 def test_gated_page_is_not_indexable(locked_client):
