@@ -25,6 +25,22 @@ shows an arrow) and re-decided immediately after it executes a move -- never bot
 same step, which is what keeps "shown, then resolved next turn" strictly true turn over
 turn.
 
+## Stacked cells
+
+Nothing prevents two obstacles occupying the same square. Spawning avoids an occupied
+cell, but `resolveTurn` moves every obstacle independently, so two can land together --
+and when they did, the second square was drawn straight over the first and their
+telegraph arrows overlapped. The board silently stopped being readable at exactly the
+moment it mattered most, since a stacked cell is two threats rather than one.
+
+A stacked cell now carries an amber **`!` badge**, and hovering it (or tapping, on
+touch) opens a tooltip naming every obstacle on the square and where each one is about
+to go, in words: *"Jumper -- moves 2 left"*. The wording matters because the glyphs are
+the thing that has become unreadable, so repeating them larger would not help.
+
+The tooltip is dropped on the next key press: the board is about to change, and a
+confident description of a square that no longer looks like that is worse than none.
+
 ## Obstacle types
 
 | Type | Pattern |

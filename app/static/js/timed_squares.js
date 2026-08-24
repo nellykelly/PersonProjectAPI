@@ -23,7 +23,29 @@
     bouncer: "#818cf8",
     grid: "rgba(255,255,255,0.08)",
     glyph: "#0d1117",
+    stackBadge: "#facc15",
+    stackBadgeEdge: "#0d1117",
   };
+
+  var TYPE_LABELS = {
+    standard: "Standard",
+    jumper: "Jumper",
+    lmover: "L-mover",
+    diagonal: "Diagonal",
+    bouncer: "Bouncer",
+  };
+
+  // The telegraph arrow already shows a single obstacle's next move, but
+  // once two share a cell their arrows are drawn on top of each other and
+  // neither is readable -- so the stacked-cell tooltip has to say it in
+  // words instead of relying on the glyph.
+  function describeMove(move) {
+    if (!move || (!move.dx && !move.dy)) return "stays put";
+    var parts = [];
+    if (move.dy) parts.push(Math.abs(move.dy) + " " + (move.dy > 0 ? "down" : "up"));
+    if (move.dx) parts.push(Math.abs(move.dx) + " " + (move.dx > 0 ? "right" : "left"));
+    return "moves " + parts.join(" and ");
+  }
 
   // Difficulty curve -- feel-based, tuned by actually playing it rather
   // than derived from a formula (see the build prompt's own "left to
@@ -187,6 +209,7 @@
   TimedSquares.prototype.reset = function () {
     this.player = { x: Math.floor(GRID_SIZE / 2), y: Math.floor(GRID_SIZE / 2) };
     this.obstacles = [];
+    this.stacks = [];  // recomputed by render(); see stackedCells()
     this.turn = 0;
     this.gameOver = false;
     nextObstacleId = 1;
@@ -298,6 +321,52 @@
     ctx.restore();
   };
 
+  // Cells holding more than one obstacle.
+  //
+  // Nothing prevents this: spawning avoids an occupied cell, but
+  // resolveTurn moves every obstacle independently, so two can land on
+  // the same square. When they do, the second square is drawn over the
+  // first and their telegraph arrows overlap -- the board silently stops
+  // being readable at exactly the moment it matters most, since a stacked
+  // cell is two threats rather than one. Marked with a badge, and the
+  // detail moved into a hover tooltip rather than crammed into the cell.
+  TimedSquares.prototype.stackedCells = function () {
+    var byCell = {};
+    this.obstacles.forEach(function (o) {
+      var key = o.x + "," + o.y;
+      (byCell[key] = byCell[key] || []).push(o);
+    });
+    return Object.keys(byCell)
+      .filter(function (key) { return byCell[key].length > 1; })
+      .map(function (key) {
+        var parts = key.split(",");
+        return { x: Number(parts[0]), y: Number(parts[1]), obstacles: byCell[key] };
+      });
+  };
+
+  TimedSquares.prototype.drawStackBadge = function (stack, cell) {
+    var ctx = this.ctx;
+    var r = cell * 0.19;
+    var cx = stack.x * cell + cell - r - cell * 0.07;
+    var cy = stack.y * cell + r + cell * 0.07;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = COLORS.stackBadge;
+    ctx.fill();
+    ctx.lineWidth = Math.max(1, cell * 0.022);
+    ctx.strokeStyle = COLORS.stackBadgeEdge;
+    ctx.stroke();
+
+    ctx.fillStyle = COLORS.glyph;
+    ctx.font = "bold " + Math.round(r * 1.45) + "px system-ui, -apple-system, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("!", cx, cy + r * 0.08);
+    ctx.restore();
+  };
+
   TimedSquares.prototype.render = function () {
     var ctx = this.ctx;
     var cell = this.cell;
@@ -333,6 +402,14 @@
       if (o.type === "lmover") {
         this.drawKnightMarker(cx, cy, cell * 0.22, COLORS.glyph);
       }
+    }, this);
+
+    // Cached on the instance rather than recomputed on every pointer move:
+    // the hover lookup then describes exactly what is currently drawn,
+    // instead of a board state that may have advanced since.
+    this.stacks = this.stackedCells();
+    this.stacks.forEach(function (stack) {
+      this.drawStackBadge(stack, cell);
     }, this);
 
     // Player.
@@ -468,14 +545,89 @@
       scoreEl.textContent = "0";
     });
 
+    // ---------- stacked-cell tooltip ----------
+    //
+    // The "!" badge says *that* a square holds more than one obstacle;
+    // this says which ones and where each is about to go, since their
+    // telegraph arrows are drawn on top of each other and unreadable.
+    var stackTip = document.getElementById("ts-stack-tip");
+
+    function cellFromPointer(evt) {
+      var rect = canvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return null;
+      var size = rect.width / GRID_SIZE;
+      var x = Math.floor((evt.clientX - rect.left) / size);
+      var y = Math.floor((evt.clientY - rect.top) / size);
+      return inBounds(x, y) ? { x: x, y: y, size: size, rect: rect } : null;
+    }
+
+    function hideStackTip() {
+      if (stackTip) stackTip.hidden = true;
+    }
+
+    function updateStackTip(evt) {
+      if (!stackTip) return;
+      var at = cellFromPointer(evt);
+      if (!at) return hideStackTip();
+
+      var stack = (game.stacks || []).filter(function (s) {
+        return s.x === at.x && s.y === at.y;
+      })[0];
+      if (!stack) return hideStackTip();
+
+      stackTip.innerHTML =
+        '<b class="ts-tip-title">' + stack.obstacles.length + " obstacles on this square</b>" +
+        stack.obstacles
+          .map(function (o) {
+            var colour = COLORS[o.type] || COLORS.standard;
+            return (
+              '<span class="ts-tip-row">' +
+              '<i class="ts-tip-swatch" style="background:' + colour + '"></i>' +
+              "<span>" + escapeHtml(TYPE_LABELS[o.type] || o.type) + " &mdash; " +
+              escapeHtml(describeMove(o.nextMove)) + "</span>" +
+              "</span>"
+            );
+          })
+          .join("");
+
+      // Unhide before measuring -- offsetWidth is 0 on a hidden element,
+      // which would put every tooltip in the wrong place.
+      stackTip.hidden = false;
+      var w = stackTip.offsetWidth;
+      var h = stackTip.offsetHeight;
+
+      var left = (at.x + 0.5) * at.size - w / 2;
+      var top = at.y * at.size - h - 8;
+      if (top < 4) top = (at.y + 1) * at.size + 8;  // no room above: flip below
+      left = Math.max(4, Math.min(left, at.rect.width - w - 4));
+
+      stackTip.style.left = Math.round(left) + "px";
+      stackTip.style.top = Math.round(top) + "px";
+    }
+
+    canvas.addEventListener("pointermove", updateStackTip);
+    canvas.addEventListener("pointerdown", updateStackTip);  // touch: tap to inspect
+    canvas.addEventListener("pointerleave", hideStackTip);
+
     document.addEventListener("keydown", function (e) {
       var dirName = KEY_TO_DIR[e.key];
       if (!dirName) return;
       if (overlay && !overlay.hidden) return;
       e.preventDefault();
+      // The board is about to change, so whatever the tooltip is
+      // describing is about to be stale -- drop it rather than leave a
+      // confident description of a square that no longer looks like that.
+      hideStackTip();
       game.tryMovePlayer(dirName);
       scoreEl.textContent = game.turn;
     });
+
+    // Same purpose as __timedSquaresEngine below, but the *wired* instance:
+    // the class alone can't verify anything that depends on the page's own
+    // event handlers (the stacked-cell tooltip reads this instance's
+    // `stacks`), so a fresh instance built in the console tests the drawing
+    // and misses the wiring entirely.
+    window.__timedSquaresGame = game;
 
     refreshLeaderboard();
   });

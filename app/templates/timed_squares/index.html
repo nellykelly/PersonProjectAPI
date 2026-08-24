@@ -23,6 +23,9 @@
 
     <div class="ts-board-wrapper">
         <canvas id="ts-canvas" width="800" height="800"></canvas>
+        {# Filled and positioned by timed_squares.js when the pointer is over a
+           cell holding more than one obstacle -- see the "!" badge. #}
+        <div class="ts-stack-tip" id="ts-stack-tip" role="tooltip" hidden></div>
         <div class="ts-overlay" id="ts-overlay" hidden>
             <div class="ts-overlay-card">
                 <h2>Game Over</h2>

@@ -1367,6 +1367,52 @@ section + section {
   display: block;
 }
 
+/* Tooltip for a cell holding more than one obstacle (the "!" badge).
+   Positioned in JS relative to the board wrapper, which is already
+   position:relative for the game-over overlay. pointer-events:none so it
+   can never sit between the pointer and the canvas and suppress the very
+   pointermove events that keep it updated. */
+.ts-stack-tip {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  max-width: 15rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #0f1216;
+  color: var(--fg);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.85);
+}
+
+.ts-stack-tip[hidden] { display: none; }
+
+.ts-tip-title {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.08rem;
+  text-transform: uppercase;
+  color: #facc15;
+}
+
+.ts-tip-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  margin-top: 0.2rem;
+}
+
+.ts-tip-swatch {
+  flex: 0 0 auto;
+  width: 0.6rem;
+  height: 0.6rem;
+  margin-top: 0.28rem;
+  border-radius: 2px;
+}
+
 .ts-overlay {
   position: absolute;
   inset: 0;
