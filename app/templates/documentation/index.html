@@ -55,7 +55,7 @@
       <li><a href="#s12"><i>12</i><span>Market data</span></a></li>
       <li><a href="#s13"><i>13</i><span>Watchlist &amp; SSE</span></a></li>
     </ol>
-    <h2>Part IV &mdash; QR Scorer</h2>
+    <h2>Part IV &mdash; Company Scorer</h2>
     <ol>
       <li><a href="#s14"><i>14</i><span>EDGAR &amp; XBRL</span></a></li>
       <li><a href="#s15"><i>15</i><span>Scoring engine</span></a></li>
@@ -1523,7 +1523,7 @@ ORDER BY day</code></pre>
         <tr><td>Trading reads</td><td>300/hour</td><td>Cached price lookup &mdash; a tab polling every 15 s never comes close</td></tr>
         <tr><td>Risk requests</td><td>30/hour</td><td>Real Black-Scholes + 2 DB rows</td></tr>
         <tr><td>QR score</td><td>20/hour</td><td>2 EDGAR + 2 yfinance calls</td></tr>
-        <tr><td>QR backtest</td><td>5/hour</td><td>That many calls <i>per ticker</i> across the basket</td></tr>
+        <tr><td>Company Scorer backtest</td><td>5/hour</td><td>That many calls <i>per ticker</i> across the basket</td></tr>
         <tr><td>Pipeline join</td><td>10/hour</td><td>Enqueues a 7-stage job</td></tr>
         <tr><td>Game score</td><td>60/hour</td><td>One INSERT &mdash; and it is the normal end of every round</td></tr>
       </tbody>

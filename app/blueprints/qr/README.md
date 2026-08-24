@@ -1,4 +1,4 @@
-# <img src="../../static/assets/img/icons/qr-scorer.svg" width="32" height="32" alt=""> QR -- Quant Company Scorer
+# <img src="../../static/assets/img/icons/qr-scorer.svg" width="32" height="32" alt=""> Company Scorer
 
 **Routes:** `/projects/qr-quant-scraper`, `/projects/qr-quant-scraper/backtest`
 

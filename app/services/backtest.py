@@ -1,4 +1,4 @@
-"""QR backtest: the "quant calculation on validation" piece.
+"""Company Scorer backtest: the "quant calculation on validation" piece.
 
 For each ticker in a basket, scores the company using only fundamentals
 that were *actually public* ~1 year ago (edgar.get_fundamentals filters

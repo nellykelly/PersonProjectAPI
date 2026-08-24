@@ -251,13 +251,13 @@ standalone verification script -- not by code review alone.
   a free lunch -- worth being upfront about the reasoning if asked, rather than
   overclaiming "it's literally pytest.main() under the hood."
 
-- **Point-in-time correctness in the QR backtest, to avoid look-ahead bias.** Scoring a
+- **Point-in-time correctness in the Company Scorer backtest, to avoid look-ahead bias.** Scoring a
   company "as of 1 year ago" needs fundamentals that were *actually public* a year ago,
   not fundamentals as currently known (which might include restatements or data that
   wasn't filed yet at that date). `edgar.py` filters SEC filings by *filed* date, not
   *period-end* date, specifically to avoid this.
 
-- **Configurable, renormalizing category weights in the QR scorer.** When a company is
+- **Configurable, renormalizing category weights in the Company Scorer.** When a company is
   missing data for a metric (a common real-world XBRL taxonomy inconsistency), that
   metric is dropped and the remaining weights renormalize over what's actually
   available, rather than either erroring out or (worse) silently treating the missing
@@ -266,7 +266,7 @@ standalone verification script -- not by code review alone.
   requirement, not a nice-to-have.
 
 - **Ticker whitelisting + parametrized queries, not either alone, for injection
-  defense.** Both the Trading Simulator and QR Scorer validate ticker symbols against a
+  defense.** Both the Trading Simulator and Company Scorer validate ticker symbols against a
   fixed whitelist before they ever reach `yfinance`/SEC EDGAR calls. But the *actual*
   SQL/injection defense is that every database query is parametrized (SQLAlchemy bound
   parameters) -- the whitelist is defense-in-depth on top of that, not a substitute for

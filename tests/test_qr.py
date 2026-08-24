@@ -95,7 +95,7 @@ def fake_data_sources(monkeypatch):
 def test_qr_index_loads_without_ticker(client):
     resp = client.get("/projects/qr-quant-scraper")
     assert resp.status_code == 200
-    assert b"Quant Company Scorer" in resp.data
+    assert b"Company Scorer" in resp.data
 
 
 def test_qr_score_route(client):

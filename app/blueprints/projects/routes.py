@@ -11,10 +11,19 @@ PROJECTS = [
         "endpoint": "trading.index",
         "tags": ["Flask", "yfinance", "SQLite", "Black-Scholes"],
         "icon": "assets/img/icons/trading.svg",
+        # On hold: kept running and reachable at its own URL, but not
+        # listed or linked anywhere on the site. Left in this list rather
+        # than deleted so the metadata survives and un-holding it is a
+        # one-line change -- see `listed_projects()`.
+        "on_hold": True,
     },
     {
         "slug": "qr-quant-scraper",
-        "title": "QR Quant Company Scorer",
+        # Renamed from "Company Scorer". The URL slug keeps its
+        # original wording on purpose: it is already linked from the docs
+        # and anywhere else the site has been shared, and a display name
+        # is free to change while a URL is not.
+        "title": "Company Scorer",
         "blurb": "Scores a company on valuation, leverage, growth and profitability from "
         "SEC EDGAR filings and market data, then backtests whether the score "
         "predicted anything.",
@@ -83,6 +92,22 @@ EARLIER_PROJECTS = [
 # live version of the same game.
 
 
+def listed_projects() -> list[dict]:
+    """Everything shown in a project listing anywhere on the site.
+
+    A project marked `on_hold` keeps working at its own URL -- its routes
+    are registered exactly as before -- but is dropped from every listing,
+    so it's reachable only by someone who already has the link. That's a
+    display decision, deliberately not an access-control one: nothing here
+    hides data or gates a route, so it must not be mistaken for security.
+    """
+    return [p for p in PROJECTS if not p.get("on_hold")]
+
+
 @bp.route("")
 def index():
-    return render_template("projects/index.html", projects=PROJECTS, earlier_projects=EARLIER_PROJECTS)
+    return render_template(
+        "projects/index.html",
+        projects=listed_projects(),
+        earlier_projects=EARLIER_PROJECTS,
+    )

@@ -22,7 +22,7 @@ def _list(name: str, default: list[str]) -> list[str]:
 
 
 # Curated whitelist of liquid large-cap tickers/ETFs. Used by both the
-# trading simulator (position tickers) and the QR scorer (scorable /
+# trading simulator (position tickers) and the Company Scorer (scorable /
 # backtestable tickers) so that user input never reaches yfinance/SEC
 # EDGAR unvalidated.
 DEFAULT_TICKER_WHITELIST = [
@@ -35,7 +35,7 @@ DEFAULT_TICKER_WHITELIST = [
     "SPY", "QQQ", "DIA", "IWM",
 ]
 
-# Default equal-weight category weighting for the QR composite score.
+# Default equal-weight category weighting for the Company Scorer composite score.
 # Configurable (not hardcoded logic) -- override via QR_WEIGHT_* env vars.
 DEFAULT_QR_WEIGHTS = {
     "valuation": 0.25,

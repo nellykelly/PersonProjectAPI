@@ -49,7 +49,7 @@
             <div class="label">JPMorgan Chase &amp; Co.</div>
         </div>
         <div class="reveal-up stat-tile">
-            <div class="value mono">6</div>
+            <div class="value mono">{{ project_count }}</div>
             <div class="label">Shipped side projects</div>
         </div>
         <div class="reveal-up stat-tile">
@@ -87,7 +87,7 @@
         {% endfor %}
     </div>
     <p class="reveal-up" style="text-align: center; margin-top: 2rem;">
-        <a class="button" href="{{ url_for('projects.index') }}">See all 6 projects &rarr;</a>
+        <a class="button" href="{{ url_for('projects.index') }}">See all {{ project_count }} projects &rarr;</a>
     </p>
 </section>
 

@@ -26,7 +26,7 @@ So this project captures and aggregates **only the app's own traffic**:
 1. **Inbound** -- every request this Flask app receives on its own routes, via
    app-wide `before_request`/`after_request` hooks (`app/services/net_monitor.py`).
 2. **Outbound** -- every API call the app itself makes (to `yfinance` for the Trading
-   Simulator, to SEC EDGAR for the QR Scorer), logged explicitly at the call site in
+   Simulator, to SEC EDGAR for the Company Scorer), logged explicitly at the call site in
    `market_data.py` / `edgar.py`.
 
 It never touches a visitor's actual browsing traffic. Static asset requests
@@ -40,7 +40,7 @@ It never touches a visitor's actual browsing traffic. Static asset requests
   a quiet site and a busy one both render sensibly rather than mostly-empty buckets).
 - **Latency percentiles** -- p50/p90/p99 and max, computed separately for inbound and
   outbound, by a hand-rolled linear-interpolation percentile function (the same "don't
-  reach for numpy over one small stats function" call already made for the QR Scorer's
+  reach for numpy over one small stats function" call already made for the Company Scorer's
   backtest correlation). p50 alone hides the slow tail that actually matters for "is this
   page ever slow"; p99 is what surfaces it.
 - **Error rate** -- inbound requests answered 4xx vs 5xx, tracked and shown separately,
@@ -76,7 +76,7 @@ It never touches a visitor's actual browsing traffic. Static asset requests
 
 ## Try it
 
-Open the Trading Simulator or QR Scorer in another tab and generate some traffic (open a
+Open the Trading Simulator or Company Scorer in another tab and generate some traffic (open a
 position, run a risk request, score a ticker) -- come back here and the counters, top
 endpoints, and volume chart pick it up on the next poll.
 

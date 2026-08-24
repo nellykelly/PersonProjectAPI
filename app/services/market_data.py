@@ -1,4 +1,4 @@
-"""yfinance wrapper shared by the Trading Simulator and QR Scorer.
+"""yfinance wrapper shared by the Trading Simulator and Company Scorer.
 
 Everything here goes through a whitelist check first (never pass raw
 user input straight to yfinance), a short-TTL DB cache (cuts down on
@@ -115,7 +115,7 @@ def get_history(ticker: str, period: str = "6mo", interval: str = "1d"):
 
 
 def get_price_near_date(ticker: str, target_date) -> float:
-    """Closing price on/just before `target_date` -- used by the QR backtest
+    """Closing price on/just before `target_date` -- used by the Company Scorer backtest
     to compute the actual forward return since a historical score date."""
     ticker = _require_valid(ticker)
 
@@ -174,7 +174,7 @@ def get_option_chain(ticker: str, expiry: str) -> dict:
 
 def get_info(ticker: str) -> dict:
     """Raw yfinance `.info`-style dict -- market cap, trailing P/E, P/B,
-    shares outstanding, etc. Used by the QR scorer's valuation category."""
+    shares outstanding, etc. Used by the Company Scorer's valuation category."""
     ticker = _require_valid(ticker)
 
     def _do():

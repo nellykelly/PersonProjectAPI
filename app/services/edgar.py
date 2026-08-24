@@ -1,4 +1,4 @@
-"""SEC EDGAR client for the QR (Quant Company Scorer) project.
+"""SEC EDGAR client for the Company Scorer project.
 
 Uses only `data.sec.gov`'s official public XBRL "company facts" API and
 the SEC's published ticker->CIK mapping -- both are SEC's own APIs meant

@@ -11,7 +11,7 @@ and [`docs/build-spec-pipeline-world.md`](docs/build-spec-pipeline-world.md).
 
 > Every page carries GitHub/LinkedIn/resume/email links in the header and footer, and a
 > site-wide disclaimer: nothing on this site is financial advice. The Trading Simulator and
-> QR Scorer specifically use simulated/delayed data and are not investment advice.
+> Company Scorer specifically use simulated/delayed data and are not investment advice.
 
 ## What's here
 
@@ -21,7 +21,7 @@ and [`docs/build-spec-pipeline-world.md`](docs/build-spec-pipeline-world.md).
 | About | `/about` | Bio, resume download |
 | Projects | `/projects` | Landing page for the six projects below + an "Earlier Projects" archive |
 | [Trading Simulator](app/blueprints/trading/README.md) | `/projects/trading-simulator` | Shared, anonymous public trade book -- open a simulated stock/option position and track PnL against live-polled `yfinance` data; run risk (pluggable quant models) against one leg, a whole position, or the whole book, priced on a separate worker via Redis/RQ; an instrument catalog lookupable by OCC option code; a live watchlist grid with a click-to-plot multi-stock chart |
-| [QR -- Quant Company Scorer](app/blueprints/qr/README.md) | `/projects/qr-quant-scraper` | Scores a company on valuation/leverage/growth/profitability from SEC EDGAR + market data, with a backtest module |
+| [Company Scorer](app/blueprints/qr/README.md) | `/projects/qr-quant-scraper` | Scores a company on valuation/leverage/growth/profitability from SEC EDGAR + market data, with a backtest module |
 | [Pipeline World](app/blueprints/pipeline_world/README.md) | `/projects/pipeline-world` | Submit a character, watch it move through a real, queued CI/CD-style pipeline live in a top-down world; a Postgres SQL analytics page over every run |
 | [SRE Infra Layer](app/blueprints/sre_infra/README.md) | `/projects/sre-infra` | The Redis queue/cache-aside/rate-limit infrastructure underneath Pipeline World, dashboarded |
 | [Site Traffic Analytics](app/blueprints/sniffer/README.md) | `/projects/network-sniffer` | An analytics board over this app's own inbound requests and outbound API calls -- volume over time, latency percentiles, error rate, busiest endpoints/hosts |
@@ -122,7 +122,7 @@ also lived in this repo -- see `legacy/README-colorlib-license.txt`). Design cre
 
 If you're testing on a Windows machine with Avast (or similar antivirus doing HTTPS
 scanning) and see `SSL: CERTIFICATE_VERIFY_FAILED` errors from the Trading Simulator or
-QR Scorer, that's the antivirus's local TLS interception, not this app or a network
+Company Scorer, that's the antivirus's local TLS interception, not this app or a network
 outage -- Python's certificate bundle doesn't trust Avast's injected root the way the OS
 does. It doesn't affect Docker/Linux hosting. Both `market_data.py` and `edgar.py` treat
 this the same as any other data-source failure: a clean, non-crashing error state, per

@@ -84,10 +84,12 @@
 
     <footer class="site-footer">
         <div class="disclaimer">
-            Personal portfolio site. The Trading Simulator uses simulated positions against delayed real
-            market data from yfinance. No real money, and none of it is financial advice. The QR scores
-            are a demo, not investment advice. The Network Sniffer logs only this app's own requests and
-            API calls, never a visitor's browsing.
+            {# The Trading Simulator is on hold and no longer listed, so this site-wide line
+               doesn't cover it -- its own pages carry their simulated-data and not-advice
+               banners directly. See app/blueprints/projects/routes.py: listed_projects(). #}
+            Personal portfolio site. The Company Scorer's scores are a demo built from public
+            filings and delayed market data, not investment advice. The Site Traffic Analytics
+            board logs only this app's own requests and API calls, never a visitor's browsing.
         </div>
         <div class="footer-links">
             <a href="{{ GITHUB_URL }}" target="_blank" rel="noopener">GitHub</a>

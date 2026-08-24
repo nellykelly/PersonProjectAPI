@@ -88,7 +88,7 @@ def test_documentation_covers_every_project(client):
     resp = client.get("/documentation")
     for heading in (
         b"Trading Simulator",
-        b"Quant Company Scorer",
+        b"Company Scorer",
         b"Pipeline World",
         b"SRE Infra Layer",
         b"Site Traffic Analytics",

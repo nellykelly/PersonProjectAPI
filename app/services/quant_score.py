@@ -1,4 +1,4 @@
-"""QR -- Quant Company Scorer: composite multi-factor scoring engine.
+"""Company Scorer: composite multi-factor scoring engine.
 
 Combines SEC EDGAR fundamentals (edgar.py) with yfinance market data
 (market_data.py) into four category sub-scores -- valuation, leverage,

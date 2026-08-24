@@ -1,18 +1,24 @@
 from flask import Response, render_template, send_from_directory, current_app
 
 from app.blueprints.main import bp
-from app.blueprints.projects.routes import PROJECTS
+from app.blueprints.projects.routes import listed_projects
 
-# The 3 most substantial builds, for the landing page's highlight -- the
-# full 5-project set (plus Earlier Projects) already lives at /projects,
-# this is just a taste of it.
-FEATURED_PROJECT_SLUGS = ("trading-simulator", "pipeline-world", "qr-quant-scraper")
+# The most substantial builds, for the landing page's highlight -- the
+# full set (plus Earlier Projects) already lives at /projects, this is
+# just a taste of it. Filtered through listed_projects(), so a project
+# put on hold drops off the landing page too rather than needing to be
+# removed from this tuple as well and being missed.
+FEATURED_PROJECT_SLUGS = ("pipeline-world", "qr-quant-scraper", "timed-squares")
 
 
 @bp.route("/")
 def index():
-    featured = [p for p in PROJECTS if p["slug"] in FEATURED_PROJECT_SLUGS]
-    return render_template("main/index.html", featured_projects=featured)
+    listed = listed_projects()
+    featured = [p for p in listed if p["slug"] in FEATURED_PROJECT_SLUGS]
+    # Counted, not written into the template: it drifted before (the copy
+    # still said 5 after a sixth shipped), and putting a project on hold
+    # changes it again.
+    return render_template("main/index.html", featured_projects=featured, project_count=len(listed))
 
 
 @bp.route("/favicon.ico")

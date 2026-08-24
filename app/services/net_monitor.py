@@ -18,7 +18,7 @@ at this scope. `get_analytics()` computes everything (volume over time,
 latency percentiles, error rate, top endpoints/hosts) from that same
 buffer with plain Python -- no numpy, no time-series database, the same
 "hand-roll the small stats, don't reach for a heavy dependency" choice
-already made for the QR Scorer's backtest correlation.
+already made for the Company Scorer's backtest correlation.
 """
 from __future__ import annotations
 
@@ -120,7 +120,7 @@ def _host_of(target: str) -> str:
 def _percentile(values: list[float], pct: float) -> float:
     """Linear-interpolation percentile (the same convention numpy's
     default uses) -- hand-rolled rather than pulling in a dependency for
-    one function, the same call made for the QR Scorer's backtest
+    one function, the same call made for the Company Scorer's backtest
     correlation. `values` must be non-empty."""
     s = sorted(values)
     if len(s) == 1:
