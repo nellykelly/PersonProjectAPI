@@ -22,7 +22,20 @@ nelsonkoskela.dev, www.nelsonkoskela.dev {
     handle_path /static/* {
         root * /srv/static
         file_server
-        header Cache-Control "public, max-age=3600"
+        # no-cache, not max-age: these filenames carry no content hash, so
+        # nothing about a deploy tells a browser its copy is stale. With
+        # max-age=3600 a visitor kept running the previous JS for up to an
+        # hour after a fix shipped -- observed directly, debugging a
+        # collision fix against a cached copy of the old file.
+        #
+        # "no-cache" does not mean "do not store". The browser keeps the
+        # file and revalidates with If-None-Match; Caddy answers 304 from
+        # the ETag it already sends, so unchanged assets cost one small
+        # conditional request instead of a re-download. The reason this
+        # block exists -- keeping asset serving off gunicorn's 8-thread
+        # pool -- is unaffected, since Caddy still answers entirely from
+        # disk.
+        header Cache-Control "no-cache"
     }
 
     reverse_proxy web:8000
