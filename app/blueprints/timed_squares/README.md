@@ -13,6 +13,27 @@ resolves, every active obstacle takes its own move -- one step each, per its own
 -- then it's your turn again. A move into a wall is a no-op: nothing advances, because
 nothing actually moved (see `tryMovePlayer` in `timed_squares.js`).
 
+## When a collision counts
+
+Collision is decided on where everything **ends** the turn, not on what the player moved
+through getting there. Concretely: the player moves, then every obstacle executes its
+telegraphed move, and only then is the board checked.
+
+That ordering is the whole point. Stepping onto a square an obstacle is in the middle of
+*leaving* is safe, because its own arrow promised it was going elsewhere -- the arrows are
+a contract about where things will be, and reading them correctly has to be rewarded.
+(This was a real bug: the check used to run before the obstacles moved, so a correctly-read
+dodge into a vacating square killed you anyway.)
+
+Two exceptions, in opposite directions:
+
+- **A head-on swap is fatal.** If an obstacle starts on the square the player moves to and
+  ends on the square the player just left, they pass straight through each other. Final
+  positions alone would call that a miss.
+- **A jumper passing over the player is not.** Its two-cell hop explicitly ignores the
+  intervening square, including when the player is standing on it. So the swap test is an
+  exact position exchange, never a general path-crossing check, which would break this.
+
 ## Telegraphing: the actual design constraint
 
 Every obstacle shows what it's about to do *before* it does it -- an arrow (rotated to

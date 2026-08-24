@@ -225,6 +225,29 @@
     return this.obstacles.some(function (o) { return o.x === player.x && o.y === player.y; });
   };
 
+  // True when an obstacle and the player traded places this turn -- the
+  // obstacle started on the square the player just moved to, and ended on
+  // the square the player just left. Their paths cross head-on even
+  // though neither is standing on the other once everything has settled,
+  // so final positions alone would let the player walk straight through
+  // an oncoming obstacle.
+  //
+  // Deliberately only an exact swap, not a general path-crossing test: a
+  // jumper passing *over* the player's square mid-hop is an explicit rule
+  // of the game (see the README), and a broader check would break it. A
+  // two-cell move also can't produce a swap, since that requires ending
+  // one cell from where you started.
+  TimedSquares.prototype.swappedWithPlayer = function (origins, playerFrom) {
+    if (!playerFrom) return false;
+    var player = this.player;
+    return origins.some(function (rec) {
+      return (
+        rec.fromX === player.x && rec.fromY === player.y &&
+        rec.obstacle.x === playerFrom.x && rec.obstacle.y === playerFrom.y
+      );
+    });
+  };
+
   TimedSquares.prototype.tryMovePlayer = function (dirName) {
     if (this.gameOver) return;
     var dir = DIRS[dirName];
@@ -233,18 +256,32 @@
     var ny = this.player.y + dir.dy;
     if (!inBounds(nx, ny)) return; // wall: not a valid turn, nothing advances
 
+    var from = { x: this.player.x, y: this.player.y };
     this.player.x = nx;
     this.player.y = ny;
-    this.resolveTurn();
+    this.resolveTurn(from);
   };
 
-  TimedSquares.prototype.resolveTurn = function () {
+  // Collision is decided on where everything ENDS this turn, not on what
+  // the player moved through on the way.
+  //
+  // This used to test for a collision before the obstacles moved, which
+  // killed the player for stepping onto a square an obstacle was in the
+  // middle of leaving -- even though its own telegraph arrow had promised
+  // it was going somewhere else. That directly contradicts the premise of
+  // the game: the arrows are a contract about where things will be, and
+  // reading them correctly has to be rewarded. Stepping into a square as
+  // its occupant steps out is now safe, which is what the board was
+  // already telling the player.
+  //
+  // The one path-based exception is a head-on swap, see swappedWithPlayer.
+  TimedSquares.prototype.resolveTurn = function (playerFrom) {
     this.turn += 1;
 
-    if (this.checkCollision()) {
-      this.endGame();
-      return;
-    }
+    // Where each obstacle stood before moving, needed for the swap test.
+    var origins = this.obstacles.map(function (o) {
+      return { obstacle: o, fromX: o.x, fromY: o.y };
+    });
 
     // Execute every obstacle's already-telegraphed move -- decideLMover
     // already collapses a knight hop into one turn's net {dx,dy}, so
@@ -257,7 +294,7 @@
     // Drop anything that exited the board.
     this.obstacles = this.obstacles.filter(function (o) { return inBounds(o.x, o.y); });
 
-    if (this.checkCollision()) {
+    if (this.checkCollision() || this.swappedWithPlayer(origins, playerFrom)) {
       this.endGame();
       return;
     }
