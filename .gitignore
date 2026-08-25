@@ -34,3 +34,8 @@ htmlcov/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Impeccable design skill -- review screenshots are transient build
+# evidence, not repo content. config.json/design.json (DESIGN.md's
+# sidecar) are kept.
+.impeccable/review/

@@ -1,0 +1,256 @@
+/* Live systems topology -- the home page's visual world.
+   Scoped entirely under body.page-home so the rest of the site
+   (still on the previous theme until it's redesigned in turn) is
+   untouched. Ground color and structural blue continue from the
+   existing hand-drawn project icons (#0d1117 / #3aa0ff) rather than
+   inventing an unrelated palette; green is introduced once, reserved
+   strictly for "this is genuinely live right now." */
+
+body.page-home {
+    --topo-bg: #0d1117;
+    --topo-bg-grid: rgba(201, 209, 217, 0.045);
+    --topo-line: rgba(58, 160, 255, 0.28);
+    --topo-line-active: #3aa0ff;
+    --topo-node-bg: #12181f;
+    --topo-node-border: #232b34;
+    --topo-text: #c9d1d9;
+    /* Tinted from the structural blue, not flat gray -- and lands at
+       ~7.7:1 on --topo-bg / --topo-node-bg, clear of the 4.5:1 floor
+       (the prior #6e7681 measured ~3.9-4.1:1). */
+    --topo-text-dim: #9aa8bb;
+    --topo-live: #3fb950;
+    --topo-live-dim: rgba(63, 185, 80, 0.16);
+    --font-display: "Archivo", "Space Grotesk", Helvetica, sans-serif;
+    --font-body: "Inter", "Source Sans Pro", Helvetica, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+    background: var(--topo-bg);
+    background-image:
+        linear-gradient(var(--topo-bg-grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--topo-bg-grid) 1px, transparent 1px);
+    background-size: 40px 40px;
+}
+
+body.page-home .mono { font-family: var(--font-mono); }
+
+/* ---- header / footer, restyled to the same world ---- */
+
+body.page-home .site-header {
+    background: rgba(13, 17, 23, 0.92);
+    border-bottom: 1px solid var(--topo-node-border);
+    backdrop-filter: blur(6px);
+}
+body.page-home .site-header .brand {
+    font-family: var(--font-display);
+    color: var(--topo-text);
+}
+body.page-home .site-header .brand .icon { color: var(--topo-line-active); }
+body.page-home .site-nav a {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    letter-spacing: 0.02em;
+    color: var(--topo-text-dim);
+}
+body.page-home .site-nav a:hover,
+body.page-home .site-nav a:focus-visible { color: var(--topo-text); }
+body.page-home .site-header-links .icon { color: var(--topo-text-dim); }
+body.page-home .site-header-links .icon:hover { color: var(--topo-line-active); }
+
+body.page-home .site-footer {
+    background: var(--topo-bg);
+    border-top: 1px solid var(--topo-node-border);
+    font-family: var(--font-body);
+}
+body.page-home .site-footer a { color: var(--topo-line-active); }
+body.page-home #bg { display: none; } /* old theme's ambient glow layer */
+
+/* ---- topology section ---- */
+
+body.page-home main#content.topo-content {
+    max-width: none;
+    padding: 0;
+}
+
+.topo-hero {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(220px, 300px) minmax(170px, 240px) minmax(260px, 1fr);
+    align-items: center;
+    gap: 2.5rem clamp(2rem, 6vw, 6rem);
+    min-height: min(78vh, 620px);
+    padding: clamp(2.5rem, 6vw, 4.5rem) clamp(1.25rem, 5vw, 4rem) 2rem;
+    isolation: isolate;
+}
+
+.topo-lines {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+    overflow: visible;
+}
+.topo-lines path {
+    fill: none;
+    stroke: var(--topo-line);
+    stroke-width: 1.5;
+    transition: stroke 0.2s ease;
+}
+.topo-lines path.is-active { stroke: var(--topo-line-active); }
+.topo-lines path.is-shared {
+    stroke: var(--topo-text-dim);
+    stroke-width: 1.5;
+    stroke-dasharray: 3 4;
+}
+
+/* ---- nodes ---- */
+
+.topo-node {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-family: var(--font-body);
+    color: var(--topo-text);
+    text-decoration: none;
+}
+
+.topo-root {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+.topo-root h1 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(1.9rem, 3.4vw, 2.75rem);
+    line-height: 1.05;
+    margin: 0;
+    color: var(--topo-text);
+}
+.topo-sub {
+    color: var(--topo-text-dim);
+    font-size: 0.95rem;
+    line-height: 1.5;
+    max-width: 34ch;
+    margin: 0;
+}
+.topo-annot-line {
+    color: var(--topo-text-dim);
+    font-size: 0.72rem;
+    letter-spacing: 0.01em;
+    max-width: 40ch;
+    margin: 0.2rem 0 0;
+}
+
+.topo-branch {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+}
+.topo-branch .topo-node {
+    padding: 0.6rem 0.9rem;
+    border: 1px solid var(--topo-node-border);
+    border-radius: 3px;
+    background: var(--topo-node-bg);
+    justify-content: space-between;
+    font-size: 0.92rem;
+}
+.topo-branch .topo-node:hover,
+.topo-branch .topo-node:focus-visible {
+    border-color: var(--topo-line-active);
+    outline: none;
+}
+.topo-count {
+    color: var(--topo-text-dim);
+    font-size: 0.78rem;
+}
+.topo-action {
+    border-color: var(--topo-live) !important;
+    color: var(--topo-live);
+}
+.topo-action .topo-arrow { transition: transform 0.15s ease; }
+.topo-action:hover .topo-arrow,
+.topo-action:focus-visible .topo-arrow { transform: translateX(3px); }
+
+.topo-leaves {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+}
+.topo-leaf {
+    padding: 0.65rem 0.9rem;
+    border: 1px solid var(--topo-node-border);
+    border-radius: 3px;
+    background: var(--topo-node-bg);
+    font-size: 0.9rem;
+    flex-wrap: wrap;
+}
+.topo-leaf:hover,
+.topo-leaf:focus-visible { border-color: var(--topo-line-active); outline: none; }
+.topo-icon { flex: none; opacity: 0.9; }
+.topo-leaf .topo-label { flex: 1 1 auto; min-width: 0; }
+.topo-tag {
+    color: var(--topo-text-dim);
+    font-size: 0.72rem;
+    border: 1px solid var(--topo-node-border);
+    border-radius: 2px;
+    padding: 0.1rem 0.4rem;
+}
+
+.topo-live { border-color: var(--topo-live-dim); }
+.topo-pulse-dot {
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--topo-live);
+    animation: topo-pulse 2.4s ease-in-out infinite;
+}
+.topo-live-readout {
+    color: var(--topo-live);
+    font-size: 0.72rem;
+    white-space: nowrap;
+}
+@keyframes topo-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .topo-pulse-dot { animation: none; }
+}
+
+.topo-edge-note {
+    grid-column: 2 / span 2;
+    align-self: start;
+    margin: -0.4rem 0 0;
+    color: var(--topo-text-dim);
+    font-size: 0.72rem;
+    max-width: 42ch;
+}
+
+/* ---- mobile: collapse the graph to a vertical spine ---- */
+
+@media (max-width: 900px) {
+    .topo-hero {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 1.1rem;
+        min-height: 0;
+        padding: 2.5rem 1.25rem 2rem;
+    }
+    .topo-lines { display: none; }
+    .topo-branch,
+    .topo-leaves {
+        position: relative;
+        padding-left: 1rem;
+        border-left: 1px solid var(--topo-node-border);
+    }
+    .topo-edge-note { grid-column: auto; margin-top: 0.25rem; }
+}
