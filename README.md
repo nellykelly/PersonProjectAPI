@@ -19,14 +19,16 @@ and [`docs/build-spec-pipeline-world.md`](docs/build-spec-pipeline-world.md).
 |---|---|---|
 | Home | `/` | Intro + links to the rest of the site |
 | About | `/about` | Bio, resume download |
-| Projects | `/projects` | Landing page for the six projects below + an "Earlier Projects" archive |
-| [Trading Simulator](app/blueprints/trading/README.md) | `/projects/trading-simulator` | Shared, anonymous public trade book -- open a simulated stock/option position and track PnL against live-polled `yfinance` data; run risk (pluggable quant models) against one leg, a whole position, or the whole book, priced on a separate worker via Redis/RQ; an instrument catalog lookupable by OCC option code; a live watchlist grid with a click-to-plot multi-stock chart |
+| Projects | `/projects` | Landing page for the five active projects below + an "Earlier Projects" archive |
 | [Company Scorer](app/blueprints/qr/README.md) | `/projects/qr-quant-scraper` | Scores a company on valuation/leverage/growth/profitability from SEC EDGAR + market data, with a backtest module |
 | [Pipeline World](app/blueprints/pipeline_world/README.md) | `/projects/pipeline-world` | Submit a character, watch it move through a real, queued CI/CD-style pipeline live in a top-down world; a Postgres SQL analytics page over every run |
 | [SRE Infra Layer](app/blueprints/sre_infra/README.md) | `/projects/sre-infra` | The Redis queue/cache-aside/rate-limit infrastructure underneath Pipeline World, dashboarded |
 | [Site Traffic Analytics](app/blueprints/sniffer/README.md) | `/projects/network-sniffer` | An analytics board over this app's own inbound requests and outbound API calls -- volume over time, latency percentiles, error rate, busiest endpoints/hosts |
 | [Timed-Squares](app/blueprints/timed_squares/README.md) | `/projects/timed-squares` | A turn-based survival game on a 10x10 grid, playable in-browser (HTML5 Canvas) -- dodge obstacles that telegraph their next move before they make it, with a public leaderboard |
+| Documentation | `/documentation` | A long-form engineering reference for this codebase -- architecture, data model, every subsystem, UML/sequence diagrams. Its own stylesheet, not part of the site's dark theme. |
+| Documentation &rarr; Interview questions | `/documentation/interview` | Password-gated section of the reference above (`DOCS_PASSWORD_HASH`) -- an interview-prep question bank keyed to the codebase. Fails closed if unconfigured; never linked or indexed. |
 | Contact | `/contact` | Email / LinkedIn / GitHub |
+| [Trading Simulator](app/blueprints/trading/README.md) *(on hold)* | `/projects/trading-simulator` | Shared, anonymous public trade book -- open a simulated stock/option position and track PnL against live-polled `yfinance` data; run risk (pluggable quant models) against one leg, a whole position, or the whole book, priced on a separate worker via Redis/RQ; an instrument catalog lookupable by OCC option code; a live watchlist grid with a click-to-plot multi-stock chart. **On hold**: the routes still work, but the project is deliberately unlisted -- not on `/projects`, not on the home page, not in the footer disclaimer. Reachable only by direct link. See `app/blueprints/projects/routes.py: listed_projects()`. |
 
 ## Tech stack
 
@@ -130,17 +132,143 @@ the graceful-degradation design called for in the build spec.
 
 ## Hosting
 
-Live at **https://nelsonkoskela.dev** -- a Hetzner CX22 VPS running the full
-`docker-compose.yml` stack (`web`, `worker`, `postgres`, `redis`, `caddy`) as five
-containers on one box. `caddy` is the only service reachable from the public internet
-(ports 80/443, everything else stays on the internal Docker network); it terminates
-automatic Let's Encrypt HTTPS for both the bare domain and `www`, and serves everything
-under `/static/*` directly off disk via its own `file_server` rather than proxying static
-assets through to gunicorn -- gunicorn runs as a single process with a small fixed thread
-pool (deliberately, for Flask-SocketIO session affinity -- see
-[Pipeline World](app/blueprints/pipeline_world/README.md)), so routing 15-20 static
-requests per page load through that same pool was a real, measured bottleneck, not just
-theoretical. Left 12-factor either way (env vars, no hardcoded provider assumptions), so
-this specific choice of host isn't load-bearing -- Render, Fly.io, or any other VPS would
-work without code changes, as long as it can also run the Postgres/Redis/worker services
-docker-compose defines.
+Live at **https://nelsonkoskela.dev** -- a Hetzner CX22 VPS (2 vCPU / 4GB, ~$5-6/mo)
+running the full `docker-compose.yml` stack (`web`, `worker`, `postgres`, `redis`,
+`caddy`) as five containers on one box. Left 12-factor throughout (env vars, no
+hardcoded provider assumptions), so this specific host isn't load-bearing -- Render,
+Fly.io, or any other VPS would work without code changes, as long as it can also run
+the Postgres/Redis/worker services `docker-compose.yml` defines.
+
+### Network path
+
+Only `caddy` is reachable from the public internet, on 80/443. Everything else
+(`web`, `worker`, `postgres`, `redis`) stays on the internal Docker network and is
+never exposed -- enforced two ways, not one: the Hetzner Cloud Firewall (console-level,
+in front of the VPS entirely) and `ufw` on the host itself both allow only 22/80/443
+inbound. `web`'s port 8000 stays published in `docker-compose.yml` for local dev
+(`docker compose up` on a laptop still works), but production exposure is controlled
+by the firewall layers, not by removing that mapping -- one compose file serves both
+environments.
+
+### DNS and TLS
+
+Domain (`nelsonkoskela.dev`) is on Porkbun, with plain A records for both the bare
+domain and `www` pointed at the VPS's IP -- a CNAME can't target a raw IP, which is
+why both need their own A record rather than `www` aliasing the apex. Caddy requests,
+installs, and auto-renews a real Let's Encrypt certificate for both names with no
+manual certbot/cron setup:
+
+```
+nelsonkoskela.dev, www.nelsonkoskela.dev {
+    handle_path /static/* { root * /srv/static; file_server; header Cache-Control "no-cache" }
+    reverse_proxy web:8000
+}
+```
+
+One coupling worth knowing if this ever needs debugging again: a single certificate
+covering two domains fails as one unit -- if `www`'s DNS isn't correct yet, its ACME
+validation failure drags the *whole order* down to Let's Encrypt's untrusted staging
+CA, so the bare domain (whose DNS was fine) ends up serving an untrusted cert too.
+Diagnosed by checking the actual issuer, not the padlock icon:
+```bash
+openssl s_client -connect nelsonkoskela.dev:443 </dev/null 2>/dev/null | openssl x509 -noout -issuer
+# looking for O=Let's Encrypt, not a "Fake LE" staging root
+```
+Fix is to get each domain's DNS correct before adding it to the Caddy site block, not
+after.
+
+### Why static assets are served by Caddy, not gunicorn
+
+`gunicorn` runs as a **single process** with 8 threads total (`-w 1 --worker-class
+gthread --threads 8` in the Dockerfile) -- deliberately one process, because
+Flask-SocketIO's `threading` async mode keeps a client's session in the memory of
+whichever process created it; a second gunicorn process would round-robin a session's
+later requests onto a process that's never heard of it and return `400 unknown
+session`, silently breaking Pipeline World's live updates.
+
+That makes the 8 threads a real, finite, shared budget -- and routing all ~15-20
+static CSS/JS/font/icon requests a single page load fires through that same pool,
+competing with any other visitor's already-open SSE stream (watchlist, traffic
+board) holding a thread indefinitely, was a measured multi-second bottleneck on
+*every* load, not just a cold cache. Caddy's `handle_path /static/* { file_server }`
+block answers those requests directly off a read-only bind mount of `app/static`,
+entirely off the app process.
+
+**Cache-Control on those assets is `no-cache`, not `max-age=...`.** Filenames here
+carry no content hash, so nothing about a deploy tells a browser its copy is stale --
+`max-age=3600` meant a visitor could keep running the *previous* JS for up to an hour
+after a fix shipped (caught directly, debugging a fix that looked broken only because
+the browser was serving a cached copy of the old file). `no-cache` still lets the
+browser store the file and revalidate with `If-None-Match`; Caddy answers `304` from
+the ETag it already sends, so an unchanged asset costs one small conditional request,
+not a re-download.
+
+### Deploy loop
+
+```bash
+git pull
+docker compose up -d --build                 # rebuilds changed layers, recreates changed services
+docker compose exec -T web flask db upgrade   # only when a migration landed
+```
+
+`--build` targets can be scoped to one service (`... up -d --build web`) for a
+faster iteration loop, but the full unscoped form is the default -- worth rebuilding
+everything when in doubt, since `web` and `worker` share one image and a
+service-scoped rebuild has caused drift before. `--force-recreate` (not `--build`)
+is what's needed when only `.env` changed and no image layer did -- Compose can
+otherwise reasonably decide nothing needs recreating and leave the previous
+environment in place.
+
+### A `.env` gotcha worth knowing before it happens again
+
+Docker Compose interpolates `$` inside `.env`. Adding a password hash
+(`DOCS_PASSWORD_HASH`, Werkzeug's `scrypt:N:r:p$salt$digest` format) broke the exact
+feature it configured: Compose read `$salt` and `$digest` as undefined variable
+references and substituted empty strings, so the container received 16 characters of
+a 162-character value. It failed by *looking correctly configured* and rejecting
+every password, since a truncated string is still truthy -- not a config file
+problem, exactly a wrong-password bug, until the value was checked at the point of
+use rather than the point of definition. Fix is Compose's own escape, `$$` for a
+literal `$`; worth auditing any secret that isn't plain hex the same way
+(`SECRET_KEY`/`POSTGRES_PASSWORD` here are hex, so neither was ever at risk).
+
+### Applying a migration in production
+
+```bash
+docker compose exec -T web flask db upgrade
+```
+Runs Alembic inside the already-built `web` image, against the real `DATABASE_URL`.
+The one trap to know: a migration generated against a freshly-built image and copied
+to the host, applied *without* rebuilding the image a second time, runs from a build
+that predates the file on disk -- `flask db upgrade` reports success while quietly
+sitting one migration behind. The safe order has a rebuild on both sides of the
+copy, not just the first.
+
+### Rotating the interview-section password
+
+```bash
+ssh nelson@<host> 'cd ~/PersonProjectAPI && \
+  read -rsp "New password: " P && echo && \
+  H=$(docker compose exec -T web python -c "import sys;from werkzeug.security import generate_password_hash as g;print(g(sys.stdin.read().strip()))" <<< "$P") && \
+  sed -i "/^DOCS_PASSWORD_HASH=/d" .env && \
+  printf "DOCS_PASSWORD_HASH=%s\n" "${H//\$/\$\$}" >> .env && \
+  docker compose up -d --force-recreate web'
+```
+Note the `${H//\$/\$\$}` -- doubling every `$` before it's written to `.env`, for
+exactly the reason above.
+
+### What's monitored, and what isn't
+
+Each container declares a `HEALTHCHECK` (`docker compose ps` reports per-service
+health), `restart: unless-stopped` brings a crashed service back without
+intervention, gunicorn's access/error logs go to stdout (`docker compose logs`), and
+the Site Traffic Analytics board tracks p50/p90/p99 latency and 4xx/5xx rates for
+the app's own traffic. There's deliberately no external uptime monitor, no alerting,
+and no log aggregation past what `docker compose logs` gives you -- reasonable for a
+single-owner personal site, and the honest limit to name if this question comes up
+(see `docs/INTERVIEW-NOTES.md`).
+
+See [`/documentation`](https://www.nelsonkoskela.dev/documentation) on the live site
+(section 29, "Containerisation") for the Dockerfile itself explained line by line --
+layer ordering, the non-root user, the healthcheck start-period semantics -- and the
+full `docker-compose.yml` service/volume graph as a diagram.
