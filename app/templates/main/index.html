@@ -1,84 +1,101 @@
 {% extends "base.html" %}
 {% block title %}Home{% endblock %}
-{% block content_class %}wide topo-content{% endblock %}
-{% block body_class %}page-home{% endblock %}
-
-{% block extra_head %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}">
-{% endblock %}
+{% block content_class %}wide{% endblock %}
 
 {% block content %}
-<!--
-THESIS: Homepage IS the real system topology, not a project list beside
-one. Refuses the hero + card-grid + gradient-blob default.
-OWN-WORLD: Blueprint-slate ground (#0d1117, continued from the existing
-hand-drawn icon fills), dim structural blue for edges, one signal green
-reserved strictly for live state. Archivo (display/annotation),
-Inter (body), JetBrains Mono (live/technical readouts).
-Raised: graded-precision annotation strip, clock-locked live pulse,
-precise non-decorative reactivity, each node reading as its own
-complete signal.
-STORY: A recruiter sees the real wiring of these systems in seconds --
-one node genuinely live -- then follows an edge into whatever
-interests them.
-FIRST VIEWPORT: identity node at left, site nav as graph branches,
-five real projects as leaf nodes, Pipeline World <-> SRE Infra Layer
-drawn as a real shared-infra edge, Site Traffic Analytics polling its
-own live request count.
-FORM: candidate 6 of 7 (systems/blueprint topology), seed 249b8710.
-FINISH: unreviewed and undocumented is unfinished; this build ends
-with the finish review, the verdict, DESIGN.md, and every shipping
-raster carrying its provenance.
--->
-<section class="topo-hero" aria-label="Site map">
-    <svg class="topo-lines" aria-hidden="true"></svg>
-
-    <div class="topo-node topo-root" data-node="root">
-        <h1>Nelson Koskela</h1>
-        <p class="topo-sub">Software Engineer II at JPMorgan Chase &amp; Co., Houston, TX &mdash; since 2021. Building trading tools, pipeline visualizations, and network diagnostics on the side.</p>
-        <p class="topo-annot-line mono">{{ project_count }} real, running side projects &middot; Postgres + Redis, no mock backends &middot; built and documented solo</p>
+<section class="hero">
+    <div class="reveal-mask">
+        <span class="reveal-up hero-eyebrow badge badge-open">&#9679; Open to interesting problems</span>
     </div>
 
-    <nav class="topo-branch" aria-label="Primary">
-        <a class="topo-node" href="{{ url_for('about.index') }}" data-node="about">
-            <span class="topo-label">About</span>
-        </a>
-        <a class="topo-node" href="{{ url_for('projects.index') }}" data-node="projects">
-            <span class="topo-label">Projects</span>
-            <span class="topo-count mono">{{ project_count }}</span>
-        </a>
-        <a class="topo-node" href="{{ url_for('documentation.index') }}" data-node="documentation">
-            <span class="topo-label">Documentation</span>
-        </a>
-        <a class="topo-node topo-action" href="{{ url_for('contact.index') }}" data-node="contact">
-            <span class="topo-label">Contact</span>
-            <span class="topo-arrow" aria-hidden="true">&rarr;</span>
-        </a>
-    </nav>
+    <div class="reveal-mask">
+        <h1 class="reveal-up gradient-text">Nelson Koskela</h1>
+    </div>
 
-    <ul class="topo-leaves" aria-label="Projects, wired as they actually run">
-        {% for project in projects %}
-        <li>
-            <a class="topo-node topo-leaf{% if project.slug == 'network-sniffer' %} topo-live{% endif %}"
-               href="{{ url_for(project.endpoint) }}" data-node="{{ project.slug }}">
-                <img class="topo-icon" src="{{ url_for('static', filename=project.icon) }}" alt="" width="20" height="20">
-                <span class="topo-label">{{ project.title }}</span>
-                {% if project.slug == 'network-sniffer' %}
-                <span class="topo-pulse-dot" aria-hidden="true"></span>
-                <span class="topo-live-readout mono" data-live-readout>connecting&hellip;</span>
-                {% endif %}
-                <span class="topo-tag mono">{{ project.tags[0] }}</span>
-            </a>
-        </li>
+    <p class="reveal-up tagline">
+        Software Engineer II at JPMorgan Chase &amp; Co. &middot; Houston, TX<br>
+        Building trading tools, pipeline visualizations, and network diagnostics on the side.
+    </p>
+
+    <div class="reveal-mask">
+        <div class="reveal-up hero-actions">
+            <a class="button primary" href="{{ url_for('about.index') }}">About Me</a>
+            <a class="button" href="{{ url_for('projects.index') }}">View Projects</a>
+            <a class="button" href="{{ url_for('contact.index') }}">Contact</a>
+        </div>
+    </div>
+
+    <div class="reveal-up tech-strip">
+        <span class="tag">Python</span>
+        <span class="tag">Flask</span>
+        <span class="tag">PostgreSQL</span>
+        <span class="tag">Redis</span>
+        <span class="tag">SQLAlchemy</span>
+        <span class="tag">Socket.IO</span>
+        <span class="tag">Docker</span>
+        <span class="tag">JavaScript</span>
+    </div>
+
+</section>
+
+<section>
+    <div class="section-head">
+        <span class="reveal-up eyebrow">Background</span>
+        <h2 class="reveal-up">By the numbers</h2>
+    </div>
+    <div class="stat-grid landing-stats">
+        <div class="reveal-up stat-tile">
+            <div class="value mono">2021&ndash;</div>
+            <div class="label">JPMorgan Chase &amp; Co.</div>
+        </div>
+        <div class="reveal-up stat-tile">
+            <div class="value mono">{{ project_count }}</div>
+            <div class="label">Shipped side projects</div>
+        </div>
+        <div class="reveal-up stat-tile">
+            <div class="value mono">Real</div>
+            <div class="label">Postgres and Redis</div>
+        </div>
+        <div class="reveal-up stat-tile">
+            <div class="value mono">100%</div>
+            <div class="label">Built and documented solo</div>
+        </div>
+    </div>
+</section>
+
+<section>
+    <div class="section-head">
+        <span class="reveal-up eyebrow">Built on my own time</span>
+        <h2 class="reveal-up">Featured projects</h2>
+        <p class="reveal-up section-sub">
+            These run against live data and real infrastructure. No mock backends.
+        </p>
+    </div>
+    <div class="card-grid">
+        {% for project in featured_projects %}
+        <div class="reveal-up card">
+            <img class="card-icon" src="{{ url_for('static', filename=project.icon) }}" alt="" width="48" height="48">
+            <h3>{{ project.title }}</h3>
+            <p>{{ project.blurb }}</p>
+            <div class="tag-list">
+                {% for tag in project.tags %}
+                <span class="tag">{{ tag }}</span>
+                {% endfor %}
+            </div>
+            <a class="button small" href="{{ url_for(project.endpoint) }}">Open</a>
+        </div>
         {% endfor %}
-    </ul>
-
-    <p class="topo-edge-note mono" data-edge-note="pipeline-world:sre-infra">
-        Pipeline World runs on SRE Infra Layer&rsquo;s Redis queue and rate limiter &mdash; drawn, not claimed.
+    </div>
+    <p class="reveal-up" style="text-align: center; margin-top: 2rem;">
+        <a class="button" href="{{ url_for('projects.index') }}">See all {{ project_count }} projects &rarr;</a>
     </p>
 </section>
-{% endblock %}
 
-{% block extra_scripts %}
-<script src="{{ url_for('static', filename='js/home.js') }}"></script>
+<section>
+    <div class="reveal-up cta-band">
+        <h2>Have something worth building?</h2>
+        <p class="muted">Happy to talk through anything interesting.</p>
+        <a class="button primary" href="{{ url_for('contact.index') }}">Get in touch</a>
+    </div>
+</section>
 {% endblock %}

@@ -247,13 +247,11 @@ html.js-reveal .reveal-up.is-visible {
 
 .nav-toggle {
   display: none;
-  align-items: center;
-  justify-content: center;
   background: none;
   border: 1px solid var(--border);
   color: var(--fg);
   border-radius: 4px;
-  padding: 0.5rem 0.7rem;
+  padding: 0.4rem 0.7rem;
   cursor: pointer;
 }
 
@@ -269,7 +267,7 @@ html.js-reveal .reveal-up.is-visible {
     display: flex;
   }
   .nav-toggle {
-    display: flex;
+    display: inline-block;
   }
 }
 
