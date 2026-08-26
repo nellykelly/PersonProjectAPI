@@ -23,6 +23,12 @@
             <h3><span class="icon brands fa-github"></span> GitHub</h3>
             <p><a href="{{ GITHUB_URL }}" target="_blank" rel="noopener">View GitHub profile &rarr;</a></p>
         </div>
+        <div class="card">
+            <h3><span class="icon solid fa-lock"></span> Documentation</h3>
+            <p>The engineering reference for this codebase &mdash; private, password-protected.
+            Get in touch if you'd like access.</p>
+            <p><a href="{{ url_for('documentation.index') }}">Open documentation &rarr;</a></p>
+        </div>
     </div>
 </section>
 {% endblock %}

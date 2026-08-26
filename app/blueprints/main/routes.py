@@ -36,11 +36,12 @@ def robots():
     # Search engines request this at the domain root, not under /static/
     # -- same reason favicon.ico gets its own route above rather than
     # relying on url_for('static', ...). Permissive everywhere except the
-    # password-gated interview section: a crawler can't read it anyway
-    # (the gate is server-side), but there's no reason to advertise the
-    # URL or have the unlock form show up in results. This is a hint to
+    # password-gated documentation section (also unlinked from the nav,
+    # reachable only via /contact): a crawler can't read it anyway (the
+    # gate is server-side), but there's no reason to advertise the URL or
+    # have the unlock form show up in results. This is a hint to
     # well-behaved crawlers, not the access control -- that's the gate.
     return Response(
-        "User-agent: *\nAllow: /\nDisallow: /documentation/interview\n",
+        "User-agent: *\nAllow: /\nDisallow: /documentation\n",
         mimetype="text/plain",
     )

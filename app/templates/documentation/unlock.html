@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Unlock interview section | Nelson Koskela</title>
+<title>Unlock documentation | Nelson Koskela</title>
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" href="{{ url_for('static', filename='assets/img/favicon.ico') }}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -106,16 +106,16 @@
 <body>
 <div class="gate-wrap">
   <div class="gate-card">
-    <h1>Interview section</h1>
-    <p class="sub">This part of the engineering reference is private. Everything else at
-      <a href="{{ url_for('documentation.index') }}">/documentation</a> is open.</p>
+    <h1>Documentation</h1>
+    <p class="sub">The engineering reference for this codebase is private. Get in touch if you'd
+      like access.</p>
 
     {% if error %}<div class="gate-err" role="alert">{{ error }}</div>{% endif %}
 
     {% if unavailable %}
       <p class="sub">No password is configured on this deployment, so the section is closed.</p>
     {% else %}
-      <form method="post" action="{{ url_for('documentation.interview') }}">
+      <form method="post" action="{{ url_for('documentation.index') }}">
         <label for="docs-password">Password</label>
         <input type="password" id="docs-password" name="password"
                autocomplete="current-password" autofocus required>
@@ -123,7 +123,7 @@
       </form>
     {% endif %}
 
-    <a class="gate-back" href="{{ url_for('documentation.index') }}">&larr; Back to the reference</a>
+    <a class="gate-back" href="{{ url_for('main.index') }}">&larr; Back to the site</a>
   </div>
 </div>
 </body>
