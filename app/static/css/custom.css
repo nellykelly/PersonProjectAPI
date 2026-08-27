@@ -33,7 +33,7 @@ select option {
      option rule still hardcode the old value directly, so body and
      select-option overrides just below this block re-point them at
      the same variable rather than staying stuck on the old color. */
-  --bg: #121417;
+  --bg: #151618;
   --bg-alt: #000000;
   --fg: #ffffff;
   --fg-light: rgba(255, 255, 255, 0.6);
@@ -48,7 +48,7 @@ select option {
   /* Raised surfaces -- cards/tiles sit on their own panel color rather
      than being outlined holes in the page background, which is what
      gives the layout actual depth instead of a flat wireframe look. */
-  --surface: #17191d;
+  --surface: #1a1b1e;
   --surface-border: #2b3038;
 
   /* Second end of the headline gradient. Anchored to the existing blue
@@ -211,7 +211,10 @@ html.js-reveal .reveal-up.is-visible {
   position: sticky;
   top: 0;
   z-index: 100;
-  background: rgba(27, 31, 34, 0.92);
+  /* Was hardcoded to the pre-darkening rgba(27,31,34,.92) -- a leftover
+     from before --bg was darkened, so the sticky header sat visibly
+     lighter than the rest of the page on every scroll. */
+  background: rgba(21, 22, 24, 0.92);
   backdrop-filter: blur(6px);
   flex-wrap: wrap;
 }
@@ -403,12 +406,17 @@ html.js-reveal .reveal-up.is-visible {
   content: "";
   position: absolute;
   inset: -3rem 0 auto 0;
-  height: 30rem;
+  /* Taller than before to reach the bottom of the bigger bubble
+     cluster -- was sized for the old, smaller network. */
+  height: 46rem;
   background-image:
     radial-gradient(circle at center, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
   background-size: 22px 22px;
-  -webkit-mask-image: radial-gradient(ellipse 50% 75% at 28% 35%, #000 20%, transparent 75%);
-  mask-image: radial-gradient(ellipse 50% 75% at 28% 35%, #000 20%, transparent 75%);
+  /* Widened to cover the whole hero -- text column AND the bubble/graph
+     section on the right -- rather than fading out before it reached
+     the graph, which is what read as incomplete. */
+  -webkit-mask-image: radial-gradient(ellipse 78% 85% at 50% 38%, #000 25%, transparent 92%);
+  mask-image: radial-gradient(ellipse 78% 85% at 50% 38%, #000 25%, transparent 92%);
   z-index: -2;
   pointer-events: none;
 }
