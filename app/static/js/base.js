@@ -55,7 +55,6 @@ document.addEventListener("DOMContentLoaded", function () {
   initTooltipEdgeAlignment();
   initLandingStatsFocus();
   initBioNetwork();
-  initProjectsExperienceLink();
 });
 
 // Landing-page "by the numbers" row: hovering one stat blurs+dims the
@@ -292,84 +291,3 @@ function initScrollReveal() {
   check();
 }
 
-// Projects -> Experience: hovering a featured-project card draws a
-// pulsating line down to the one Experience entry that correlates with
-// it (matched by data-project/data-experience slug) and dims everything
-// else in both grids. Coordinates are relative to .projects-experience-wrap,
-// which spans both sections, not the whole document -- redrawn on
-// resize/font-load same as the bio network's lines.
-function initProjectsExperienceLink() {
-  var wrap = document.querySelector("[data-projects-experience]");
-  if (!wrap) return;
-
-  var svg = wrap.querySelector(".projects-experience-lines");
-  var cards = wrap.querySelectorAll(".card[data-project]");
-  if (!cards.length) return;
-
-  function anchorOf(el, containerRect, edge) {
-    var r = el.getBoundingClientRect();
-    return {
-      x: r.left + r.width / 2 - containerRect.left,
-      y: (edge === "bottom" ? r.bottom : r.top) - containerRect.top,
-    };
-  }
-
-  function draw() {
-    var containerRect = wrap.getBoundingClientRect();
-    var frag = document.createDocumentFragment();
-
-    Array.prototype.forEach.call(cards, function (card) {
-      var slug = card.dataset.project;
-      var entry = wrap.querySelector('.experience-entry[data-experience="' + slug + '"]');
-      if (!entry) return;
-
-      var from = anchorOf(card, containerRect, "bottom");
-      var to = anchorOf(entry, containerRect, "top");
-      var midY = (from.y + to.y) / 2;
-      var d = "M " + from.x + " " + from.y + " C " + from.x + " " + midY + ", " + to.x + " " + midY + ", " + to.x + " " + to.y;
-
-      var path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", d);
-      path.dataset.project = slug;
-      frag.appendChild(path);
-    });
-
-    svg.innerHTML = "";
-    svg.appendChild(frag);
-  }
-
-  Array.prototype.forEach.call(cards, function (card) {
-    var slug = card.dataset.project;
-    var entry = wrap.querySelector('.experience-entry[data-experience="' + slug + '"]');
-
-    function activate() {
-      wrap.classList.add("is-project-hovering");
-      card.classList.add("is-source");
-      if (entry) entry.classList.add("is-correlated");
-      var path = svg.querySelector('path[data-project="' + slug + '"]');
-      if (path) path.classList.add("is-active");
-    }
-    function deactivate() {
-      wrap.classList.remove("is-project-hovering");
-      card.classList.remove("is-source");
-      if (entry) entry.classList.remove("is-correlated");
-      var path = svg.querySelector('path[data-project="' + slug + '"]');
-      if (path) path.classList.remove("is-active");
-    }
-
-    card.addEventListener("mouseenter", activate);
-    card.addEventListener("mouseleave", deactivate);
-    card.addEventListener("focusin", activate);
-    card.addEventListener("focusout", deactivate);
-  });
-
-  var raf = null;
-  function scheduleDraw() {
-    if (raf) cancelAnimationFrame(raf);
-    raf = requestAnimationFrame(draw);
-  }
-  window.addEventListener("resize", scheduleDraw);
-  window.addEventListener("load", scheduleDraw);
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(scheduleDraw);
-  scheduleDraw();
-}

@@ -11,8 +11,8 @@
             </div>
 
             <p class="reveal-up tagline">
-                Software Engineer II at JPMorgan Chase &amp; Co. &middot; Houston, TX<br>
-                Building trading tools, pipeline visualizations, and network diagnostics on the side.
+                Software engineer based in Houston, TX. I build trading tools and pipeline systems for work,
+                and side projects like this one because I can't quite stop.
             </p>
 
             <div class="reveal-mask">
@@ -119,21 +119,17 @@
     </div>
 </section>
 
-<div class="projects-experience-wrap" data-projects-experience>
-<svg class="projects-experience-lines" aria-hidden="true"></svg>
-
 <section>
     <div class="section-head">
         <span class="reveal-up eyebrow">Built on my own time</span>
         <h2 class="reveal-up">Featured projects</h2>
         <p class="reveal-up section-sub">
-            These run against live data and real infrastructure. No mock backends. Hover a project to see the
-            experience behind it.
+            These run against live data and real infrastructure. No mock backends.
         </p>
     </div>
     <div class="card-grid">
         {% for project in featured_projects %}
-        <div class="reveal-up card" data-project="{{ project.slug }}">
+        <div class="reveal-up card">
             <img class="card-icon" src="{{ url_for('static', filename=project.icon) }}" alt="" width="48" height="48">
             <h3>{{ project.title }}</h3>
             <p>{{ project.blurb }}</p>
@@ -157,30 +153,23 @@
         <h2 class="reveal-up">Experience</h2>
     </div>
     <div class="experience-grid">
-        <!-- Order matches the Featured Projects grid above (Company Scorer,
-             Pipeline World, Timed-Squares) so each entry lines up in the same
-             column as its correlated card -- out of order here means the
-             connector line has to cross diagonally past a neighboring one to
-             reach its target, which reads as a broken/tangled line rather
-             than a clean vertical connector. -->
-        <div class="reveal-up experience-entry" data-experience="qr-quant-scraper">
+        <div class="reveal-up experience-entry">
             <h3>Data / quant engineering</h3>
             <p>Built Company Scorer's valuation, leverage, growth and profitability scoring off SEC EDGAR filings
                 and market data, with a backtest module to check whether the score actually predicted anything.</p>
         </div>
-        <div class="reveal-up experience-entry" data-experience="pipeline-world">
+        <div class="reveal-up experience-entry">
             <h3>Backend / infra engineer</h3>
             <p>Built Pipeline World's queued processing pipeline on RQ + Redis, with Postgres holding full run
                 history and window-function analytics over every character that's gone through it.</p>
         </div>
-        <div class="reveal-up experience-entry" data-experience="timed-squares">
+        <div class="reveal-up experience-entry">
             <h3>Frontend / game logic</h3>
             <p>Built Timed-Squares' turn-based survival loop and public leaderboard in vanilla JS and HTML5
                 Canvas &mdash; no game framework.</p>
         </div>
     </div>
 </section>
-</div>
 
 <section>
     <div class="reveal-up cta-band">

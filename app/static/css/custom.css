@@ -16,6 +16,17 @@ html, body {
   overflow-x: hidden;
 }
 
+/* main.css's own responsive type scale bumps html's font-size to 16pt
+   (~21.3px) above a 1680px viewport, dropping to 12pt (16px) below it.
+   Every rem-based size in this file was tuned against a 16px root, so
+   above that breakpoint everything -- including .hero h1 -- silently
+   grows ~33% with no matching growth in the layout around it, which is
+   what was clipping the last letter of "KOSKELA" on wide screens. Pin
+   the root so rem means what the rest of this file assumes it means. */
+html {
+  font-size: 16px;
+}
+
 /* main.css hardcodes the old #1b1f22 directly (body background, one
    <select> option rule) rather than a variable -- re-pointed at --bg
    here rather than editing the vendored template file. */
@@ -455,6 +466,8 @@ html.js-reveal .reveal-up.is-visible {
 }
 
 .hero h1 {
+  position: relative;
+  isolation: isolate;
   font-size: clamp(2.4rem, 6vw, 4.2rem);
   line-height: 1.12;
   letter-spacing: 0.22rem;
@@ -462,6 +475,33 @@ html.js-reveal .reveal-up.is-visible {
   /* The gradient fill needs a hair of vertical room or the descenders
      and the clipped background get cropped by the reveal mask. */
   padding: 0.1em 0;
+  cursor: default;
+}
+/* A highlighter-style wash that sweeps in from the left behind the name
+   on hover -- sits behind the gradient-filled glyphs (z-index below the
+   text, text itself stays on top via the stacking context below) so it
+   reads as marking the name rather than covering it. */
+.hero h1::before {
+  content: "";
+  position: absolute;
+  inset: 0.08em -0.2em;
+  background: linear-gradient(96deg, var(--accent) 5%, #7f9cff 45%, var(--accent-violet) 95%);
+  opacity: 0.16;
+  border-radius: 0.2em;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: -1;
+  pointer-events: none;
+}
+.hero h1:hover::before,
+.hero h1:focus-visible::before {
+  transform: scaleX(1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero h1::before {
+    transition: none;
+  }
 }
 
 .hero-text .tagline {
@@ -1724,80 +1764,50 @@ html.skip-welcome #welcome-gate {
   line-height: 1.5;
 }
 
-/* ---------- Projects -> Experience pulsating link (home page) ----------
-   The wrapper spans both the Featured Projects and Experience sections
-   so the connecting line's coordinate space is one shared container,
-   not the whole document -- hovering a project card highlights its own
-   line plus the one correlated experience entry, and dims the rest. */
-
-.projects-experience-wrap {
-  position: relative;
-}
-.projects-experience-wrap > section {
-  position: relative;
-  z-index: 1;
-}
-/* The connecting line needs real vertical room to read as a line
-   travelling down the page, not a 2px stub between adjacent sections
-   -- the default .section-head margin alone measured well under
-   100px card-bottom to entry-top, not enough for the effect to land. */
-.projects-experience-wrap > section:last-child .section-head {
-  margin-top: 16rem;
-}
-.projects-experience-lines {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-  pointer-events: none;
-  z-index: 0;
-}
-.projects-experience-lines path {
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 1.75;
-  stroke-dasharray: 6 8;
-  /* Idle state is a dim, always-pulsating line -- not invisible until
-     hovered. A line nobody sees until the exact moment it's already
-     "done" its job doesn't read as a designed element at all, just a
-     coincidence; the whole point is that it's visibly there, quietly
-     alive, before you ever hover anything. Brighter than the bio
-     network's idle lines on purpose: this path runs much longer (a
-     whole section gap, not a short diagonal), so it needs more
-     contrast per pixel to still read as one continuous line rather
-     than fading into noise over that distance. */
-  stroke-opacity: 0.4;
-  animation: bio-line-flow 1.6s linear infinite;
-  transition: stroke-opacity 0.1s ease-out, stroke-width 0.1s ease-out;
-}
-.projects-experience-lines path.is-active {
-  stroke-opacity: 0.95;
-  stroke-width: 2.5;
-  filter: drop-shadow(0 0 7px var(--accent-glow));
-}
-@media (prefers-reduced-motion: reduce) {
-  .projects-experience-lines path { animation: none; }
-}
-
-.card[data-project] {
-  transition: opacity 0.1s ease-out;
-}
-.projects-experience-wrap.is-project-hovering .card[data-project]:not(.is-source) {
-  opacity: 0.6;
-}
+/* ---------- Experience (home page) ----------
+   Same rotating-ring treatment as .education-tile below -- these two
+   sections are meant to read as the same kind of "card", not two
+   different visual languages next to each other. */
 
 .experience-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 1.25rem;
+  align-items: stretch;
 }
 .experience-entry {
+  position: relative;
   border: 1px solid var(--surface-border);
   border-radius: 10px;
   background: var(--surface);
   padding: 1.4rem;
-  transition: border-color 0.1s ease-out, box-shadow 0.1s ease-out, opacity 0.12s ease-out, filter 0.12s ease-out;
+}
+.experience-entry::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--edu-ring-angle),
+    transparent 0deg,
+    var(--accent) 25deg,
+    #ffffff 45deg,
+    var(--accent) 65deg,
+    transparent 100deg,
+    transparent 360deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: edu-ring-spin 6.4s linear infinite;
+  pointer-events: none;
+}
+.experience-entry:nth-child(2)::before { animation-delay: -2.1s; }
+.experience-entry:nth-child(3)::before { animation-delay: -4.3s; }
+@media (prefers-reduced-motion: reduce) {
+  .experience-entry::before { animation: none; }
 }
 .experience-entry h3 {
   font-size: 1rem;
@@ -1808,14 +1818,6 @@ html.skip-welcome #welcome-gate {
   color: var(--fg-light);
   margin: 0;
   line-height: 1.55;
-}
-.projects-experience-wrap.is-project-hovering .experience-entry:not(.is-correlated) {
-  opacity: 0.45;
-  filter: blur(1.5px);
-}
-.experience-entry.is-correlated {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent), 0 16px 32px -18px var(--accent-glow);
 }
 
 /* ---------- Bio network (home page) ----------
