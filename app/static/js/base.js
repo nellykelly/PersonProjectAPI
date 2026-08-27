@@ -5,6 +5,41 @@ window.addEventListener("load", function () {
   document.body.classList.remove("is-preload");
 });
 
+// Welcome gate: called immediately (not queued behind DOMContentLoaded)
+// so its load-wait timer starts as early as possible -- this script tag
+// sits at the very end of body, after #welcome-gate already exists, so
+// there's nothing to wait for here.
+(function initWelcomeGate() {
+  var gate = document.getElementById("welcome-gate");
+  if (!gate) return;
+  if (document.documentElement.classList.contains("skip-welcome")) return;
+
+  // Minimum keeps the animation from looking like a broken flash on a
+  // fast connection; the load listener is what actually gates on "did
+  // the page finish" per the brief (the site is slow sometimes); the
+  // hard cap is a safety net so a stalled load doesn't strand a visitor
+  // behind this indefinitely.
+  var MIN_MS = 1300;
+  var MAX_MS = 6000;
+  var start = Date.now();
+  var finished = false;
+
+  function finish() {
+    if (finished) return;
+    finished = true;
+    try { sessionStorage.setItem("welcomeShown", "1"); } catch (e) { /* private mode, etc. */ }
+    gate.classList.add("is-leaving");
+    setTimeout(function () { gate.remove(); }, 450);
+  }
+
+  window.addEventListener("load", function () {
+    var remaining = Math.max(0, MIN_MS - (Date.now() - start));
+    setTimeout(finish, remaining);
+  });
+
+  setTimeout(finish, MAX_MS);
+})();
+
 document.addEventListener("DOMContentLoaded", function () {
   var toggle = document.querySelector(".nav-toggle");
   var nav = document.querySelector(".site-nav");
@@ -16,7 +51,124 @@ document.addEventListener("DOMContentLoaded", function () {
 
   initScrollReveal();
   initTooltipEdgeAlignment();
+  initLandingStatsFocus();
+  initBioNetwork();
+  initProjectsExperienceLink();
 });
+
+// Landing-page "by the numbers" row: hovering one stat blurs+dims the
+// others. Scoped to .landing-stats specifically so the shared .stat-tile
+// component elsewhere (e.g. the trading risk report) is unaffected --
+// this no-ops on every other page.
+function initLandingStatsFocus() {
+  var grid = document.querySelector(".landing-stats");
+  if (!grid) return;
+  var tiles = grid.querySelectorAll(".stat-tile");
+
+  Array.prototype.forEach.call(tiles, function (tile) {
+    tile.addEventListener("mouseenter", function () {
+      grid.classList.add("is-stat-hovering");
+      tile.classList.add("is-stat-active");
+    });
+    tile.addEventListener("mouseleave", function () {
+      grid.classList.remove("is-stat-hovering");
+      tile.classList.remove("is-stat-active");
+    });
+    tile.addEventListener("focus", function () {
+      grid.classList.add("is-stat-hovering");
+      tile.classList.add("is-stat-active");
+    });
+    tile.addEventListener("blur", function () {
+      grid.classList.remove("is-stat-hovering");
+      tile.classList.remove("is-stat-active");
+    });
+  });
+}
+
+// Bio network on the home page: draws the pulsating lines from the
+// center bubble to each satellite, and highlights one satellite's own
+// line on hover/focus. No-ops when the section isn't on the page, and
+// the lines are hidden entirely under 720px (see custom.css) where the
+// layout collapses to a plain vertical stack, so this skips drawing
+// there rather than computing lines nobody sees.
+function initBioNetwork() {
+  var wrap = document.querySelector("[data-bio-network]");
+  if (!wrap) return;
+
+  var svg = wrap.querySelector(".bio-network-lines");
+  var center = wrap.querySelector('[data-node="center"]');
+  var satellites = wrap.querySelectorAll(".bio-node-satellite");
+
+  function isStacked() {
+    return window.matchMedia("(max-width: 720px)").matches;
+  }
+
+  function centerOf(el, containerRect) {
+    var bubble = el.querySelector(".bio-node-bubble") || el;
+    var r = bubble.getBoundingClientRect();
+    return {
+      x: r.left + r.width / 2 - containerRect.left,
+      y: r.top + r.height / 2 - containerRect.top,
+    };
+  }
+
+  function draw() {
+    if (!svg || isStacked()) {
+      if (svg) svg.innerHTML = "";
+      return;
+    }
+    var containerRect = wrap.getBoundingClientRect();
+    var from = centerOf(center, containerRect);
+    var frag = document.createDocumentFragment();
+
+    Array.prototype.forEach.call(satellites, function (sat) {
+      var to = centerOf(sat, containerRect);
+      var midX = (from.x + to.x) / 2;
+      var midY = (from.y + to.y) / 2;
+      // Slight bow so lines fan out visually instead of crossing
+      // through the center bubble in a straight cluster.
+      var bowX = (to.y - from.y) * 0.08;
+      var bowY = (from.x - to.x) * 0.08;
+      var d =
+        "M " + from.x + " " + from.y +
+        " Q " + (midX + bowX) + " " + (midY + bowY) + ", " + to.x + " " + to.y;
+
+      var path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", d);
+      path.dataset.node = sat.dataset.node;
+      frag.appendChild(path);
+    });
+
+    svg.innerHTML = "";
+    svg.appendChild(frag);
+  }
+
+  Array.prototype.forEach.call(satellites, function (sat) {
+    var id = sat.dataset.node;
+    function activate() {
+      var path = svg.querySelector('path[data-node="' + id + '"]');
+      if (path) path.classList.add("is-active");
+    }
+    function deactivate() {
+      var path = svg.querySelector('path[data-node="' + id + '"]');
+      if (path) path.classList.remove("is-active");
+    }
+    sat.addEventListener("mouseenter", activate);
+    sat.addEventListener("mouseleave", deactivate);
+    sat.addEventListener("focus", activate);
+    sat.addEventListener("blur", deactivate);
+  });
+
+  var raf = null;
+  function scheduleDraw() {
+    if (raf) cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(draw);
+  }
+  window.addEventListener("resize", scheduleDraw);
+  window.addEventListener("load", scheduleDraw);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(scheduleDraw);
+  scheduleDraw();
+}
 
 // Keeps [data-tooltip] bubbles inside the viewport.
 //
@@ -136,4 +288,86 @@ function initScrollReveal() {
   window.addEventListener("load", check);
 
   check();
+}
+
+// Projects -> Experience: hovering a featured-project card draws a
+// pulsating line down to the one Experience entry that correlates with
+// it (matched by data-project/data-experience slug) and dims everything
+// else in both grids. Coordinates are relative to .projects-experience-wrap,
+// which spans both sections, not the whole document -- redrawn on
+// resize/font-load same as the bio network's lines.
+function initProjectsExperienceLink() {
+  var wrap = document.querySelector("[data-projects-experience]");
+  if (!wrap) return;
+
+  var svg = wrap.querySelector(".projects-experience-lines");
+  var cards = wrap.querySelectorAll(".card[data-project]");
+  if (!cards.length) return;
+
+  function anchorOf(el, containerRect, edge) {
+    var r = el.getBoundingClientRect();
+    return {
+      x: r.left + r.width / 2 - containerRect.left,
+      y: (edge === "bottom" ? r.bottom : r.top) - containerRect.top,
+    };
+  }
+
+  function draw() {
+    var containerRect = wrap.getBoundingClientRect();
+    var frag = document.createDocumentFragment();
+
+    Array.prototype.forEach.call(cards, function (card) {
+      var slug = card.dataset.project;
+      var entry = wrap.querySelector('.experience-entry[data-experience="' + slug + '"]');
+      if (!entry) return;
+
+      var from = anchorOf(card, containerRect, "bottom");
+      var to = anchorOf(entry, containerRect, "top");
+      var midY = (from.y + to.y) / 2;
+      var d = "M " + from.x + " " + from.y + " C " + from.x + " " + midY + ", " + to.x + " " + midY + ", " + to.x + " " + to.y;
+
+      var path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", d);
+      path.dataset.project = slug;
+      frag.appendChild(path);
+    });
+
+    svg.innerHTML = "";
+    svg.appendChild(frag);
+  }
+
+  Array.prototype.forEach.call(cards, function (card) {
+    var slug = card.dataset.project;
+    var entry = wrap.querySelector('.experience-entry[data-experience="' + slug + '"]');
+
+    function activate() {
+      wrap.classList.add("is-project-hovering");
+      card.classList.add("is-source");
+      if (entry) entry.classList.add("is-correlated");
+      var path = svg.querySelector('path[data-project="' + slug + '"]');
+      if (path) path.classList.add("is-active");
+    }
+    function deactivate() {
+      wrap.classList.remove("is-project-hovering");
+      card.classList.remove("is-source");
+      if (entry) entry.classList.remove("is-correlated");
+      var path = svg.querySelector('path[data-project="' + slug + '"]');
+      if (path) path.classList.remove("is-active");
+    }
+
+    card.addEventListener("mouseenter", activate);
+    card.addEventListener("mouseleave", deactivate);
+    card.addEventListener("focusin", activate);
+    card.addEventListener("focusout", deactivate);
+  });
+
+  var raf = null;
+  function scheduleDraw() {
+    if (raf) cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(draw);
+  }
+  window.addEventListener("resize", scheduleDraw);
+  window.addEventListener("load", scheduleDraw);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(scheduleDraw);
+  scheduleDraw();
 }

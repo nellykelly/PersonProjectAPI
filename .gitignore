@@ -34,3 +34,12 @@ htmlcov/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Impeccable design skill -- review screenshots are transient build
+# evidence, not repo content. config.json/design.json (DESIGN.md's
+# sidecar) would be kept if either existed on this branch.
+.impeccable/review/
+
+# Nelson mission-orchestration skill -- local planning/tracking state,
+# not repo content.
+.nelson/

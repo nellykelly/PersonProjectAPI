@@ -40,6 +40,47 @@
 
 <section>
     <div class="section-head">
+        <span class="reveal-up eyebrow">Roots</span>
+        <h2 class="reveal-up">How I got here</h2>
+        <p class="reveal-up section-sub">Hover a bubble to trace its line back to me.</p>
+    </div>
+    <div class="bio-network-wrap reveal-up" data-bio-network>
+        <svg class="bio-network-lines" aria-hidden="true"></svg>
+
+        <div class="bio-node bio-node-center" data-node="center" aria-hidden="true">NK</div>
+
+        <a class="bio-node bio-node-satellite" data-node="jpmorgan" href="{{ url_for('about.index') }}">
+            <span class="bio-node-bubble">
+                <img src="{{ url_for('static', filename='assets/img/bubbles/jpmorgan.svg') }}" alt="">
+            </span>
+            <span class="bio-node-label">JPMorgan Chase &amp; Co.<small>Software Engineer II, since 2021</small></span>
+        </a>
+
+        <a class="bio-node bio-node-satellite" data-node="asawa" href="{{ url_for('about.index') }}">
+            <span class="bio-node-bubble">
+                <img src="{{ url_for('static', filename='assets/img/bubbles/ruth-asawa-sota.png') }}" alt="">
+            </span>
+            <span class="bio-node-label">Ruth Asawa School of the Arts<small>Classical voice, minor in jazz</small></span>
+        </a>
+
+        <a class="bio-node bio-node-satellite" data-node="cogswell" href="{{ url_for('about.index') }}">
+            <span class="bio-node-bubble">
+                <span class="bio-node-wordmark">COGSWELL</span>
+            </span>
+            <span class="bio-node-label">Cogswell University of Silicon Valley<small>B.S. Computer Science</small></span>
+        </a>
+
+        <a class="bio-node bio-node-satellite" data-node="streetcode" href="https://streetcode.org/" target="_blank" rel="noopener">
+            <span class="bio-node-bubble">
+                <img src="{{ url_for('static', filename='assets/img/bubbles/streetcode.png') }}" alt="">
+            </span>
+            <span class="bio-node-label">StreetCode Academy<small>Hack, Hustle &amp; Design &mdash; East Palo Alto</small></span>
+        </a>
+    </div>
+</section>
+
+<section>
+    <div class="section-head">
         <span class="reveal-up eyebrow">Background</span>
         <h2 class="reveal-up">By the numbers</h2>
     </div>
@@ -65,15 +106,40 @@
 
 <section>
     <div class="section-head">
+        <span class="reveal-up eyebrow">Education</span>
+        <h2 class="reveal-up">Where it started</h2>
+    </div>
+    <div class="stat-grid education-grid">
+        <div class="reveal-up stat-tile education-tile">
+            <div class="label">Ruth Asawa School of the Arts</div>
+            <p class="education-detail">Classical voice, minor in jazz &mdash; before pursuing computer science.</p>
+        </div>
+        <div class="reveal-up stat-tile education-tile">
+            <div class="label">Howard University</div>
+            <p class="education-detail">Washington, DC &mdash; initially attended before transferring.</p>
+        </div>
+        <div class="reveal-up stat-tile education-tile">
+            <div class="label">Cogswell University of Silicon Valley</div>
+            <p class="education-detail">B.S. Computer Science.</p>
+        </div>
+    </div>
+</section>
+
+<div class="projects-experience-wrap" data-projects-experience>
+<svg class="projects-experience-lines" aria-hidden="true"></svg>
+
+<section>
+    <div class="section-head">
         <span class="reveal-up eyebrow">Built on my own time</span>
         <h2 class="reveal-up">Featured projects</h2>
         <p class="reveal-up section-sub">
-            These run against live data and real infrastructure. No mock backends.
+            These run against live data and real infrastructure. No mock backends. Hover a project to see the
+            experience behind it.
         </p>
     </div>
     <div class="card-grid">
         {% for project in featured_projects %}
-        <div class="reveal-up card">
+        <div class="reveal-up card" data-project="{{ project.slug }}">
             <img class="card-icon" src="{{ url_for('static', filename=project.icon) }}" alt="" width="48" height="48">
             <h3>{{ project.title }}</h3>
             <p>{{ project.blurb }}</p>
@@ -90,6 +156,31 @@
         <a class="button" href="{{ url_for('projects.index') }}">See all {{ project_count }} projects &rarr;</a>
     </p>
 </section>
+
+<section>
+    <div class="section-head">
+        <span class="reveal-up eyebrow">On the job</span>
+        <h2 class="reveal-up">Experience</h2>
+    </div>
+    <div class="experience-grid">
+        <div class="reveal-up experience-entry" data-experience="pipeline-world">
+            <h3>Backend / infra engineer</h3>
+            <p>Built Pipeline World's queued processing pipeline on RQ + Redis, with Postgres holding full run
+                history and window-function analytics over every character that's gone through it.</p>
+        </div>
+        <div class="reveal-up experience-entry" data-experience="qr-quant-scraper">
+            <h3>Data / quant engineering</h3>
+            <p>Built Company Scorer's valuation, leverage, growth and profitability scoring off SEC EDGAR filings
+                and market data, with a backtest module to check whether the score actually predicted anything.</p>
+        </div>
+        <div class="reveal-up experience-entry" data-experience="timed-squares">
+            <h3>Frontend / game logic</h3>
+            <p>Built Timed-Squares' turn-based survival loop and public leaderboard in vanilla JS and HTML5
+                Canvas &mdash; no game framework.</p>
+        </div>
+    </div>
+</section>
+</div>
 
 <section>
     <div class="reveal-up cta-band">

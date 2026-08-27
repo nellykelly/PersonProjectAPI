@@ -40,9 +40,30 @@
        it -- a no-JS visitor never sees a blank page. Inline on purpose:
        an external file would load too late to avoid a flash. #}
     <script>document.documentElement.className += " js-reveal";</script>
+    {# Same reasoning as js-reveal above, checked before first paint:
+       skip re-showing the welcome gate on every navigation within one
+       browser session (a full Jinja page reload happens on every link
+       click, and gating literally every one of those would be
+       obnoxious, not a slow-connection courtesy) -- but a no-JS visitor
+       never sets sessionStorage, so the <noscript> rule below is what
+       actually keeps them from being stuck behind it forever. #}
+    <script>
+      try {
+        if (sessionStorage.getItem("welcomeShown")) {
+          document.documentElement.className += " skip-welcome";
+        }
+      } catch (e) { /* sessionStorage blocked (private mode, etc.) -- gate still runs, just every load */ }
+    </script>
     {% block extra_head %}{% endblock %}
 </head>
 <body class="is-preload">
+<div id="welcome-gate" role="presentation">
+    <div class="welcome-gate-text">
+        <span class="welcome-gate-word">WELCOME</span>
+        <span class="welcome-gate-scanline" aria-hidden="true"></span>
+    </div>
+</div>
+<noscript><style>#welcome-gate { display: none !important; }</style></noscript>
 <div id="page-wrapper">
 
     <header class="site-header">
