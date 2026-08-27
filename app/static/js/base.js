@@ -18,11 +18,11 @@ window.addEventListener("load", function () {
   // fast connection; the load listener is what actually gates on "did
   // the page finish" per the brief (the site is slow sometimes); the
   // hard cap is a safety net so a stalled load doesn't strand a visitor
-  // behind this indefinitely. Kept short on purpose -- once per session
-  // is the right amount of ceremony, but it still has to feel fast, not
-  // like a forced wait, even the first time.
-  var MIN_MS = 500;
-  var MAX_MS = 4000;
+  // behind this indefinitely. The word's own draw-in animation (see
+  // custom.css) runs 1.1s -- MIN_MS gives it room to fully finish plus a
+  // short hold, rather than cutting it off mid-draw on a fast load.
+  var MIN_MS = 1600;
+  var MAX_MS = 5000;
   var start = Date.now();
   var finished = false;
 

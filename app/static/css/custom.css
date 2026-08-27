@@ -1763,7 +1763,7 @@ html.skip-welcome #welcome-gate {
   letter-spacing: 0.06em;
   color: var(--fg);
   clip-path: inset(0 100% 0 0);
-  animation: welcome-reveal 0.55s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  animation: welcome-reveal 1.1s cubic-bezier(0.65, 0, 0.35, 1) forwards;
 }
 
 .welcome-gate-scanline {
@@ -1774,7 +1774,7 @@ html.skip-welcome #welcome-gate {
   width: 2px;
   background: var(--accent);
   box-shadow: 0 0 16px 2px var(--accent-glow);
-  animation: welcome-scan 0.55s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  animation: welcome-scan 1.1s cubic-bezier(0.65, 0, 0.35, 1) forwards;
 }
 
 @keyframes welcome-reveal {
@@ -1986,14 +1986,15 @@ html.skip-welcome #welcome-gate {
   height: 240px;
   border-radius: 50%;
   background: linear-gradient(145deg, var(--accent), var(--accent-violet));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: "Space Grotesk", sans-serif;
-  font-size: 3.2rem;
-  font-weight: 700;
-  color: #0b0d10;
+  padding: 4px;
   box-shadow: 0 0 0 1px var(--surface-border), 0 12px 32px -12px var(--accent-glow);
+}
+.bio-node-center img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
 }
 
 .bio-node-satellite {
@@ -2096,6 +2097,11 @@ html.skip-welcome #welcome-gate {
     padding: 1rem 0;
   }
   .bio-network-lines { display: none; }
+  /* Mobile keeps just the photo -- the four satellite orgs/schools read
+     fine as part of the desktop network diagram, but stacked full-width
+     on a phone they're mostly just logos with no context, and pushed
+     the actual hero (a photo of a person) below all of them. */
+  .bio-node-satellite { display: none; }
   .bio-node { position: static; transform: none; }
   .bio-node-center { order: -1; }
   .bio-node-label {

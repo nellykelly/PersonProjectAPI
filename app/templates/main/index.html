@@ -39,7 +39,9 @@
             <div class="bio-network-wrap reveal-up" data-bio-network>
                 <svg class="bio-network-lines" aria-hidden="true"></svg>
 
-                <div class="bio-node bio-node-center" data-node="center" aria-hidden="true">NK</div>
+                <div class="bio-node bio-node-center" data-node="center" aria-hidden="true">
+                    <img src="{{ url_for('static', filename='assets/img/bubbles/nelson.jpg') }}" alt="">
+                </div>
 
                 <a class="bio-node bio-node-satellite" data-node="jpmorgan" href="{{ url_for('about.index') }}">
                     <span class="bio-node-bubble">
