@@ -16,8 +16,24 @@ html, body {
   overflow-x: hidden;
 }
 
+/* main.css hardcodes the old #1b1f22 directly (body background, one
+   <select> option rule) rather than a variable -- re-pointed at --bg
+   here rather than editing the vendored template file. */
+body {
+  background: var(--bg);
+}
+select option {
+  background: var(--bg);
+}
+
 :root {
-  --bg: #1b1f22;
+  /* Darkened from the Dimension template's stock #1b1f22 -- the
+     lighter panel base looked flat and slightly washed out next to the
+     dark theme this site is going for. main.css and one <select>
+     option rule still hardcode the old value directly, so body and
+     select-option overrides just below this block re-point them at
+     the same variable rather than staying stuck on the old color. */
+  --bg: #121417;
   --bg-alt: #000000;
   --fg: #ffffff;
   --fg-light: rgba(255, 255, 255, 0.6);
@@ -32,8 +48,8 @@ html, body {
   /* Raised surfaces -- cards/tiles sit on their own panel color rather
      than being outlined holes in the page background, which is what
      gives the layout actual depth instead of a flat wireframe look. */
-  --surface: #1d2127;
-  --surface-border: #333a44;
+  --surface: #17191d;
+  --surface-border: #2b3038;
 
   /* Second end of the headline gradient. Anchored to the existing blue
      accent rather than an unrelated purple, so the hero reads as the
@@ -357,54 +373,69 @@ html.js-reveal .reveal-up.is-visible {
 
 .hero {
   position: relative;
-  text-align: center;
   padding: 5rem 0 4rem;
   isolation: isolate;
 }
 
-/* Two stacked background layers, same idea as the template's dot field
-   under a dark gradient wash: a fine dot grid for texture, and a radial
-   glow centred on the headline so the name has a light source behind it
-   instead of sitting on flat black. Both are pure CSS -- no extra image
-   asset to ship -- and sit at z-index -1 under the hero's own content. */
-/* Horizontal inset stays at 0 rather than bleeding out to -50vw: an
+/* Two-column layout: identity text on the left, the bio bubble network
+   where the reference site's own profile photo sits, on the right --
+   both inside the first viewport instead of the network living in a
+   separate section further down the page. */
+.hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 400px);
+  align-items: center;
+  gap: 2.5rem;
+}
+
+.hero-text {
+  text-align: left;
+}
+
+/* A fine dot grid for texture, same idea as the template's own field,
+   now positioned behind the text column specifically rather than
+   dead-center, since the layout is no longer single-column centered.
+   Horizontal inset stays at 0 rather than bleeding out to -50vw: an
    absolutely-positioned child wider than the viewport pushes the whole
    document's scrollWidth out and creates a horizontal scrollbar, since
-   nothing in the ancestor chain clips it. The radial mask below fades
-   the dots out well inside the content width anyway, so full-bleed
-   bought nothing visually. */
+   nothing in the ancestor chain clips it. */
 .hero::before {
   content: "";
   position: absolute;
   inset: -3rem 0 auto 0;
-  height: 34rem;
+  height: 30rem;
   background-image:
-    radial-gradient(circle at center, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+    radial-gradient(circle at center, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
   background-size: 22px 22px;
-  -webkit-mask-image: radial-gradient(ellipse 45% 70% at 50% 30%, #000 20%, transparent 75%);
-  mask-image: radial-gradient(ellipse 45% 70% at 50% 30%, #000 20%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse 50% 75% at 28% 35%, #000 20%, transparent 75%);
+  mask-image: radial-gradient(ellipse 50% 75% at 28% 35%, #000 20%, transparent 75%);
   z-index: -2;
   pointer-events: none;
 }
 
+/* Glow sits behind the bubble network (the visual "light source" the
+   reference site's photo has) rather than dead-center behind the
+   headline -- centered glow stopped making sense once the layout
+   split into two columns, which is what read as "not right" before.
+   Tuned down from the old 0.7 opacity / 30px blur too: a darker page
+   background makes the same glow read hotter, so it needed to be
+   quieter to stay a light source instead of a smear. */
 .hero::after {
   content: "";
   position: absolute;
-  inset: -6rem -2rem auto -2rem;
-  height: 30rem;
-  background: radial-gradient(ellipse 55% 100% at 50% 10%, var(--accent-glow), transparent 70%);
-  filter: blur(30px);
-  opacity: 0.7;
+  inset: -4rem -2rem auto auto;
+  right: 4%;
+  width: 34rem;
+  height: 26rem;
+  background: radial-gradient(ellipse 60% 60% at 70% 25%, var(--accent-glow), transparent 72%);
+  filter: blur(36px);
+  opacity: 0.4;
   z-index: -1;
   pointer-events: none;
 }
 
-.hero-eyebrow {
-  margin-bottom: 1.75rem;
-}
-
 .hero h1 {
-  font-size: clamp(2.4rem, 8vw, 4.5rem);
+  font-size: clamp(2.4rem, 6vw, 4.2rem);
   line-height: 1.12;
   letter-spacing: 0.22rem;
   margin-bottom: 1.25rem;
@@ -413,17 +444,17 @@ html.js-reveal .reveal-up.is-visible {
   padding: 0.1em 0;
 }
 
-.hero .tagline {
+.hero-text .tagline {
   color: var(--fg-light);
   font-size: 1.05rem;
   max-width: 34rem;
-  margin: 0 auto 2.25rem;
+  margin: 0 0 2.25rem;
 }
 
 .hero-actions {
   display: flex;
   gap: 1rem;
-  justify-content: center;
+  justify-content: flex-start;
   flex-wrap: wrap;
   padding: 0.35rem 0;
 }
@@ -431,10 +462,45 @@ html.js-reveal .reveal-up.is-visible {
 .tech-strip {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 0.5rem;
-  margin: 3rem auto 0;
-  max-width: 40rem;
+  margin: 3rem 0 0;
+}
+
+.hero-bio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+}
+.hero-bio-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--fg-light);
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  .hero-grid {
+    grid-template-columns: 1fr;
+  }
+  .hero-bio {
+    order: -1;
+  }
+  .hero-text {
+    text-align: center;
+  }
+  .hero-text .tagline {
+    margin: 0 auto 2.25rem;
+  }
+  .hero-actions,
+  .tech-strip {
+    justify-content: center;
+  }
+  .tech-strip {
+    max-width: 40rem;
+    margin: 3rem auto 0;
+  }
 }
 
 /* ---------- CTA band ---------- */
@@ -571,7 +637,10 @@ html.js-reveal .reveal-up.is-visible {
    than JS-set inline styles -- same visual result, kept in the
    stylesheet instead of scattered across a script. */
 .landing-stats .stat-tile {
-  transition: border-color 0.25s ease-in-out, filter 0.35s ease, opacity 0.35s ease;
+  /* Fast on purpose: the hovered tile should read as instant, not
+     eased -- only the un-hovered siblings fading out gets to feel like
+     a transition at all, and even that stays quick. */
+  transition: border-color 0.08s linear, filter 0.12s ease-out, opacity 0.12s ease-out;
 }
 .landing-stats.is-stat-hovering .stat-tile:not(.is-stat-active) {
   filter: blur(3px);
@@ -1513,7 +1582,7 @@ html.skip-welcome #welcome-gate {
   align-items: center;
   justify-content: center;
   background: var(--bg);
-  transition: opacity 0.4s ease;
+  transition: opacity 0.25s ease;
 }
 #welcome-gate.is-leaving {
   opacity: 0;
@@ -1533,7 +1602,7 @@ html.skip-welcome #welcome-gate {
   letter-spacing: 0.06em;
   color: var(--fg);
   clip-path: inset(0 100% 0 0);
-  animation: welcome-reveal 1.3s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  animation: welcome-reveal 0.55s cubic-bezier(0.65, 0, 0.35, 1) forwards;
 }
 
 .welcome-gate-scanline {
@@ -1544,7 +1613,7 @@ html.skip-welcome #welcome-gate {
   width: 2px;
   background: var(--accent);
   box-shadow: 0 0 16px 2px var(--accent-glow);
-  animation: welcome-scan 1.3s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  animation: welcome-scan 0.55s cubic-bezier(0.65, 0, 0.35, 1) forwards;
 }
 
 @keyframes welcome-reveal {
@@ -1599,6 +1668,13 @@ html.skip-welcome #welcome-gate {
   position: relative;
   z-index: 1;
 }
+/* The connecting line needs real vertical room to read as a line
+   travelling down the page, not a 2px stub between adjacent sections
+   -- the default .section-head margin alone measured well under
+   100px card-bottom to entry-top, not enough for the effect to land. */
+.projects-experience-wrap > section:last-child .section-head {
+  margin-top: 16rem;
+}
 .projects-experience-lines {
   position: absolute;
   inset: 0;
@@ -1611,23 +1687,32 @@ html.skip-welcome #welcome-gate {
 .projects-experience-lines path {
   fill: none;
   stroke: var(--accent);
-  stroke-width: 1.5;
-  stroke-dasharray: 5 7;
-  stroke-opacity: 0;
-  transition: stroke-opacity 0.25s ease;
+  stroke-width: 1.75;
+  stroke-dasharray: 6 8;
+  /* Idle state is a dim, always-pulsating line -- not invisible until
+     hovered. A line nobody sees until the exact moment it's already
+     "done" its job doesn't read as a designed element at all, just a
+     coincidence; the whole point is that it's visibly there, quietly
+     alive, before you ever hover anything. Brighter than the bio
+     network's idle lines on purpose: this path runs much longer (a
+     whole section gap, not a short diagonal), so it needs more
+     contrast per pixel to still read as one continuous line rather
+     than fading into noise over that distance. */
+  stroke-opacity: 0.4;
+  animation: bio-line-flow 1.6s linear infinite;
+  transition: stroke-opacity 0.1s ease-out, stroke-width 0.1s ease-out;
 }
 .projects-experience-lines path.is-active {
-  stroke-opacity: 0.9;
-  stroke-width: 2.25;
-  filter: drop-shadow(0 0 6px var(--accent-glow));
-  animation: bio-line-flow 1.6s linear infinite;
+  stroke-opacity: 0.95;
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 7px var(--accent-glow));
 }
 @media (prefers-reduced-motion: reduce) {
-  .projects-experience-lines path.is-active { animation: none; }
+  .projects-experience-lines path { animation: none; }
 }
 
 .card[data-project] {
-  transition: opacity 0.3s ease;
+  transition: opacity 0.1s ease-out;
 }
 .projects-experience-wrap.is-project-hovering .card[data-project]:not(.is-source) {
   opacity: 0.6;
@@ -1643,7 +1728,7 @@ html.skip-welcome #welcome-gate {
   border-radius: 10px;
   background: var(--surface);
   padding: 1.4rem;
-  transition: border-color 0.25s ease, box-shadow 0.25s ease, opacity 0.3s ease, filter 0.3s ease;
+  transition: border-color 0.1s ease-out, box-shadow 0.1s ease-out, opacity 0.12s ease-out, filter 0.12s ease-out;
 }
 .experience-entry h3 {
   font-size: 1rem;
@@ -1675,9 +1760,9 @@ html.skip-welcome #welcome-gate {
 
 .bio-network-wrap {
   position: relative;
-  max-width: 640px;
-  margin: 2.5rem auto 1rem;
-  aspect-ratio: 1 / 0.82;
+  width: 100%;
+  max-width: 400px;
+  aspect-ratio: 1 / 0.86;
 }
 
 .bio-network-lines {
@@ -1723,28 +1808,28 @@ html.skip-welcome #welcome-gate {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 110px;
-  height: 110px;
+  width: 84px;
+  height: 84px;
   border-radius: 50%;
   background: linear-gradient(145deg, var(--accent), var(--accent-violet));
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: "Space Grotesk", sans-serif;
-  font-size: 1.9rem;
+  font-size: 1.45rem;
   font-weight: 700;
   color: #0b0d10;
   box-shadow: 0 0 0 1px var(--surface-border), 0 12px 32px -12px var(--accent-glow);
 }
 
 .bio-node-satellite {
-  width: 84px;
+  width: 68px;
   cursor: pointer;
   border-bottom: none;
 }
 .bio-node-bubble {
-  width: 64px;
-  height: 64px;
+  width: 50px;
+  height: 50px;
   border-radius: 50%;
   /* Real org logos (JPMorgan, Ruth Asawa SOTA, StreetCode) are drawn
      for a light background and disappear on the site's dark surface
@@ -1756,8 +1841,8 @@ html.skip-welcome #welcome-gate {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.85rem;
-  transition: border-color 0.2s ease, transform 0.2s ease;
+  padding: 0.6rem;
+  transition: border-color 0.1s ease-out, transform 0.1s ease-out;
 }
 .bio-node-satellite:hover .bio-node-bubble,
 .bio-node-satellite:focus-visible .bio-node-bubble {
@@ -1772,8 +1857,8 @@ html.skip-welcome #welcome-gate {
 .bio-node-wordmark {
   font-family: "Space Grotesk", sans-serif;
   font-weight: 700;
-  font-size: 0.62rem;
-  letter-spacing: 0.03em;
+  font-size: 0.5rem;
+  letter-spacing: 0.01em;
   text-align: center;
   color: #23262b;
 }
@@ -1794,7 +1879,7 @@ html.skip-welcome #welcome-gate {
   line-height: 1.4;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transition: opacity 0.1s ease-out, transform 0.1s ease-out;
   z-index: 2;
 }
 .bio-node-label small {

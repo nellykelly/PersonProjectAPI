@@ -4,78 +4,73 @@
 
 {% block content %}
 <section class="hero">
-    <div class="reveal-mask">
-        <span class="reveal-up hero-eyebrow badge badge-open">&#9679; Open to interesting problems</span>
-    </div>
+    <div class="hero-grid">
+        <div class="hero-text">
+            <div class="reveal-mask">
+                <h1 class="reveal-up gradient-text">Nelson Koskela</h1>
+            </div>
 
-    <div class="reveal-mask">
-        <h1 class="reveal-up gradient-text">Nelson Koskela</h1>
-    </div>
+            <p class="reveal-up tagline">
+                Software Engineer II at JPMorgan Chase &amp; Co. &middot; Houston, TX<br>
+                Building trading tools, pipeline visualizations, and network diagnostics on the side.
+            </p>
 
-    <p class="reveal-up tagline">
-        Software Engineer II at JPMorgan Chase &amp; Co. &middot; Houston, TX<br>
-        Building trading tools, pipeline visualizations, and network diagnostics on the side.
-    </p>
+            <div class="reveal-mask">
+                <div class="reveal-up hero-actions">
+                    <a class="button primary" href="{{ url_for('about.index') }}">About Me</a>
+                    <a class="button" href="{{ url_for('projects.index') }}">View Projects</a>
+                    <a class="button" href="{{ url_for('contact.index') }}">Contact</a>
+                </div>
+            </div>
 
-    <div class="reveal-mask">
-        <div class="reveal-up hero-actions">
-            <a class="button primary" href="{{ url_for('about.index') }}">About Me</a>
-            <a class="button" href="{{ url_for('projects.index') }}">View Projects</a>
-            <a class="button" href="{{ url_for('contact.index') }}">Contact</a>
+            <div class="reveal-up tech-strip">
+                <span class="tag">Python</span>
+                <span class="tag">Flask</span>
+                <span class="tag">PostgreSQL</span>
+                <span class="tag">Redis</span>
+                <span class="tag">SQLAlchemy</span>
+                <span class="tag">Socket.IO</span>
+                <span class="tag">Docker</span>
+                <span class="tag">JavaScript</span>
+            </div>
         </div>
-    </div>
 
-    <div class="reveal-up tech-strip">
-        <span class="tag">Python</span>
-        <span class="tag">Flask</span>
-        <span class="tag">PostgreSQL</span>
-        <span class="tag">Redis</span>
-        <span class="tag">SQLAlchemy</span>
-        <span class="tag">Socket.IO</span>
-        <span class="tag">Docker</span>
-        <span class="tag">JavaScript</span>
-    </div>
+        <div class="hero-bio">
+            <div class="bio-network-wrap reveal-up" data-bio-network>
+                <svg class="bio-network-lines" aria-hidden="true"></svg>
 
-</section>
+                <div class="bio-node bio-node-center" data-node="center" aria-hidden="true">NK</div>
 
-<section>
-    <div class="section-head">
-        <span class="reveal-up eyebrow">Roots</span>
-        <h2 class="reveal-up">How I got here</h2>
-        <p class="reveal-up section-sub">Hover a bubble to trace its line back to me.</p>
-    </div>
-    <div class="bio-network-wrap reveal-up" data-bio-network>
-        <svg class="bio-network-lines" aria-hidden="true"></svg>
+                <a class="bio-node bio-node-satellite" data-node="jpmorgan" href="{{ url_for('about.index') }}">
+                    <span class="bio-node-bubble">
+                        <img src="{{ url_for('static', filename='assets/img/bubbles/jpmorgan.svg') }}" alt="">
+                    </span>
+                    <span class="bio-node-label">JPMorgan Chase &amp; Co.<small>Software Engineer II, since 2021</small></span>
+                </a>
 
-        <div class="bio-node bio-node-center" data-node="center" aria-hidden="true">NK</div>
+                <a class="bio-node bio-node-satellite" data-node="asawa" href="{{ url_for('about.index') }}">
+                    <span class="bio-node-bubble">
+                        <img src="{{ url_for('static', filename='assets/img/bubbles/ruth-asawa-sota.png') }}" alt="">
+                    </span>
+                    <span class="bio-node-label">Ruth Asawa School of the Arts<small>Classical voice, minor in jazz</small></span>
+                </a>
 
-        <a class="bio-node bio-node-satellite" data-node="jpmorgan" href="{{ url_for('about.index') }}">
-            <span class="bio-node-bubble">
-                <img src="{{ url_for('static', filename='assets/img/bubbles/jpmorgan.svg') }}" alt="">
-            </span>
-            <span class="bio-node-label">JPMorgan Chase &amp; Co.<small>Software Engineer II, since 2021</small></span>
-        </a>
+                <a class="bio-node bio-node-satellite" data-node="cogswell" href="{{ url_for('about.index') }}">
+                    <span class="bio-node-bubble">
+                        <span class="bio-node-wordmark">COGSWELL</span>
+                    </span>
+                    <span class="bio-node-label">Cogswell University of Silicon Valley<small>B.S. Computer Science</small></span>
+                </a>
 
-        <a class="bio-node bio-node-satellite" data-node="asawa" href="{{ url_for('about.index') }}">
-            <span class="bio-node-bubble">
-                <img src="{{ url_for('static', filename='assets/img/bubbles/ruth-asawa-sota.png') }}" alt="">
-            </span>
-            <span class="bio-node-label">Ruth Asawa School of the Arts<small>Classical voice, minor in jazz</small></span>
-        </a>
-
-        <a class="bio-node bio-node-satellite" data-node="cogswell" href="{{ url_for('about.index') }}">
-            <span class="bio-node-bubble">
-                <span class="bio-node-wordmark">COGSWELL</span>
-            </span>
-            <span class="bio-node-label">Cogswell University of Silicon Valley<small>B.S. Computer Science</small></span>
-        </a>
-
-        <a class="bio-node bio-node-satellite" data-node="streetcode" href="https://streetcode.org/" target="_blank" rel="noopener">
-            <span class="bio-node-bubble">
-                <img src="{{ url_for('static', filename='assets/img/bubbles/streetcode.png') }}" alt="">
-            </span>
-            <span class="bio-node-label">StreetCode Academy<small>Hack, Hustle &amp; Design &mdash; East Palo Alto</small></span>
-        </a>
+                <a class="bio-node bio-node-satellite" data-node="streetcode" href="https://streetcode.org/" target="_blank" rel="noopener">
+                    <span class="bio-node-bubble">
+                        <img src="{{ url_for('static', filename='assets/img/bubbles/streetcode.png') }}" alt="">
+                    </span>
+                    <span class="bio-node-label">StreetCode Academy<small>Hack, Hustle &amp; Design &mdash; East Palo Alto</small></span>
+                </a>
+            </div>
+            <p class="reveal-up hero-bio-hint">Hover a bubble to trace it back to me.</p>
+        </div>
     </div>
 </section>
 

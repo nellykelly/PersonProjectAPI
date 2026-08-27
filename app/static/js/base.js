@@ -18,9 +18,11 @@ window.addEventListener("load", function () {
   // fast connection; the load listener is what actually gates on "did
   // the page finish" per the brief (the site is slow sometimes); the
   // hard cap is a safety net so a stalled load doesn't strand a visitor
-  // behind this indefinitely.
-  var MIN_MS = 1300;
-  var MAX_MS = 6000;
+  // behind this indefinitely. Kept short on purpose -- once per session
+  // is the right amount of ceremony, but it still has to feel fast, not
+  // like a forced wait, even the first time.
+  var MIN_MS = 500;
+  var MAX_MS = 4000;
   var start = Date.now();
   var finished = false;
 
@@ -29,7 +31,7 @@ window.addEventListener("load", function () {
     finished = true;
     try { sessionStorage.setItem("welcomeShown", "1"); } catch (e) { /* private mode, etc. */ }
     gate.classList.add("is-leaving");
-    setTimeout(function () { gate.remove(); }, 450);
+    setTimeout(function () { gate.remove(); }, 250);
   }
 
   window.addEventListener("load", function () {
