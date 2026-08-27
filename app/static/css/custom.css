@@ -383,7 +383,7 @@ html.js-reveal .reveal-up.is-visible {
    separate section further down the page. */
 .hero-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 480px);
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 580px);
   align-items: center;
   gap: 2.5rem;
 }
@@ -1808,7 +1808,7 @@ html.skip-welcome #welcome-gate {
 .bio-network-wrap {
   position: relative;
   width: 100%;
-  max-width: 480px;
+  max-width: 580px;
   aspect-ratio: 1 / 0.86;
 }
 
@@ -1941,11 +1941,16 @@ html.skip-welcome #welcome-gate {
   transform: translateX(-50%) translateY(0);
 }
 
-/* Four corners around the center bubble. */
-.bio-node[data-node="jpmorgan"]  { top: 4%;  left: 8%; }
-.bio-node[data-node="asawa"]     { top: 4%;  right: 8%; left: auto; }
-.bio-node[data-node="cogswell"]  { bottom: 2%; left: 8%; top: auto; }
-.bio-node[data-node="streetcode"]{ bottom: 2%; right: 8%; left: auto; top: auto; }
+/* Four corners around the center bubble, mirrored exactly (same top
+   value on both top nodes, same bottom on both bottom nodes, same
+   inset on both left/right pairs) -- pushed nearer the container edges
+   than before for a bigger, more open composition with real breathing
+   room around the center, while staying a true, uniform diamond
+   rather than a hand-placed scatter. */
+.bio-node[data-node="jpmorgan"]  { top: 0%;  left: 2%; }
+.bio-node[data-node="asawa"]     { top: 0%;  right: 2%; left: auto; }
+.bio-node[data-node="cogswell"]  { bottom: 0%; left: 2%; top: auto; }
+.bio-node[data-node="streetcode"]{ bottom: 0%; right: 2%; left: auto; top: auto; }
 
 @media (max-width: 720px) {
   .bio-network-wrap {
