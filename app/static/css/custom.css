@@ -1849,6 +1849,10 @@ html.skip-welcome #welcome-gate {
   gap: 0.4rem;
   text-decoration: none;
   color: inherit;
+  /* top/left below are the CENTER of each bubble, not its corner --
+     matches how .bio-node-center is positioned, so satellites can sit
+     on a real arc around it instead of only the four corners of a box. */
+  transform: translate(-50%, -50%);
 }
 
 .bio-node-center {
@@ -1941,16 +1945,19 @@ html.skip-welcome #welcome-gate {
   transform: translateX(-50%) translateY(0);
 }
 
-/* Four corners around the center bubble, mirrored exactly (same top
-   value on both top nodes, same bottom on both bottom nodes, same
-   inset on both left/right pairs) -- pushed nearer the container edges
-   than before for a bigger, more open composition with real breathing
-   room around the center, while staying a true, uniform diamond
-   rather than a hand-placed scatter. */
-.bio-node[data-node="jpmorgan"]  { top: 0%;  left: 2%; }
-.bio-node[data-node="asawa"]     { top: 0%;  right: 2%; left: auto; }
-.bio-node[data-node="cogswell"]  { bottom: 0%; left: 2%; top: auto; }
-.bio-node[data-node="streetcode"]{ bottom: 0%; right: 2%; left: auto; top: auto; }
+/* An arc on the right/top/bottom of the center bubble -- top, then
+   two on the right (one above center height, one below), then bottom
+   -- rather than the four corners of a box. Traces the placement from
+   the reference sketch: JPMorgan directly above, Ruth Asawa directly
+   below, Cogswell and StreetCode stacked on the right. Deliberately
+   nothing sits on the left, which is where the hero's text column
+   already is -- the arc opens toward it instead of crowding it.
+   top/left values below are each bubble's CENTER (see .bio-node's
+   translate(-50%,-50%) above), not a corner. */
+.bio-node[data-node="jpmorgan"]  { top: 6%;  left: 54%; }
+.bio-node[data-node="cogswell"]  { top: 30%; left: 90%; }
+.bio-node[data-node="streetcode"]{ top: 70%; left: 90%; }
+.bio-node[data-node="asawa"]     { top: 94%; left: 48%; }
 
 @media (max-width: 720px) {
   .bio-network-wrap {
