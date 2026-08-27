@@ -383,7 +383,7 @@ html.js-reveal .reveal-up.is-visible {
    separate section further down the page. */
 .hero-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 580px);
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 700px);
   align-items: center;
   gap: 2.5rem;
 }
@@ -474,7 +474,11 @@ html.js-reveal .reveal-up.is-visible {
   gap: 0.9rem;
 }
 .hero-bio-hint {
-  margin: 0;
+  /* The bottom bubble's center sits near the wrap's own bottom edge
+     (see .bio-node[data-node="asawa"]), so the bubble itself extends
+     well past the wrap's box -- this margin clears that overflow
+     instead of the hint text sitting behind the bubble. */
+  margin: 4rem 0 0;
   font-size: 0.78rem;
   color: var(--fg-light);
   text-align: center;
@@ -1808,7 +1812,7 @@ html.skip-welcome #welcome-gate {
 .bio-network-wrap {
   position: relative;
   width: 100%;
-  max-width: 580px;
+  max-width: 700px;
   aspect-ratio: 1 / 0.86;
 }
 
@@ -1859,28 +1863,28 @@ html.skip-welcome #welcome-gate {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 120px;
-  height: 120px;
+  width: 240px;
+  height: 240px;
   border-radius: 50%;
   background: linear-gradient(145deg, var(--accent), var(--accent-violet));
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: "Space Grotesk", sans-serif;
-  font-size: 1.9rem;
+  font-size: 3.2rem;
   font-weight: 700;
   color: #0b0d10;
   box-shadow: 0 0 0 1px var(--surface-border), 0 12px 32px -12px var(--accent-glow);
 }
 
 .bio-node-satellite {
-  width: 92px;
+  width: 184px;
   cursor: pointer;
   border-bottom: none;
 }
 .bio-node-bubble {
-  width: 72px;
-  height: 72px;
+  width: 144px;
+  height: 144px;
   border-radius: 50%;
   /* Real org logos (JPMorgan, Ruth Asawa SOTA, StreetCode) are drawn
      for a light background and disappear on the site's dark surface
@@ -1892,7 +1896,7 @@ html.skip-welcome #welcome-gate {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.8rem;
+  padding: 1.4rem;
   transition: border-color 0.1s ease-out, transform 0.1s ease-out;
 }
 .bio-node-satellite:hover .bio-node-bubble,
@@ -1908,7 +1912,7 @@ html.skip-welcome #welcome-gate {
 .bio-node-wordmark {
   font-family: "Space Grotesk", sans-serif;
   font-weight: 700;
-  font-size: 0.62rem;
+  font-size: 1.05rem;
   letter-spacing: 0.01em;
   text-align: center;
   color: #23262b;
@@ -1954,10 +1958,10 @@ html.skip-welcome #welcome-gate {
    already is -- the arc opens toward it instead of crowding it.
    top/left values below are each bubble's CENTER (see .bio-node's
    translate(-50%,-50%) above), not a corner. */
-.bio-node[data-node="jpmorgan"]  { top: 6%;  left: 54%; }
-.bio-node[data-node="cogswell"]  { top: 30%; left: 90%; }
-.bio-node[data-node="streetcode"]{ top: 70%; left: 90%; }
-.bio-node[data-node="asawa"]     { top: 94%; left: 48%; }
+.bio-node[data-node="jpmorgan"]  { top: 4%;  left: 56%; }
+.bio-node[data-node="cogswell"]  { top: 22%; left: 93%; }
+.bio-node[data-node="streetcode"]{ top: 78%; left: 93%; }
+.bio-node[data-node="asawa"]     { top: 96%; left: 46%; }
 
 @media (max-width: 720px) {
   .bio-network-wrap {
