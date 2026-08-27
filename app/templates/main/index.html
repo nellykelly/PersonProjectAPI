@@ -130,7 +130,17 @@
     <div class="card-grid">
         {% for project in featured_projects %}
         <div class="reveal-up card">
-            <img class="card-icon" src="{{ url_for('static', filename=project.icon) }}" alt="" width="48" height="48">
+            <div class="card-mockup" aria-hidden="true">
+                <div class="card-mockup-frame">
+                    <div class="card-mockup-chrome"><span></span><span></span><span></span></div>
+                    <div class="card-mockup-body">
+                        <div class="card-mockup-bar"></div>
+                        <div class="card-mockup-bar short"></div>
+                        <div class="card-mockup-chart"></div>
+                    </div>
+                </div>
+                <img class="card-mockup-icon" src="{{ url_for('static', filename=project.icon) }}" alt="">
+            </div>
             <h3>{{ project.title }}</h3>
             <p>{{ project.blurb }}</p>
             <div class="tag-list">

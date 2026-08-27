@@ -606,6 +606,7 @@ html.js-reveal .reveal-up.is-visible {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  overflow: hidden;
   transition:
     border-color 0.25s ease-in-out,
     transform 0.25s ease-in-out,
@@ -618,10 +619,108 @@ html.js-reveal .reveal-up.is-visible {
   box-shadow: 0 16px 40px -18px var(--accent-glow);
 }
 
-.card-icon {
-  width: 48px;
-  height: 48px;
-  opacity: 0.95;
+/* ---------- Project card device mockup ----------
+   Reference site treatment: a tilted 3D "device" sits propped inside a
+   gradient banner and lays flat when you hover the card. We don't have
+   real product screenshots to put inside it, so the "screen" holds
+   generic placeholder UI (chrome dots + skeleton bars + a chart strip)
+   rather than a fake photo -- and the project's own icon rises up and
+   fades in once the device has laid flat, standing in for "here's what
+   this one actually is" without needing a real screenshot asset. */
+.card-mockup {
+  position: relative;
+  margin: -1.6rem -1.6rem 0;
+  aspect-ratio: 16 / 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(160deg, var(--accent) -30%, var(--accent-violet) 60%, var(--surface) 130%);
+  perspective: 900px;
+}
+.card-mockup-frame {
+  width: 78%;
+  aspect-ratio: 4 / 2.6;
+  border-radius: 8px;
+  background: rgba(10, 11, 13, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 30px 50px -20px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transform: rotateX(42deg) translateY(8%) scale(0.92);
+  transition: transform 0.55s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.card:hover .card-mockup-frame,
+.card:focus-within .card-mockup-frame {
+  transform: rotateX(0deg) translateY(0) scale(1);
+}
+.card-mockup-chrome {
+  display: flex;
+  gap: 5px;
+  padding: 0.45rem 0.55rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+.card-mockup-chrome span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+}
+.card-mockup-body {
+  flex: 1;
+  padding: 0.65rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  opacity: 0.55;
+}
+.card-mockup-bar {
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.18);
+}
+.card-mockup-bar.short {
+  width: 55%;
+}
+.card-mockup-chart {
+  margin-top: auto;
+  height: 24px;
+  border-radius: 4px;
+  background: var(--accent-dim);
+  position: relative;
+  overflow: hidden;
+}
+.card-mockup-chart::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 42%, rgba(255, 255, 255, 0.3) 50%, transparent 58%);
+}
+.card-mockup-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 46px;
+  height: 46px;
+  opacity: 0;
+  transform: translate(-50%, -35%) scale(0.55);
+  transition: opacity 0.35s ease 0.12s, transform 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.12s;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.45));
+  pointer-events: none;
+  z-index: 1;
+}
+.card:hover .card-mockup-icon,
+.card:focus-within .card-mockup-icon {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-mockup-frame,
+  .card-mockup-icon {
+    transition: none;
+  }
 }
 
 .card h3 {
