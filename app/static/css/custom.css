@@ -283,6 +283,29 @@ html.js-reveal .reveal-up.is-visible {
   color: var(--accent);
 }
 
+.docs-button {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-light);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.4rem 0.8rem;
+  white-space: nowrap;
+  transition: border-color 0.15s ease-out, color 0.15s ease-out;
+}
+.docs-button:hover,
+.docs-button:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.docs-button .icon {
+  font-size: 0.85em;
+}
+
 .nav-toggle {
   display: none;
   background: none;

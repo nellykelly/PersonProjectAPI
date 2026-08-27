@@ -86,6 +86,16 @@
             <a class="icon solid fa-file-alt" href="{{ url_for('static', filename=RESUME_PATH) }}" target="_blank" rel="noopener" title="Resume" aria-label="Resume"><span class="label">Resume</span></a>
             <a class="icon solid fa-envelope" href="mailto:{{ EMAIL }}" title="Email" aria-label="Email"><span class="label">Email</span></a>
         </div>
+
+        {# Sits outside .site-nav on purpose -- it must stay visible on
+           mobile regardless of the hamburger's open/closed state, and
+           only makes sense as an entry point on the one page (Contact)
+           where "get in touch for access" already lives. #}
+        {% if request.endpoint == 'contact.index' %}
+        <a class="docs-button" href="{{ url_for('documentation.index') }}">
+            <span class="icon solid fa-lock"></span> Documentation
+        </a>
+        {% endif %}
     </header>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
