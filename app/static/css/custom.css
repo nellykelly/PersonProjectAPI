@@ -383,7 +383,7 @@ html.js-reveal .reveal-up.is-visible {
    separate section further down the page. */
 .hero-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 400px);
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 480px);
   align-items: center;
   gap: 2.5rem;
 }
@@ -1638,8 +1638,55 @@ html.skip-welcome #welcome-gate {
   align-items: stretch;
 }
 .education-tile {
+  position: relative;
   text-align: left;
   align-items: flex-start;
+}
+/* A blue light continuously circling the card border -- a rotating
+   conic gradient masked down to just the ring (content-box XOR
+   border-box leaves only the band between them visible), rather than
+   an actual border-color animation, since a hard color change can't
+   produce a single travelling highlight the way a rotating gradient
+   can. @property lets the angle itself be an animatable value instead
+   of only start/end keyframes on the whole gradient. */
+@property --edu-ring-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+.education-tile::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--edu-ring-angle),
+    transparent 0deg,
+    var(--accent) 25deg,
+    #ffffff 45deg,
+    var(--accent) 65deg,
+    transparent 100deg,
+    transparent 360deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: edu-ring-spin 6.4s linear infinite;
+  pointer-events: none;
+}
+@keyframes edu-ring-spin {
+  to { --edu-ring-angle: 360deg; }
+}
+/* Negative delays start each ring already partway through the spin,
+   evenly spaced around the full 6.4s cycle -- offset immediately
+   rather than drifting apart over time, which perfectly-synced
+   identical animations never do on their own. */
+.education-tile:nth-child(2)::before { animation-delay: -2.1s; }
+.education-tile:nth-child(3)::before { animation-delay: -4.3s; }
+@media (prefers-reduced-motion: reduce) {
+  .education-tile::before { animation: none; }
 }
 .education-tile .label {
   font-size: 0.95rem;
@@ -1761,7 +1808,7 @@ html.skip-welcome #welcome-gate {
 .bio-network-wrap {
   position: relative;
   width: 100%;
-  max-width: 400px;
+  max-width: 480px;
   aspect-ratio: 1 / 0.86;
 }
 
@@ -1787,7 +1834,7 @@ html.skip-welcome #welcome-gate {
   filter: drop-shadow(0 0 6px var(--accent-glow));
 }
 @keyframes bio-line-flow {
-  to { stroke-dashoffset: -24; }
+  to { stroke-dashoffset: 24; }
 }
 @media (prefers-reduced-motion: reduce) {
   .bio-network-lines path { animation: none; }
@@ -1808,28 +1855,28 @@ html.skip-welcome #welcome-gate {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 84px;
-  height: 84px;
+  width: 120px;
+  height: 120px;
   border-radius: 50%;
   background: linear-gradient(145deg, var(--accent), var(--accent-violet));
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: "Space Grotesk", sans-serif;
-  font-size: 1.45rem;
+  font-size: 1.9rem;
   font-weight: 700;
   color: #0b0d10;
   box-shadow: 0 0 0 1px var(--surface-border), 0 12px 32px -12px var(--accent-glow);
 }
 
 .bio-node-satellite {
-  width: 68px;
+  width: 92px;
   cursor: pointer;
   border-bottom: none;
 }
 .bio-node-bubble {
-  width: 50px;
-  height: 50px;
+  width: 72px;
+  height: 72px;
   border-radius: 50%;
   /* Real org logos (JPMorgan, Ruth Asawa SOTA, StreetCode) are drawn
      for a light background and disappear on the site's dark surface
@@ -1841,7 +1888,7 @@ html.skip-welcome #welcome-gate {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.6rem;
+  padding: 0.8rem;
   transition: border-color 0.1s ease-out, transform 0.1s ease-out;
 }
 .bio-node-satellite:hover .bio-node-bubble,
@@ -1857,7 +1904,7 @@ html.skip-welcome #welcome-gate {
 .bio-node-wordmark {
   font-family: "Space Grotesk", sans-serif;
   font-weight: 700;
-  font-size: 0.5rem;
+  font-size: 0.62rem;
   letter-spacing: 0.01em;
   text-align: center;
   color: #23262b;
