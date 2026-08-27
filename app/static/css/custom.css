@@ -185,19 +185,27 @@ html.js-reveal .reveal-up.is-visible {
 }
 
 /* ---------- Background scrim ----------
-   Dimension ships #bg as a photo (bg.jpg) behind a 50% scrim
-   (#bg:before in main.css). That photo is genuinely light -- it averages
-   rgb(126,129,147), and its brightest regions average rgb(174,192,215) --
-   so at 50% the muted body text (rgba(255,255,255,0.6)) came out at a
-   measured 3.21:1 contrast over those regions, under the 4.5:1 WCAG AA
-   floor and visibly hard to read. Deepening the scrim to 82% puts the
-   same text at 5.96:1 and plain white at 13.65:1, while still leaving
-   enough of the photo to read as texture rather than a flat fill. */
+   Dimension ships #bg as a fixed full-viewport photo (bg.jpg) behind a
+   scrim (#bg:before in main.css), with its own is-preload fade: solid
+   black while loading, then a 2.5s transition (0.75s delay) to
+   whatever #bg:before's resting background-color is once is-preload
+   is removed on window.load. An earlier round deepened the scrim to
+   82% so the stock photo read as texture rather than a flat fill --
+   but main.css never sets a resting background-color on #bg:before at
+   all (only background-image), so that transition animated from black
+   to *transparent*, letting the raw photo show through underneath.
+   Now that the site has its own flat, controlled dark palette (dot
+   grid, hero glow, bio network) rather than needing a photo backdrop,
+   the fix is the photo and gradient wash retiring entirely, and the
+   resting state being var(--bg) -- the preload fade still runs, it
+   just lands on the real theme color instead of revealing bg.jpg. */
 
+#bg:after {
+  background-image: none;
+}
 #bg:before {
-  background-image:
-    linear-gradient(to top, rgba(12, 14, 17, 0.82), rgba(12, 14, 17, 0.82)),
-    url("/static/assets/img/overlay.png");
+  background-image: none;
+  background-color: var(--bg);
 }
 
 /* ---------- Header / nav ---------- */

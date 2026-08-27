@@ -157,15 +157,21 @@
         <h2 class="reveal-up">Experience</h2>
     </div>
     <div class="experience-grid">
-        <div class="reveal-up experience-entry" data-experience="pipeline-world">
-            <h3>Backend / infra engineer</h3>
-            <p>Built Pipeline World's queued processing pipeline on RQ + Redis, with Postgres holding full run
-                history and window-function analytics over every character that's gone through it.</p>
-        </div>
+        <!-- Order matches the Featured Projects grid above (Company Scorer,
+             Pipeline World, Timed-Squares) so each entry lines up in the same
+             column as its correlated card -- out of order here means the
+             connector line has to cross diagonally past a neighboring one to
+             reach its target, which reads as a broken/tangled line rather
+             than a clean vertical connector. -->
         <div class="reveal-up experience-entry" data-experience="qr-quant-scraper">
             <h3>Data / quant engineering</h3>
             <p>Built Company Scorer's valuation, leverage, growth and profitability scoring off SEC EDGAR filings
                 and market data, with a backtest module to check whether the score actually predicted anything.</p>
+        </div>
+        <div class="reveal-up experience-entry" data-experience="pipeline-world">
+            <h3>Backend / infra engineer</h3>
+            <p>Built Pipeline World's queued processing pipeline on RQ + Redis, with Postgres holding full run
+                history and window-function analytics over every character that's gone through it.</p>
         </div>
         <div class="reveal-up experience-entry" data-experience="timed-squares">
             <h3>Frontend / game logic</h3>
