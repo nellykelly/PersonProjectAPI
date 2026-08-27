@@ -479,17 +479,15 @@ html.js-reveal .reveal-up.is-visible {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.9rem;
 }
-.hero-bio-hint {
-  /* The bottom bubble's center sits near the wrap's own bottom edge
-     (see .bio-node[data-node="asawa"]), so the bubble itself extends
-     well past the wrap's box -- this margin clears that overflow
-     instead of the hint text sitting behind the bubble. */
-  margin: 4rem 0 0;
-  font-size: 0.78rem;
-  color: var(--fg-light);
-  text-align: center;
+/* The bottom bubble's center sits near the wrap's own bottom edge (see
+   .bio-node[data-node="asawa"]), so the bubble extends well past the
+   wrap's own box -- this clears that overflow so the next section
+   doesn't sit flush against (or behind) the bubble. Previously lived
+   as margin on the "Hover a bubble..." hint text below the wrap; that
+   text is gone now, so the clearance moved onto the wrap itself. */
+.bio-network-wrap {
+  margin-bottom: 4rem;
 }
 
 @media (max-width: 900px) {
@@ -1898,8 +1896,12 @@ html.skip-welcome #welcome-gate {
      for a light background and disappear on the site's dark surface
      color -- an off-white disc behind them is standard practice for
      brand marks on a dark theme, same reason a badge or sticker gets a
-     white backing regardless of the page it's on. */
-  background: #f4f5f7;
+     white backing regardless of the page it's on. Pure white, not an
+     off-white: the source images (Ruth Asawa, StreetCode) have solid
+     #ffffff backgrounds themselves, and #f4f5f7 was just different
+     enough to show their square edges as a visible seam inside the
+     circle. */
+  background: #ffffff;
   border: 1px solid var(--surface-border);
   display: flex;
   align-items: center;
