@@ -33,7 +33,7 @@ select option {
      option rule still hardcode the old value directly, so body and
      select-option overrides just below this block re-point them at
      the same variable rather than staying stuck on the old color. */
-  --bg: #151618;
+  --bg: #0f1012;
   --bg-alt: #000000;
   --fg: #ffffff;
   --fg-light: rgba(255, 255, 255, 0.6);
@@ -214,7 +214,7 @@ html.js-reveal .reveal-up.is-visible {
   /* Was hardcoded to the pre-darkening rgba(27,31,34,.92) -- a leftover
      from before --bg was darkened, so the sticky header sat visibly
      lighter than the rest of the page on every scroll. */
-  background: rgba(21, 22, 24, 0.92);
+  background: rgba(15, 16, 18, 0.92);
   backdrop-filter: blur(6px);
   flex-wrap: wrap;
 }
@@ -435,9 +435,13 @@ html.js-reveal .reveal-up.is-visible {
   right: 4%;
   width: 34rem;
   height: 26rem;
-  background: radial-gradient(ellipse 60% 60% at 70% 25%, var(--accent-glow), transparent 72%);
+  /* A neutral, slightly-lighter-than-bg tone rather than a blue-tinted
+     glow -- reads as a soft light source on the bubble cluster instead
+     of a colored halo, which suited a lighter --bg but got heavy-
+     handed once the base darkened this far. */
+  background: radial-gradient(ellipse 60% 60% at 70% 25%, #181a1f, transparent 72%);
   filter: blur(36px);
-  opacity: 0.4;
+  opacity: 0.65;
   z-index: -1;
   pointer-events: none;
 }
