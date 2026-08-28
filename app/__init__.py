@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from flask import Flask, session
 
 from app.config import CONFIG_BY_NAME
-from app.extensions import db, limiter, migrate, socketio
+from app.extensions import csrf, db, limiter, login_manager, migrate, socketio
 
 
 def create_app(config_name: str | None = None) -> Flask:
@@ -30,6 +30,19 @@ def create_app(config_name: str | None = None) -> Flask:
     db.init_app(app)
     migrate.init_app(app, db)
     limiter.init_app(app)
+    csrf.init_app(app)
+
+    login_manager.init_app(app)
+    login_manager.login_view = "auth.login"
+    login_manager.login_message = "Log in to open your board."
+    login_manager.login_message_category = "error"
+
+    @login_manager.user_loader
+    def load_user(user_id: str):
+        from app.models import User
+
+        return db.session.get(User, int(user_id))
+
     socketio.init_app(
         app,
         async_mode="threading",
@@ -50,6 +63,7 @@ def create_app(config_name: str | None = None) -> Flask:
     register_filters(app)
 
     _register_blueprints(app)
+    _register_cli(app)
 
     @app.before_request
     def ensure_session_id():
@@ -100,6 +114,8 @@ def _register_blueprints(app: Flask) -> None:
     from app.blueprints.pipeline_world import bp as pipeline_world_bp
     from app.blueprints.sre_infra import bp as sre_infra_bp
     from app.blueprints.timed_squares import bp as timed_squares_bp
+    from app.blueprints.leetcode import bp as leetcode_bp
+    from app.blueprints.auth import bp as auth_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(about_bp, url_prefix="/about")
@@ -112,3 +128,59 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(pipeline_world_bp, url_prefix="/projects/pipeline-world")
     app.register_blueprint(sre_infra_bp, url_prefix="/projects/sre-infra")
     app.register_blueprint(timed_squares_bp, url_prefix="/projects/timed-squares")
+    app.register_blueprint(leetcode_bp, url_prefix="/leetcode-150")
+    app.register_blueprint(auth_bp, url_prefix="/auth")
+
+    # CSRF is on app-wide (see extensions.csrf), but these blueprints
+    # predate accounts and post without a token -- from public,
+    # anonymous forms and fetch() calls. Exempt them so nothing regresses;
+    # only the new auth + tracker-progress POSTs are CSRF-checked. Rolling
+    # tokens out to these is a separate, later change.
+    for legacy_bp in (trading_bp, pipeline_world_bp, timed_squares_bp, documentation_bp):
+        csrf.exempt(legacy_bp)
+
+
+def _register_cli(app: Flask) -> None:
+    """`flask create-user` / `flask set-password` -- account management
+    from the shell. There is no email on file and no self-serve reset, so
+    a forgotten password is fixed here by the site owner."""
+    import click
+
+    from app.models import User
+
+    def _validate_password(password: str) -> None:
+        if len(password) < User.PASSWORD_MIN:
+            raise click.ClickException(f"Password must be at least {User.PASSWORD_MIN} characters.")
+
+    @app.cli.command("create-user")
+    @click.argument("username")
+    @click.option("--password", prompt=True, hide_input=True, confirmation_prompt=True)
+    def create_user(username: str, password: str) -> None:
+        """Create a login account."""
+        norm = User.normalize_username(username)
+        if not (User.USERNAME_MIN <= len(norm) <= User.USERNAME_MAX):
+            raise click.ClickException(
+                f"Username must be {User.USERNAME_MIN}-{User.USERNAME_MAX} characters."
+            )
+        if User.query.filter_by(username_ci=norm).first():
+            raise click.ClickException(f"A user named {username!r} already exists.")
+        _validate_password(password)
+        user = User()
+        user.set_username(username)
+        user.set_password(password)
+        db.session.add(user)
+        db.session.commit()
+        click.echo(f"Created user {user.username!r} (id {user.id}).")
+
+    @app.cli.command("set-password")
+    @click.argument("username")
+    @click.option("--password", prompt=True, hide_input=True, confirmation_prompt=True)
+    def set_password(username: str, password: str) -> None:
+        """Reset an existing account's password."""
+        user = User.query.filter_by(username_ci=User.normalize_username(username)).first()
+        if user is None:
+            raise click.ClickException(f"No user named {username!r}.")
+        _validate_password(password)
+        user.set_password(password)
+        db.session.commit()
+        click.echo(f"Password updated for {user.username!r}.")

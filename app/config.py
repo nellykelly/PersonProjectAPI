@@ -125,6 +125,15 @@ class Config:
     # one endpoint where repeated guessing is the entire attack.
     DOCS_UNLOCK_RATE_LIMIT = os.environ.get("DOCS_UNLOCK_RATE_LIMIT", "10 per hour")
 
+    # Accounts (login gating the LeetCode 150 tracker). Registration is
+    # open by default; flip REGISTRATION_ENABLED=false to close signups
+    # without a redeploy (existing accounts keep working, /register starts
+    # returning 403). Login and register are rate limited per IP -- login
+    # is the guessing surface, register the spam surface.
+    REGISTRATION_ENABLED = _bool("REGISTRATION_ENABLED", True)
+    AUTH_LOGIN_RATE_LIMIT = os.environ.get("AUTH_LOGIN_RATE_LIMIT", "10 per hour")
+    AUTH_REGISTER_RATE_LIMIT = os.environ.get("AUTH_REGISTER_RATE_LIMIT", "5 per hour")
+
     # Kept smaller than the full trading whitelist -- the backtest makes
     # 2 EDGAR calls + 2 yfinance calls per ticker, and both sources are
     # rate-limited on free/unauthenticated use.

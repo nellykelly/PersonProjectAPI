@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Top Interview 150 Tracker{% endblock %}
+{% block meta_description %}A personal interview-prep tracker over LeetCode's Top Interview 150: a 20-minute attempt per problem, then mark it Yes or No. Each account keeps its own board.{% endblock %}
+{% block content_class %}wide lc-page{% endblock %}
+
+{% block extra_head %}
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<script id="lc-initial-state" type="application/json">{{ marks | tojson }}</script>
+{% endblock %}
+
+{% block content %}
+<section>
+    <div class="section-title">
+        <h1 class="major"><img class="page-icon" src="{{ url_for('static', filename='assets/img/icons/leetcode.svg') }}" alt="">Top Interview 150 Tracker</h1>
+        <button type="button" class="button small lc-danger" id="lc-reset-all">Reset All Progress</button>
+    </div>
+
+    <p class="muted lc-howto">
+        The loop: open a problem, spend <strong>20 minutes</strong> on it without looking at the
+        solution, then compare your approach to the accepted one and decide &mdash; mark it
+        <strong>Yes</strong> if you got it, <strong>No</strong> if it needs another pass. Marks are
+        mutually exclusive and saved to your account, so this board follows you to any device.
+    </p>
+
+    <div class="lc-import-banner" id="lc-import-banner" hidden>
+        <span>Found a saved board in this browser from before you had an account.</span>
+        <span class="lc-import-actions">
+            <button type="button" class="button small primary" id="lc-import-yes">Import it</button>
+            <button type="button" class="button small" id="lc-import-no">Dismiss</button>
+        </span>
+    </div>
+
+    <div class="lc-panels">
+        <div class="lc-panel lc-progress">
+            <div class="lc-stats">
+                <div class="lc-stat lc-stat-yes">
+                    <span class="lc-stat-value" id="lc-count-yes">0</span>
+                    <span class="lc-stat-label">Completed <span class="muted" id="lc-total-a">/ {{ total }}</span></span>
+                </div>
+                <div class="lc-stat lc-stat-no">
+                    <span class="lc-stat-value" id="lc-count-no">0</span>
+                    <span class="lc-stat-label">Needs Review <span class="muted" id="lc-total-b">/ {{ total }}</span></span>
+                </div>
+                <div class="lc-stat lc-stat-unattempted">
+                    <span class="lc-stat-value" id="lc-count-unattempted">{{ total }}</span>
+                    <span class="lc-stat-label">Unattempted <span class="muted" id="lc-total-c">/ {{ total }}</span></span>
+                </div>
+                <div class="lc-stat lc-stat-pct">
+                    <span class="lc-stat-value" id="lc-pct">0%</span>
+                    <span class="lc-stat-label">Progress</span>
+                </div>
+            </div>
+            <div class="lc-progressbar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="lc-progressbar">
+                <div class="lc-progressbar-fill" id="lc-progressbar-fill"></div>
+            </div>
+        </div>
+
+        <div class="lc-panel lc-timer" id="lc-timer">
+            <span class="lc-timer-display" id="lc-timer-display">20:00</span>
+            <div class="lc-timer-controls">
+                <button type="button" class="button small primary" id="lc-timer-start">Start 20:00 Timer</button>
+                <button type="button" class="button small" id="lc-timer-pause" hidden>Pause</button>
+                <button type="button" class="button small" id="lc-timer-reset">Reset</button>
+            </div>
+            <p class="lc-timer-context muted" id="lc-timer-context">No problem selected &mdash; press Start, or use the <span class="mono">20:00</span> button on any row.</p>
+        </div>
+    </div>
+
+    <p class="lc-sync-note muted" id="lc-sync-note" role="status" aria-live="polite"></p>
+
+    <div class="data-table-wrapper">
+        <div class="data-table-scroll lc-table-scroll">
+            <table class="traffic-table lc-table">
+                <thead>
+                    <tr>
+                        <th scope="col">LeetCode Problem</th>
+                        <th scope="col" class="lc-col-mark">Yes</th>
+                        <th scope="col" class="lc-col-mark">No</th>
+                    </tr>
+                </thead>
+                {% for topic in topics %}
+                <tbody class="lc-topic">
+                    <tr class="lc-topic-row">
+                        <th scope="colgroup" colspan="3">{{ topic.name }} <span class="muted">({{ topic.problems|length }})</span></th>
+                    </tr>
+                    {% for p in topic.problems %}
+                    {% set mark = marks.get(p.slug) %}
+                    <tr class="lc-row{% if mark == 'yes' %} lc-row-yes{% elif mark == 'no' %} lc-row-no{% endif %}" data-slug="{{ p.slug }}">
+                        <td class="lc-problem">
+                            <a class="lc-name" href="{{ p.url }}" target="_blank" rel="noopener">{{ p.title }}</a>
+                            <span class="lc-diff lc-diff-{{ p.difficulty|lower }}">{{ p.difficulty }}</span>
+                            <button type="button" class="lc-focus mono" data-slug="{{ p.slug }}" data-title="{{ p.title }}" title="Start a 20-minute attempt on {{ p.title }}">20:00</button>
+                        </td>
+                        <td class="lc-mark-cell">
+                            <label class="lc-check">
+                                <input type="checkbox" class="lc-yes" data-slug="{{ p.slug }}" aria-label="Mark {{ p.title }} as completed"{% if mark == 'yes' %} checked{% endif %}>
+                                <span class="lc-box" aria-hidden="true"></span>
+                            </label>
+                        </td>
+                        <td class="lc-mark-cell">
+                            <label class="lc-check">
+                                <input type="checkbox" class="lc-no" data-slug="{{ p.slug }}" aria-label="Mark {{ p.title }} as needs review"{% if mark == 'no' %} checked{% endif %}>
+                                <span class="lc-box" aria-hidden="true"></span>
+                            </label>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                {% endfor %}
+            </table>
+        </div>
+    </div>
+</section>
+
+<dialog class="lc-dialog" id="lc-reset-dialog" aria-labelledby="lc-reset-title">
+    <h2 id="lc-reset-title">Reset all progress?</h2>
+    <p>Are you sure you want to reset all LeetCode progress? This will uncheck every problem.
+       The problem list itself is not affected.</p>
+    <div class="lc-dialog-actions">
+        <button type="button" class="button small" id="lc-reset-cancel">Cancel</button>
+        <button type="button" class="button small lc-danger" id="lc-reset-confirm">Reset All</button>
+    </div>
+</dialog>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/leetcode_tracker.js') }}"></script>
+{% endblock %}

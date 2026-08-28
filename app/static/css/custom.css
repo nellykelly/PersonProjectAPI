@@ -2138,3 +2138,582 @@ html.skip-welcome #welcome-gate {
     margin-top: 0.15rem;
   }
 }
+
+/* ==========================================================================
+   LeetCode Top Interview 150 tracker  (/leetcode-150)
+   A client-only progress board: pick a problem, run the 20-minute timer,
+   then mark it Yes or No. State lives in localStorage; these styles just
+   layer the two mark states (green / red) and the timer + progress panel
+   onto the shared dark theme and the existing .traffic-table treatment.
+   ========================================================================== */
+
+.lc-howto {
+  max-width: 60rem;
+  line-height: 1.55;
+  margin-top: 0.4rem;
+}
+
+/* ---------- top panels: progress + timer ---------- */
+
+.lc-panels {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 1.25rem;
+  margin: 1.5rem 0 1.75rem;
+}
+
+.lc-panel {
+  border: 1px solid var(--surface-border);
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 1.1rem 1.25rem;
+}
+
+.lc-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+}
+
+.lc-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.lc-stat-value {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 1.5rem;
+  font-weight: 500;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.lc-stat-label {
+  font-size: 0.68rem;
+  color: var(--fg-light);
+  text-transform: uppercase;
+  letter-spacing: 0.04rem;
+}
+
+.lc-stat-yes .lc-stat-value { color: var(--good); }
+.lc-stat-no .lc-stat-value { color: var(--bad); }
+.lc-stat-pct .lc-stat-value { color: var(--accent); }
+
+.lc-progressbar {
+  margin-top: 1rem;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.lc-progressbar-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--good));
+  transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-progressbar-fill { transition: none; }
+}
+
+/* ---------- 20-minute timer ---------- */
+
+.lc-timer {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.lc-timer-display {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 2.6rem;
+  font-weight: 500;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  transition: color 0.2s ease;
+}
+
+.lc-timer-running .lc-timer-display { color: var(--accent); }
+
+.lc-timer-done .lc-timer-display {
+  color: var(--bad);
+  animation: lc-timer-flash 1s ease-in-out 3;
+}
+
+@keyframes lc-timer-flash {
+  50% { opacity: 0.3; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-timer-done .lc-timer-display { animation: none; }
+}
+
+.lc-timer-controls {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* The vendored theme sets `button { display: inline-block }`, which beats
+   the UA `[hidden]` rule -- without this the Pause / Start buttons the JS
+   toggles with .hidden stay on screen. */
+.lc-page [hidden] {
+  display: none !important;
+}
+
+.lc-timer-context {
+  font-size: 0.8rem;
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ---------- Reset All (deliberately styled as a destructive action) ---------- */
+
+.lc-page .lc-danger.button,
+.lc-page .button.lc-danger {
+  box-shadow: inset 0 0 0 1px var(--bad);
+  color: var(--bad) !important;
+}
+
+.lc-page .lc-danger.button:hover,
+.lc-page .button.lc-danger:hover {
+  background-color: rgba(248, 113, 113, 0.12);
+}
+
+/* ---------- the table ---------- */
+
+.lc-table-scroll {
+  max-height: min(72vh, 820px);
+}
+
+.lc-table {
+  table-layout: fixed;
+}
+
+.lc-table thead th.lc-col-mark {
+  width: 76px;
+  text-align: center;
+}
+
+/* Topic band inside the tbody -- not sticky (only the real <thead> is),
+   just a visual divider so 150 rows stay scannable by group. */
+.lc-topic-row th {
+  background: #171a1e;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06rem;
+  color: var(--fg-light);
+  text-align: left;
+  padding: 0.5rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.lc-topic:first-of-type .lc-topic-row th { border-top: 0; }
+
+.lc-row {
+  transition: background-color 0.25s ease;
+}
+
+.lc-problem {
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.lc-name {
+  font-weight: 500;
+  border-bottom: 1px solid transparent;
+}
+
+.lc-name:hover {
+  border-bottom-color: currentColor;
+}
+
+.lc-diff {
+  display: inline-block;
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  margin-left: 0.55rem;
+  vertical-align: middle;
+}
+
+.lc-diff-easy { color: var(--good); }
+.lc-diff-medium { color: var(--warn); }
+.lc-diff-hard { color: var(--bad); }
+
+/* Per-row "20:00" -> set this problem as the timer's current one. Hidden
+   until row hover on pointer devices; always shown where there's no hover. */
+.lc-focus {
+  appearance: none;
+  height: auto;
+  line-height: 1.4;
+  letter-spacing: normal;
+  text-transform: none;
+  box-shadow: none;
+  border: 1px solid var(--surface-border);
+  background: var(--surface);
+  color: var(--fg-light) !important;
+  font-size: 0.66rem;
+  padding: 0.12rem 0.45rem;
+  border-radius: 4px;
+  margin-left: 0.55rem;
+  vertical-align: middle;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.lc-row:hover .lc-focus,
+.lc-focus:focus-visible {
+  opacity: 1;
+}
+
+.lc-focus:hover {
+  color: var(--accent) !important;
+  border-color: var(--accent);
+}
+
+@media (hover: none) {
+  .lc-focus { opacity: 1; }
+}
+
+/* ---------- Yes / No cells: big hit area, custom box ---------- */
+
+.lc-mark-cell {
+  position: relative;
+  padding: 0;
+  text-align: center;
+}
+
+.lc-check {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 0.35rem;
+  cursor: pointer;
+}
+
+/* Override the vendored main.css checkbox reset (float/opacity/z-index:-1):
+   here the real input covers the whole cell, invisible but clickable. */
+.lc-page .lc-check input[type="checkbox"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  float: none;
+  opacity: 0;
+  z-index: 1;
+  cursor: pointer;
+}
+
+.lc-box {
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  border: 1.5px solid var(--border-strong);
+  background: rgba(255, 255, 255, 0.03);
+  pointer-events: none;
+  transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.lc-box::after {
+  content: "";
+  display: block;
+  width: 6px;
+  height: 11px;
+  margin: 1px auto 0;
+  border: solid transparent;
+  border-width: 0 2.5px 2.5px 0;
+  transform: rotate(45deg);
+  transition: border-color 0.18s ease;
+}
+
+.lc-yes:checked ~ .lc-box {
+  background: var(--good);
+  border-color: var(--good);
+}
+
+.lc-no:checked ~ .lc-box {
+  background: var(--bad);
+  border-color: var(--bad);
+}
+
+.lc-yes:checked ~ .lc-box::after,
+.lc-no:checked ~ .lc-box::after {
+  border-color: #0d1117;
+}
+
+.lc-page .lc-check input[type="checkbox"]:focus-visible ~ .lc-box {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+/* ---------- row state tints ---------- */
+
+.lc-table tbody tr.lc-row-yes {
+  background: rgba(74, 222, 128, 0.1);
+}
+
+.lc-table tbody tr.lc-row-yes:hover {
+  background: rgba(74, 222, 128, 0.16);
+}
+
+.lc-table tbody tr.lc-row-no {
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.lc-table tbody tr.lc-row-no:hover {
+  background: rgba(248, 113, 113, 0.16);
+}
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 800px) {
+  .lc-panels { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 480px) {
+  .lc-stats { grid-template-columns: repeat(2, 1fr); }
+  .lc-timer-display { font-size: 2.2rem; }
+  .lc-table thead th.lc-col-mark { width: 58px; }
+  .lc-focus { display: none; }
+}
+
+.lc-dialog {
+  max-width: 26rem;
+  width: calc(100% - 2rem);
+  border: 1px solid var(--surface-border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--fg);
+  padding: 1.5rem;
+}
+
+.lc-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.lc-dialog h2 {
+  margin: 0 0 0.6rem;
+  font-size: 1.15rem;
+}
+
+.lc-dialog p {
+  margin: 0 0 1.25rem;
+  color: var(--fg-light);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.lc-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+/* ==========================================================================
+   Accounts -- header auth links, login/register pages, and the tracker's
+   import banner + save-status line. Accounts exist only to give the
+   LeetCode 150 tracker a per-user board (app/blueprints/auth).
+   ========================================================================== */
+
+/* ---------- header auth cluster ---------- */
+
+.site-auth {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  font-size: 0.8rem;
+}
+
+.site-auth a {
+  color: var(--fg-light);
+  border-bottom: 1px solid transparent;
+}
+
+.site-auth a:hover {
+  color: var(--fg);
+  border-bottom-color: currentColor;
+}
+
+.site-auth-name {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.site-auth-form {
+  display: inline;
+  margin: 0;
+}
+
+/* A submit button that reads as a plain link -- overrides the vendored
+   theme's heavy `button`/`.button` styling. */
+.site-auth-link {
+  -webkit-appearance: none;
+  appearance: none;
+  height: auto;
+  line-height: 1.4;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  background: none;
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: inherit;
+  color: var(--fg-light) !important;
+  cursor: pointer;
+}
+
+.site-auth-link:hover {
+  color: var(--fg) !important;
+  background: none;
+  text-decoration: underline;
+}
+
+/* ---------- login / register pages ---------- */
+
+.auth-section {
+  display: flex;
+  justify-content: center;
+  padding: 2rem 0 3rem;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 26rem;
+  border: 1px solid var(--surface-border);
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 2rem 1.9rem;
+}
+
+.auth-card h1.major {
+  margin-bottom: 0.4rem;
+}
+
+.auth-card form {
+  margin-top: 1.4rem;
+}
+
+.auth-card label {
+  display: block;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08rem;
+  color: var(--fg-light);
+  margin: 0 0 0.4rem;
+}
+
+.auth-card input[type="text"],
+.auth-card input[type="password"] {
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+.auth-card .field-hint {
+  margin: -0.7rem 0 1rem;
+  font-size: 0.75rem;
+  color: var(--fg-light);
+}
+
+.auth-card .field-error {
+  margin: -0.7rem 0 1rem;
+  font-size: 0.8rem;
+  color: var(--bad);
+}
+
+.auth-card .auth-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 0.85rem;
+  color: var(--fg);
+  margin-bottom: 1.2rem;
+  cursor: pointer;
+}
+
+/* Undo the vendored theme's hidden-checkbox reset so the "keep me signed
+   in" box is a real, visible control. */
+.auth-card .auth-checkbox input[type="checkbox"] {
+  -webkit-appearance: checkbox;
+  appearance: checkbox;
+  position: static;
+  float: none;
+  opacity: 1;
+  width: auto;
+  height: auto;
+  margin: 0;
+  z-index: auto;
+}
+
+.auth-card .button.fit {
+  margin-top: 0.25rem;
+}
+
+.auth-alt {
+  margin-top: 1.3rem;
+  font-size: 0.85rem;
+}
+
+/* ---------- tracker: import banner + save-status ---------- */
+
+.lc-import-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  border: 1px solid var(--accent);
+  background: var(--accent-dim);
+  border-radius: 8px;
+  padding: 0.85rem 1.1rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.88rem;
+}
+
+.lc-import-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.lc-sync-note {
+  min-height: 1.2em;
+  margin: 0 0 1rem;
+  font-size: 0.8rem;
+  transition: color 0.15s ease;
+}
+
+.lc-sync-note.lc-sync-err {
+  color: var(--bad);
+}
+
+.lc-sync-note.lc-sync-ok {
+  color: var(--good);
+}
+
+@media (max-width: 640px) {
+  .site-auth {
+    width: 100%;
+    order: 3;
+    gap: 1.1rem;
+  }
+}

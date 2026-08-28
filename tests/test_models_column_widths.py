@@ -19,8 +19,10 @@ constants the app writes from -- so it catches the problem under SQLite
 just as well as it would under Postgres.
 """
 import pytest
+from werkzeug.security import generate_password_hash
 
 from app import models
+from app.blueprints.leetcode.problems import iter_problems
 from app.services import risk_models, validators
 
 # Columns whose values come from a fixed, known set. The list on the right
@@ -43,6 +45,10 @@ ENUMERABLE_COLUMNS = [
     (models.Character, "hand_type_id", sorted(validators.HAND_TYPE_IDS)),
     (models.PipelineRun, "stage", list(models.PIPELINE_STAGES)),
     (models.PipelineRun, "status", ["pass", "fail"]),
+    # LeetCode 150 tracker board. slug is one of the fixed problem slugs
+    # in app/blueprints/leetcode/problems.py; mark is yes/no.
+    (models.LeetCodeProgress, "slug", [p["slug"] for p in iter_problems()]),
+    (models.LeetCodeProgress, "mark", ["yes", "no"]),
     # Every key the model registry can hand back, so registering a model
     # with a longer key than the column holds fails here rather than in
     # production. Read from the registry itself, not a copy of it.
@@ -75,6 +81,14 @@ BOUNDED_COLUMNS = [
     # this just confirms the column can actually hold what that constant
     # promises rather than duplicating the number as a bare literal.
     (models.TimedSquaresScore, "player_name", validators.MAX_ARCADE_NAME_LENGTH),
+    # Accounts. username/username_ci are capped by the form + model at
+    # USERNAME_MAX; username_ci is just the lowercase of username so it
+    # can't be longer. password_hash holds whatever Werkzeug's current
+    # default method emits -- computed here so it tracks the library
+    # version rather than a guessed literal.
+    (models.User, "username", models.User.USERNAME_MAX),
+    (models.User, "username_ci", models.User.USERNAME_MAX),
+    (models.User, "password_hash", len(generate_password_hash("width-probe"))),
 ]
 
 

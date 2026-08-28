@@ -5,6 +5,14 @@ tzdata>=2024.1
 Flask>=3.0,<4.0
 Flask-SQLAlchemy>=3.1,<4.0
 Flask-Limiter>=3.8,<4.0
+
+# Accounts: a username/password login gating the LeetCode 150 tracker so
+# each account keeps its own board (app/blueprints/auth, models.User /
+# models.LeetCodeProgress). Flask-WTF is here for its CSRF protection on
+# the auth + tracker-progress POSTs -- the older public-write blueprints
+# stay csrf-exempt for now (see create_app).
+Flask-Login>=0.6,<0.7
+Flask-WTF>=1.2,<2.0
 yfinance>=0.2.40,<0.3.0
 requests>=2.32,<3.0
 python-dotenv>=1.0,<2.0

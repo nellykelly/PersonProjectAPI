@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Create account{% endblock %}
+{% block meta_description %}Create an account.{% endblock %}
+
+{% block content %}
+<section class="auth-section">
+    <div class="auth-card">
+        {% if closed %}
+        <h1 class="major">Registration closed</h1>
+        <p class="muted">New sign-ups are turned off right now.</p>
+        <p class="muted auth-alt"><a href="{{ url_for('auth.login') }}">Log in</a> if you already have an account.</p>
+        {% else %}
+        <h1 class="major">Create account</h1>
+        <p class="muted">Pick a username and password. No email needed &mdash; but there's no
+            password reset either, so keep it safe.</p>
+
+        <form method="post" action="{{ url_for('auth.register') }}">
+            {{ form.csrf_token }}
+
+            <label for="username">Username</label>
+            {{ form.username(id="username", autocomplete="username", autofocus=true) }}
+            <p class="field-hint">3&ndash;32 characters. Letters, numbers, dashes, underscores.</p>
+            {% for e in form.username.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+
+            <label for="password">Password</label>
+            {{ form.password(id="password", autocomplete="new-password") }}
+            <p class="field-hint">At least 8 characters.</p>
+            {% for e in form.password.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+
+            <label for="confirm">Confirm password</label>
+            {{ form.confirm(id="confirm", autocomplete="new-password") }}
+            {% for e in form.confirm.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+
+            {{ form.submit(class="button primary fit") }}
+        </form>
+
+        <p class="muted auth-alt">Already have an account? <a href="{{ url_for('auth.login') }}">Log in</a>.</p>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

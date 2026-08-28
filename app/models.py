@@ -1,5 +1,8 @@
 from datetime import datetime, timezone
 
+from flask_login import UserMixin
+from werkzeug.security import check_password_hash, generate_password_hash
+
 from app.extensions import db
 
 
@@ -663,3 +666,81 @@ class TimedSquaresScore(db.Model):
             "turns_survived": self.turns_survived,
             "created_at": self.created_at.isoformat(),
         }
+
+
+class User(UserMixin, db.Model):
+    """A login account. The only thing accounts currently unlock is the
+    LeetCode 150 tracker, where each user keeps their own board
+    (LeetCodeProgress rows) -- everything else on the site is still
+    anonymous/public by design.
+
+    Username, not email: there is no email on file and no password-reset
+    flow. If a user forgets their password the owner resets it with the
+    `flask set-password` CLI command (see app/__init__.py). `username` is
+    stored as the user typed it for display; `username_ci` is its
+    lowercase form and carries the uniqueness constraint, so "Nelson" and
+    "nelson" can't both exist.
+    """
+
+    __tablename__ = "users"
+
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(32), nullable=False)
+    username_ci = db.Column(db.String(32), nullable=False, unique=True, index=True)
+    # Werkzeug PBKDF2 (scrypt-capable) hash string -- same scheme the
+    # /documentation gate already uses. 255 is comfortably above the
+    # ~162-char length Werkzeug's default method produces.
+    password_hash = db.Column(db.String(255), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+    last_login_at = db.Column(db.DateTime, nullable=True)
+
+    progress = db.relationship(
+        "LeetCodeProgress",
+        backref="user",
+        lazy="dynamic",
+        cascade="all, delete-orphan",
+    )
+
+    USERNAME_MIN = 3
+    USERNAME_MAX = 32
+    PASSWORD_MIN = 8
+
+    @staticmethod
+    def normalize_username(raw: str) -> str:
+        return (raw or "").strip().lower()
+
+    def set_username(self, raw: str) -> None:
+        self.username = (raw or "").strip()
+        self.username_ci = self.normalize_username(raw)
+
+    def set_password(self, raw: str) -> None:
+        self.password_hash = generate_password_hash(raw)
+
+    def check_password(self, raw: str) -> bool:
+        return check_password_hash(self.password_hash, raw)
+
+    def __repr__(self) -> str:  # pragma: no cover - debug aid only
+        return f"<User {self.username!r}>"
+
+
+class LeetCodeProgress(db.Model):
+    """One (user, problem) mark on the Top Interview 150 tracker. A row
+    exists only for a problem the user has marked; `mark` is 'yes'
+    (completed) or 'no' (needs review). Unattempted = no row. Replaces the
+    localStorage-only state the tracker shipped with -- now that the page
+    is login-gated the board lives here, one set per account.
+    """
+
+    __tablename__ = "leetcode_progress"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    # Matches the problem slugs in app/blueprints/leetcode/problems.py --
+    # longest today is 57 chars, 80 leaves headroom.
+    slug = db.Column(db.String(80), nullable=False)
+    mark = db.Column(db.String(3), nullable=False)  # 'yes' | 'no'
+    updated_at = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint("user_id", "slug", name="uq_leetcode_progress_user_slug"),
+    )

@@ -70,6 +70,16 @@ PROJECTS = [
         "tags": ["Canvas", "Vanilla JS", "Public leaderboard"],
         "icon": "assets/img/icons/timed-squares.svg",
     },
+    {
+        "slug": "leetcode-150",
+        "title": "Top Interview 150 Tracker",
+        "blurb": "A personal interview-prep dashboard over LeetCode's official Top Interview "
+        "150. Pick a problem, run the 20-minute timer, compare to the solution, then mark it "
+        "Yes or No -- progress is saved in the browser, no login.",
+        "endpoint": "leetcode.index",
+        "tags": ["Vanilla JS", "localStorage", "No backend state"],
+        "icon": "assets/img/icons/leetcode.svg",
+    },
 ]
 
 # Smaller, earlier projects -- not part of this site's live demos, just

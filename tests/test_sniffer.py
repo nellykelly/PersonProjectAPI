@@ -8,6 +8,12 @@ def test_sniffer_page_loads(client):
 
 
 def test_inbound_requests_are_logged(client):
+    # Start from a cleared buffer -- the module-level ring buffer fills up
+    # over a full test run, and "about.index" (hit once here) would
+    # otherwise fall out of the top-endpoints list behind the rest of the
+    # suite's traffic. Same reason as
+    # test_inbound_requests_group_by_endpoint_not_raw_path below.
+    net_monitor.reset_for_tests()
     client.get("/about")
     resp = client.get("/projects/network-sniffer/api/analytics")
     assert resp.status_code == 200

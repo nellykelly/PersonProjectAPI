@@ -87,6 +87,22 @@
             <a class="icon solid fa-envelope" href="mailto:{{ EMAIL }}" title="Email" aria-label="Email"><span class="label">Email</span></a>
         </div>
 
+        {# Accounts exist only to give the LeetCode 150 tracker a per-user
+           board -- see app/blueprints/auth. Sits outside .site-nav so it
+           stays visible on mobile regardless of the hamburger state. #}
+        <div class="site-auth">
+            {% if current_user.is_authenticated %}
+            <span class="site-auth-name">{{ current_user.username }}</span>
+            <form method="post" action="{{ url_for('auth.logout') }}" class="site-auth-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="site-auth-link">Log out</button>
+            </form>
+            {% else %}
+            <a href="{{ url_for('auth.login') }}">Log in</a>
+            <a href="{{ url_for('auth.register') }}">Register</a>
+            {% endif %}
+        </div>
+
         {# Sits outside .site-nav on purpose -- it must stay visible on
            mobile regardless of the hamburger's open/closed state, and
            only makes sense as an entry point on the one page (Contact)
