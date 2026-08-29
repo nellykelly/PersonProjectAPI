@@ -71,6 +71,40 @@ def create_app(config_name: str | None = None) -> Flask:
             session["session_id"] = str(uuid.uuid4())
             session.permanent = True
 
+    @app.after_request
+    def set_security_headers(response):
+        """Baseline hardening headers on every response. HTTPS itself is
+        Caddy's job (automatic cert + HTTP->HTTPS redirect); this adds the
+        headers Caddy doesn't set on its own.
+
+        CSP ships as report-only for now: the site has inline bootstrap
+        scripts in base.html and pulls Chart.js / socket.io / mermaid from
+        jsDelivr + cdn.socket.io, so an enforcing policy needs a pass to
+        add nonces/SRI first. Report-only surfaces violations without
+        breaking anything.
+        """
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault(
+            "Permissions-Policy", "geolocation=(), microphone=(), camera=(), interest-cohort=()"
+        )
+        if not app.debug and not app.testing:
+            response.headers.setdefault(
+                "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+            )
+        response.headers.setdefault(
+            "Content-Security-Policy-Report-Only",
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.socket.io; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "img-src 'self' data:; "
+            "connect-src 'self'; "
+            "frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+        )
+        return response
+
     @app.context_processor
     def inject_site_links():
         return {

@@ -205,6 +205,14 @@ class ProductionConfig(Config):
     SESSION_COOKIE_SECURE = True
     SESSION_COOKIE_SAMESITE = "Lax"
 
+    # Flask-Login's "keep me signed in" cookie is separate from the session
+    # cookie and does NOT inherit SESSION_COOKIE_* -- without these it would
+    # be sent over plain HTTP and readable by JS. HttpOnly is already the
+    # Flask-Login default; set explicitly so it can't regress silently.
+    REMEMBER_COOKIE_SECURE = True
+    REMEMBER_COOKIE_HTTPONLY = True
+    REMEMBER_COOKIE_SAMESITE = "Lax"
+
 
 class TestingConfig(Config):
     TESTING = True
