@@ -1,4 +1,5 @@
 LISTED_PROJECTS = (
+    ("Trading Simulator", "/projects/trading-simulator"),
     ("Company Scorer", "/projects/qr-quant-scraper"),
     ("Pipeline World", "/projects/pipeline-world"),
     ("SRE Infra Layer", "/projects/sre-infra"),
@@ -6,10 +7,6 @@ LISTED_PROJECTS = (
     ("Timed-Squares", "/projects/timed-squares"),
     ("Top Interview 150 Tracker", "/leetcode-150"),
 )
-
-# On hold: still runs, still reachable at its own URL, but must not be
-# linked from anywhere on the site.
-ON_HOLD_PATH = "/projects/trading-simulator"
 
 
 def test_projects_landing_lists_every_active_project(client):
@@ -26,26 +23,12 @@ def test_projects_landing_links_resolve(client):
         assert path.encode() in resp.data
 
 
-def test_projects_landing_does_not_link_the_on_hold_project(client):
-    resp = client.get("/projects")
-    assert ON_HOLD_PATH.encode() not in resp.data
-    assert b"Trading Simulator" not in resp.data
-
-
-def test_landing_page_does_not_link_the_on_hold_project(client):
-    """The home page's featured grid is built from the same filtered list,
-    so a project put on hold drops off both without a second edit."""
+def test_landing_page_links_the_trading_simulator(client):
+    """The home page's featured grid is built from the same filtered list
+    as /projects, so a listed project shows up on both."""
     resp = client.get("/")
-    assert ON_HOLD_PATH.encode() not in resp.data
-    assert b"Trading Simulator" not in resp.data
-
-
-def test_on_hold_project_still_works_at_its_own_url(client):
-    """Hidden from listings is a display decision, not access control --
-    the routes are untouched and a direct link still works."""
-    resp = client.get(ON_HOLD_PATH)
-    assert resp.status_code == 200
-    assert b"On hold" in resp.data
+    assert b"/projects/trading-simulator" in resp.data
+    assert b"Trading Simulator" in resp.data
 
 
 def test_project_counts_on_the_landing_page_match_what_is_listed(client):

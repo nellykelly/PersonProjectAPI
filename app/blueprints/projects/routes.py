@@ -11,11 +11,6 @@ PROJECTS = [
         "endpoint": "trading.index",
         "tags": ["Flask", "yfinance", "SQLite", "Black-Scholes"],
         "icon": "assets/img/icons/trading.svg",
-        # On hold: kept running and reachable at its own URL, but not
-        # listed or linked anywhere on the site. Left in this list rather
-        # than deleted so the metadata survives and un-holding it is a
-        # one-line change -- see `listed_projects()`.
-        "on_hold": True,
     },
     {
         "slug": "qr-quant-scraper",

@@ -8,7 +8,7 @@ from app.blueprints.projects.routes import listed_projects
 # just a taste of it. Filtered through listed_projects(), so a project
 # put on hold drops off the landing page too rather than needing to be
 # removed from this tuple as well and being missed.
-FEATURED_PROJECT_SLUGS = ("pipeline-world", "qr-quant-scraper", "timed-squares")
+FEATURED_PROJECT_SLUGS = ("trading-simulator", "pipeline-world", "qr-quant-scraper", "timed-squares")
 
 
 @bp.route("/")
