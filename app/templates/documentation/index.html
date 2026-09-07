@@ -85,7 +85,13 @@
       <li><a href="#s29"><i>29</i><span>Containerisation</span></a></li>
       <li><a href="#s30"><i>30</i><span>Deployment</span></a></li>
     </ol>
-    <h2>Part VIII</h2>
+    <h2>Part VIII &mdash; Infrastructure</h2>
+    <ol>
+      <li><a href="#s31"><i>31</i><span>How Docker works</span></a></li>
+      <li><a href="#s32"><i>32</i><span>How Redis works</span></a></li>
+      <li><a href="#s33"><i>33</i><span>How Caddy works</span></a></li>
+    </ol>
+    <h2>Part IX</h2>
     <ol>
       <li><a href="{{ url_for('documentation.interview') }}"><i>&#128274;</i><span>Interview questions</span></a></li>
     </ol>
@@ -1420,6 +1426,9 @@ ORDER BY day</code></pre>
         <tr><td>L-mover</td><td>Knight-style hop; always makes net progress along its spawn-edge axis, perpendicular sign chosen fresh each turn</td></tr>
         <tr><td>Diagonal</td><td>1 cell/turn diagonally, keeping the inward component from its spawn edge</td></tr>
         <tr><td>Bouncer</td><td>Reverses the instant its <i>next</i> step would leave the board &mdash; decided at telegraph time, so it never executes an exiting move</td></tr>
+        <tr><td>Zigzag</td><td>Diagonal, but the perpendicular sign flips every turn instead of staying fixed &mdash; traces an actual zigzag, not a straight line</td></tr>
+        <tr><td>Chaser</td><td>No fixed pattern &mdash; re-aims one cell toward the player's current position every turn, along whichever axis is further off</td></tr>
+        <tr><td>Turret</td><td>Never moves; counts down a 2-4 turn fuse, then fires a full row/column beam along its spawn-edge axis, telegraphed a full turn ahead as a warning stripe</td></tr>
       </tbody>
     </table>
   </div>
@@ -1767,12 +1776,12 @@ verify live via the real domain</code></pre>
     handle_path /static/* {
         root * /srv/static
         file_server
-        header Cache-Control "public, max-age=3600"
+        header Cache-Control "no-cache"
     }
     reverse_proxy web:8000
 }</code></pre>
 
-  <p>Automatic Let's Encrypt certificates with no certbot or cron. <code>app/static</code> is bind-mounted read-only into the Caddy container so <code>file_server</code> answers asset requests directly.</p>
+  <p>Automatic Let's Encrypt certificates with no certbot or cron. <code>app/static</code> is bind-mounted read-only into the Caddy container so <code>file_server</code> answers asset requests directly. The asset filenames carry no content hash, so the header is <code>no-cache</code> &mdash; store but revalidate &mdash; rather than <code>max-age</code>, which once served a stale script for an hour during a debugging session. The full reasoning, and how Caddy fits the stack, is in &sect;33.</p>
 
   <div class="note gotcha">
     <b class="tag">The static-asset bottleneck</b>
@@ -1795,6 +1804,159 @@ verify live via the real domain</code></pre>
 
 <div class="part">
   <span class="part-label">Part VIII</span>
+  <h2>Infrastructure</h2>
+</div>
+
+<section class="chunk" id="s31">
+  <h3><i>31</i><span>How Docker works</span></h3>
+
+  <p class="lede">Three concepts carry everything else &mdash; image, container, layer &mdash; and the one thing worth being clear on: a container is a process, not a virtual machine. This section is the tool; &sect;29&ndash;30 are this project's actual Dockerfile and Compose file.</p>
+
+  <h4>The problem it solves</h4>
+  <p>"It works on my machine" is a statement about environment: OS version, system libraries, interpreter version, environment variables, paths. Docker's answer is to package the application <i>with</i> its whole environment into one artefact that runs identically on a laptop, a CI runner and the production VPS. Nothing about the host is assumed.</p>
+
+  <h4>Image, container, layer</h4>
+  <ul>
+    <li><b>Image</b> &mdash; a read-only bundle: a minimal Linux userland plus the app and its dependencies, plus metadata (the command to run, the port, env vars). Built once, never mutated.</li>
+    <li><b>Container</b> &mdash; a running instance of an image. If the image is a class, the container is an object: it takes the image's frozen filesystem, adds one thin writable layer on top, and runs the process named by <code>CMD</code>. Delete the container and that writable layer goes with it. <b>Containers are disposable &mdash; anything written inside one is gone on the next <code>up</code></b>, which is why every deploy here recreates them and why durable data lives in a volume, never in the container.</li>
+    <li><b>Layer</b> &mdash; images build in layers, one per Dockerfile instruction, each cached. A rebuild reuses every layer up to the first whose inputs changed, then rebuilds the rest. That is the entire reason <code>requirements.txt</code> is copied and installed <i>before</i> <code>COPY app</code> (&sect;29): dependencies change rarely, code changes constantly, so the expensive <code>pip install</code> layer stays cached across ordinary edits.</li>
+  </ul>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Concept</th><th>What it is</th><th>Here</th></tr></thead>
+      <tbody>
+        <tr><td><b>Image</b></td><td>Frozen template</td><td><code>personal-site:latest</code>, built from the Dockerfile</td></tr>
+        <tr><td><b>Container</b></td><td>Running instance + writable layer</td><td><code>web</code> and <code>worker</code> &mdash; two containers, one image</td></tr>
+        <tr><td><b>Registry</b></td><td>Where images are stored and pulled</td><td>Docker Hub for the bases (<code>python:3.12-slim</code>, <code>redis:7-alpine</code>, &hellip;); this image is built on the host and never pushed</td></tr>
+        <tr><td><b>Volume</b></td><td>Storage that outlives the container</td><td><code>postgres_data</code> (the database), <code>caddy_data</code> (TLS certs)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>It is not a virtual machine</h4>
+  <p>A container is a normal process on the host, sharing the host's kernel. Three kernel features make it <i>feel</i> isolated:</p>
+  <ul>
+    <li><b>Namespaces</b> &mdash; the process gets its own view of the world: its own PID tree (the gunicorn process is PID 1 inside), its own network interfaces, its own mount table, its own hostname. It cannot see other containers' processes.</li>
+    <li><b>cgroups</b> &mdash; cap and meter CPU, memory and I/O per container.</li>
+    <li><b>Union filesystem</b> &mdash; the writable layer sits over the read-only image layers; writes land on top, the image underneath is untouched.</li>
+  </ul>
+  <div class="note">
+    <b class="tag">Why the non-root user matters</b>
+    <p>A process running as root <i>inside</i> a container is uid 0 on the shared host kernel. A container escape from a root process is a host-root escape. The Dockerfile's <code>appuser</code> (&sect;29) drops that privilege, so the same escape lands as an unprivileged user instead.</p>
+  </div>
+
+  <h4>Networking and service discovery</h4>
+  <p><code>docker compose up</code> creates a private network for the project. Every service joins it and is reachable <b>by its service name as a hostname</b> &mdash; Compose runs an internal DNS resolver that maps <code>postgres</code> and <code>redis</code> to whichever container currently holds that name. That is why the connection strings read <code>@postgres:5432</code> and <code>redis://redis:6379</code>, never <code>localhost</code> and never a hard-coded IP: a recreated container gets a new IP, and the name still resolves.</p>
+  <p>Inside that network every container can reach every other container's ports. The outside world cannot &mdash; unless a port is <i>published</i>:</p>
+<pre><code>caddy             "80:80", "443:443"   reachable from the internet
+web               "8000:8000"          published for local dev; closed at the firewall in prod
+postgres, redis   (no ports:)          internal only, never published</code></pre>
+  <p>So Postgres and Redis have no door facing the internet at all &mdash; not firewalled shut, simply never published.</p>
+
+  <h4>Compose</h4>
+  <p>A single container is rarely a whole system. <code>docker-compose.yml</code> describes all five services declaratively &mdash; images, environment, volumes, dependencies, restart policy &mdash; and <code>docker compose up</code> starts the set in the right order. The mechanics specific to this file (one image / two roles, <code>condition: service_healthy</code>, <code>env_file</code> vs <code>environment</code>, which volume actually matters) are in &sect;29.</p>
+
+  <h4>Where a deploy actually changes things</h4>
+  <p><code>COPY app ./app</code> copies the code and static files <i>into the image at build time</i>. A running container holds a frozen copy. Editing a file on the host &mdash; a template, a stylesheet, <code>base.js</code> &mdash; changes nothing until the image is rebuilt and the container recreated, which is why the deploy loop is <code>git pull &amp;&amp; docker compose up -d --build</code> and not just <code>git pull</code>. The exception is a bind mount: <code>./instance</code> and <code>./Caddyfile</code> are mounted from the host, so edits there are live without a rebuild.</p>
+</section>
+
+<section class="chunk" id="s32">
+  <h3><i>32</i><span>How Redis works</span></h3>
+
+  <p class="lede">An in-memory data structure store, single-threaded on purpose. This project runs one Redis instance for four unrelated jobs; &sect;18, &sect;19 and &sect;26 cover the usage, this section covers the tool.</p>
+
+  <h4>In-memory data structure store</h4>
+  <p>Three load-bearing words:</p>
+  <ul>
+    <li><b>In-memory</b> &mdash; all data lives in RAM. Microsecond reads; capacity bounded by RAM.</li>
+    <li><b>Data structure</b> &mdash; not just strings. Native lists, hashes, sets, sorted sets, counters and streams, with atomic operations on each (<code>INCR</code>, <code>LPUSH</code>, <code>ZADD</code>).</li>
+    <li><b>Store</b> &mdash; a standalone server (its own container here) reached over TCP on 6379.</li>
+  </ul>
+  <p>Effectively a shared, networked dictionary that every process can read and write concurrently and safely.</p>
+
+  <h4>Single-threaded, and why that helps</h4>
+  <p>Redis runs commands on one thread, one at a time. No locks, no interleaving between commands: <b>every command is atomic by construction.</b> <code>INCR counter</code> from fifty clients at once cannot lose an increment. It still clears well over 100k ops/sec because each operation is a RAM access measured in nanoseconds. The discipline that follows: keep every command O(1) or O(log n), because one genuinely slow command (<code>KEYS *</code> over a large keyspace) blocks every other client while it runs.</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Type</th><th>What it is</th><th>Used here for</th></tr></thead>
+      <tbody>
+        <tr><td>String / counter</td><td>Bytes, or a number for <code>INCR</code></td><td>Cache payloads; cache hit/miss counters (&sect;19)</td></tr>
+        <tr><td>List</td><td>Push/pop from either end</td><td>The RQ job queues (&sect;18)</td></tr>
+        <tr><td>Hash, Set, Sorted set</td><td>Field map; unique members; scored members</td><td>Available, not currently used</td></tr>
+        <tr><td>Key TTL</td><td>Automatic per-key expiry</td><td>Rate-limit windows (&sect;26); the 30&nbsp;s world cache (&sect;19)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>Persistence &mdash; and why this instance has none</h4>
+  <p>"In-memory" need not mean "lost on restart". Redis offers two mechanisms: <b>RDB</b> takes periodic binary snapshots of the whole dataset (fast restart, lose whatever changed since the last snapshot), and <b>AOF</b> appends every write command to a log and replays it on restart (much smaller loss window, larger and slower on disk).</p>
+  <p><b>This deployment's <code>redis</code> service declares no volume</b>, so its keyspace is purely ephemeral: a restart starts empty. That is deliberate and acceptable for what it holds &mdash; the cache repopulates on the next miss, a reset rate-limit window is harmless, and the hit/miss counters are only a rollup. The one real casualty is an RQ job sitting in the queue during a restart. If a dropped pipeline job ever mattered, the fix is a volume plus AOF; today it does not.</p>
+
+  <h4>Logical databases</h4>
+  <p>One Redis instance carries sixteen numbered keyspaces (0&ndash;15), selected by the trailing number in the URL. They share the process, memory and config but are separate namespaces. This project uses two:</p>
+<pre><code>REDIS_URL              redis://redis:6379/0    RQ job queues, world cache
+RATELIMIT_STORAGE_URI  redis://redis:6379/1    Flask-Limiter counters</code></pre>
+  <p>So a flood of rate-limit keys in DB&nbsp;1 cannot collide with a queue key in DB&nbsp;0, and either can be flushed without touching the other. It is namespacing between key names, not isolation between processes or memory.</p>
+
+  <h4>Four jobs, one instance</h4>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Use</th><th>Mechanism</th><th>Detail in</th></tr></thead>
+      <tbody>
+        <tr><td>Job queue</td><td><code>web</code> calls <code>enqueue()</code> &rarr; <code>LPUSH</code>; the <code>worker</code> blocks on <code>BRPOP</code> and runs the job in its own container</td><td>&sect;18</td></tr>
+        <tr><td>Rate limiting</td><td>Atomic <code>INCR</code> per IP + route with a TTL matching the window; in Redis so the limit holds across threads and survives a restart</td><td>&sect;26</td></tr>
+        <tr><td>Cache-aside</td><td>Read Redis first; on a miss, query Postgres and <code>SETEX</code> with a 30&nbsp;s TTL; explicit <code>DEL</code> on invalidation</td><td>&sect;19</td></tr>
+        <tr><td>Socket.IO backplane</td><td>Pub/sub so an event emitted in one process reaches clients connected to another &mdash; wired up, and the reason a second <code>web</code> process would even be possible</td><td>&sect;2</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note gotcha">
+    <b class="tag">TTL is set once, not on every hit</b>
+    <p>The rate-limit and SSE-cap counters set their expiry only on <i>first</i> creation. Refreshing it on each increment would push the expiry out forever under sustained traffic, and a leaked count would then never self-heal. Stated already in &sect;26 &mdash; repeated because it is the detail that turns "we use Redis for rate limiting" into a real answer.</p>
+  </div>
+</section>
+
+<section class="chunk" id="s33">
+  <h3><i>33</i><span>How Caddy works</span></h3>
+
+  <p class="lede">The single process the internet talks to. It terminates TLS, proxies everything dynamic to the app, and serves static files off disk itself. This project's actual Caddyfile and its deployment war stories are in &sect;30.</p>
+
+  <h4>The single front door</h4>
+  <p>Every request &mdash; HTML, JSON, static asset, WebSocket &mdash; enters through Caddy before anything else in the stack sees it. <code>web</code>, <code>worker</code>, <code>postgres</code> and <code>redis</code> all speak plain HTTP or TCP on the internal network; TLS exists only on the Caddy&harr;internet hop.</p>
+<pre><code>internet --443--&gt; caddy --&gt; web:8000 (gunicorn) --&gt; postgres / redis
+                    \--&gt; /static/* answered straight off disk, never touches web</code></pre>
+
+  <h4>Automatic HTTPS</h4>
+  <p>Listing the domains as the site address is the entire configuration:</p>
+<pre><code>nelsonkoskela.dev, www.nelsonkoskela.dev {
+    reverse_proxy web:8000
+}</code></pre>
+  <p>On startup Caddy contacts Let's Encrypt, proves control of those names over an ACME challenge, installs the certificate, serves HTTPS, redirects HTTP&rarr;HTTPS, and renews about thirty days before expiry &mdash; no certbot, no cron. The certificate and ACME account key live in the <code>caddy_data</code> volume so a restart does not trigger re-issuance, which counts against Let's Encrypt's rate limits (&sect;29's volume table; &sect;30 for the time a coupled <code>www</code> record dragged the whole order onto the staging CA).</p>
+
+  <h4>Reverse proxy</h4>
+  <p>Anything Caddy does not answer itself it forwards to <code>web:8000</code> over the internal network, adding <code>X-Forwarded-For</code> and <code>X-Forwarded-Proto: https</code> so Flask still sees the real client IP and knows the original request was HTTPS even though it reached gunicorn as plain HTTP. WebSocket and SSE upgrades pass through transparently, which is why the live views work with no extra proxy config.</p>
+
+  <h4>Static files off disk</h4>
+  <p><code>docker-compose.yml</code> bind-mounts <code>./app/static</code> read-only into the Caddy container at <code>/srv/static</code>. A request for <code>/static/js/base.js</code> is answered by Caddy directly from disk and never reaches <code>web</code>. The reason is the eight-thread budget (&sect;2, &sect;26): those threads are shared across every dynamic route and every open SSE stream, and would otherwise also serve the ~15&ndash;20 static requests each page load fires. Caddy's <code>file_server</code> has no such limit and does its own conditional-GET handling. &sect;30 has the incident this fixed.</p>
+
+  <h4>Cache-Control on assets</h4>
+  <p>The static filenames carry no content hash, so nothing about a deploy tells a browser its cached copy is stale. The header is therefore <code>no-cache</code>, not <code>max-age</code>:</p>
+<pre><code>handle_path /static/* {
+    root * /srv/static
+    file_server
+    header Cache-Control "no-cache"
+}</code></pre>
+  <p><code>no-cache</code> does not mean "do not store" &mdash; the browser keeps the file and revalidates with <code>If-None-Match</code>. Caddy answers <code>304</code> from the ETag it already sends, so an unchanged asset costs one small conditional request, and a <i>changed</i> asset &mdash; a redeployed <code>base.js</code> &mdash; is picked up on the very next load. An earlier <code>max-age=3600</code> was caught serving a stale script for an hour while a fix was being debugged against it.</p>
+
+  <h4>Why a separate container</h4>
+  <p>Certificate management, HTTP parsing and static serving are solved problems that do not belong in the Python process. Caddy is a single ~40&nbsp;MB Go binary; it restarts independently, and its proxy or TLS behaviour changes by editing the bind-mounted <code>Caddyfile</code> and reloading &mdash; no image rebuild, no app restart. It is also what lets <code>postgres</code> and <code>redis</code> stay entirely unpublished: the only thing facing the internet is one purpose-built proxy.</p>
+</section>
+
+<div class="part">
+  <span class="part-label">Part IX</span>
   <h2>Interview question bank</h2>
 </div>
 

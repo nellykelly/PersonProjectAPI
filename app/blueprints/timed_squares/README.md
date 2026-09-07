@@ -71,6 +71,9 @@ confident description of a square that no longer looks like that is worse than n
 | L-mover | A knight-style hop each turn: always makes net progress along its spawn-edge axis, with the perpendicular offset's sign chosen fresh each turn -- unpredictable path, but every single hop is exactly telegraphed |
 | Diagonal | 1 cell/turn diagonally, keeping the inward component from its spawn edge |
 | Bouncer | 1 cell/turn straight, reverses direction the instant its *next* step would leave the board -- decided at telegraph time, so it never actually executes a move that would exit |
+| Zigzag | 1 cell/turn diagonally like Diagonal, but the perpendicular sign flips every turn instead of staying fixed -- keeps the same inward component, traces an actual zigzag rather than a straight diagonal line |
+| Chaser | The one obstacle with no fixed pattern: every turn it re-aims one cell toward the player's current position (whichever axis is further off), same as everything else, decided at telegraph time so the arrow shown is exactly what happens next |
+| Turret | Never leaves its spawn cell. Counts down a fuse (2-4 turns); when it hits zero it fires a full row/column beam along the axis implied by its spawn edge, lit up a full turn ahead as a warning stripe, lethal to a player still on that row/column when it resolves |
 
 ## Difficulty scaling
 

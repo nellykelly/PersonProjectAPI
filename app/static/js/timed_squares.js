@@ -21,6 +21,10 @@
     lmover: "#c084fc",
     diagonal: "#2dd4bf",
     bouncer: "#818cf8",
+    chaser: "#4ade80",
+    turret: "#fb923c",
+    turretBeam: "rgba(251, 146, 60, 0.35)",
+    zigzag: "#f472b6",
     grid: "rgba(255,255,255,0.08)",
     glyph: "#0d1117",
     stackBadge: "#facc15",
@@ -33,6 +37,9 @@
     lmover: "L-mover",
     diagonal: "Diagonal",
     bouncer: "Bouncer",
+    chaser: "Chaser",
+    turret: "Turret",
+    zigzag: "Zigzag",
   };
 
   // The telegraph arrow already shows a single obstacle's next move, but
@@ -40,7 +47,15 @@
   // neither is readable -- so the stacked-cell tooltip has to say it in
   // words instead of relying on the glyph.
   function describeMove(move) {
-    if (!move || (!move.dx && !move.dy)) return "stays put";
+    if (!move) return "stays put";
+    // The turret doesn't move at all -- its nextMove instead carries a
+    // fire flag/axis or a turns-left countdown, which needs its own
+    // wording rather than falling through to the dx/dy phrasing below.
+    if (move.fire) return "fires down its " + (move.axis === "row" ? "row" : "column");
+    if (move.turnsLeft != null) {
+      return "fires in " + move.turnsLeft + (move.turnsLeft === 1 ? " turn" : " turns");
+    }
+    if (!move.dx && !move.dy) return "stays put";
     var parts = [];
     if (move.dy) parts.push(Math.abs(move.dy) + " " + (move.dy > 0 ? "down" : "up"));
     if (move.dx) parts.push(Math.abs(move.dx) + " " + (move.dx > 0 ? "right" : "left"));
@@ -52,7 +67,14 @@
   // feel-based tuning" allowance). Both the spawn chance and which
   // edges/types are available widen with turns survived.
   var EDGE_UNLOCK_TURNS = { top: 0, bottom: 12, left: 24, right: 36 };
-  var TYPE_UNLOCK_TURNS = { standard: 0, jumper: 10, bouncer: 18, diagonal: 26, lmover: 34 };
+  // The original five keep their exact unlock turns. zigzag slots in next
+  // to diagonal (same family: fixed diagonal stepping); chaser and turret
+  // -- genuinely new kinds of behavior, not just new geometry -- unlock
+  // last, after every fixed-pattern mover is already in play.
+  var TYPE_UNLOCK_TURNS = {
+    standard: 0, jumper: 10, bouncer: 18, diagonal: 26, lmover: 34,
+    zigzag: 30, chaser: 40, turret: 46,
+  };
   // Spawn rate raised ~25% on top of the original tuning: the forced
   // spawn interval shortened (7 -> 6 turns, ~17% more often on its own)
   // and the probabilistic base/slope both scaled by 1.25 -- the cap
@@ -131,12 +153,62 @@
     return { dx: o.dir.dx * 2, dy: shortSign };
   }
 
+  // Alternates between the two diagonals on either side of its spawn-edge
+  // axis: the inward component (o.dir's fixed axis) never changes, but the
+  // perpendicular sign flips every single turn -- unlike Diagonal, which
+  // locks onto one direction for its whole life, this traces an actual
+  // zigzag rather than a straight diagonal line.
+  function decideZigzag(o) {
+    o.zigSign = -o.zigSign;
+    if (o.primaryAxis === "y") {
+      return { dx: o.zigSign, dy: o.dir.dy };
+    }
+    return { dx: o.dir.dx, dy: o.zigSign };
+  }
+
+  // The one obstacle with no fixed pattern at all: every turn it re-aims
+  // one step toward the player's *current* position (whatever it was
+  // right after their last move -- exactly what's knowable at telegraph
+  // time, same as every other obstacle). No pathfinding, just a single
+  // greedy step along whichever axis is currently further off -- the same
+  // "steer toward, don't route around" philosophy Pipeline World's
+  // Production Town characters use, applied to a hostile instead of a
+  // friendly.
+  function decideChaser(o, player) {
+    var dx = player.x - o.x;
+    var dy = player.y - o.y;
+    if (!dx && !dy) return { dx: 0, dy: 0 };
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      return { dx: dx > 0 ? 1 : -1, dy: 0 };
+    }
+    return { dx: 0, dy: dy > 0 ? 1 : -1 };
+  }
+
+  // Never moves from its spawn cell. Instead counts down a fuse; once it
+  // hits zero, that turn's "move" is a full-row/column beam fired along
+  // whichever axis matches its spawn edge (top/bottom -> a column, left/
+  // right -> a row) -- telegraphed the same way as everything else: this
+  // return value describes what happens on the *next* resolveTurn, so a
+  // firing turn is shown a full turn ahead as a lit-up danger stripe, and
+  // a charging turn shows its countdown instead of an arrow.
+  function decideTurret(o) {
+    o.fuse -= 1;
+    if (o.fuse <= 0) {
+      o.fuse = 2 + randInt(3); // 2-4 turns until the next shot
+      return { dx: 0, dy: 0, fire: true, axis: o.axis };
+    }
+    return { dx: 0, dy: 0, fire: false, turnsLeft: o.fuse };
+  }
+
   var DECIDERS = {
     standard: decideStandard,
     jumper: decideJumper,
     bouncer: decideBouncer,
     diagonal: decideDiagonal,
     lmover: decideLMover,
+    zigzag: decideZigzag,
+    chaser: decideChaser,
+    turret: decideTurret,
   };
 
   // ---------- spawning ----------
@@ -155,7 +227,7 @@
 
   var nextObstacleId = 1;
 
-  function spawnObstacle(turn, occupied) {
+  function spawnObstacle(turn, occupied, player) {
     var edge = pick(availableEdges(turn));
     var type = pick(availableTypes(turn));
     var x, y, dir, primaryAxis;
@@ -167,15 +239,32 @@
 
     if (occupied(x, y)) return null;
 
+    var zigSign;
     if (type === "diagonal") {
       // Keep the edge-derived inward component, randomize the other axis
       // -- always makes net progress across the board, never travels
       // parallel to its spawn edge forever.
       dir = primaryAxis === "y" ? { dx: pick([1, -1]), dy: dir.dy } : { dx: dir.dx, dy: pick([1, -1]) };
+    } else if (type === "zigzag") {
+      zigSign = pick([1, -1]);
+      dir = primaryAxis === "y" ? { dx: zigSign, dy: dir.dy } : { dx: dir.dx, dy: zigSign };
     }
 
     var obstacle = { id: nextObstacleId++, x: x, y: y, type: type, dir: dir, primaryAxis: primaryAxis };
-    obstacle.nextMove = DECIDERS[type](obstacle);
+    if (type === "zigzag") {
+      obstacle.zigSign = zigSign;
+    } else if (type === "turret") {
+      // Fires along the axis its spawn edge implies -- a top/bottom
+      // entrant guards a column, a left/right entrant guards a row --
+      // the same "keep the inward component from the spawn edge" idea
+      // Diagonal already uses, applied to a beam instead of a step.
+      obstacle.axis = primaryAxis === "y" ? "col" : "row";
+      // Decremented once immediately below before the first telegraph is
+      // shown, so the real starting range a player ever sees matches the
+      // steady-state reset range in decideTurret (2-4), not 3-5.
+      obstacle.fuse = 3 + randInt(3);
+    }
+    obstacle.nextMove = DECIDERS[type](obstacle, player);
     return obstacle;
   }
 
@@ -294,7 +383,7 @@
     // Drop anything that exited the board.
     this.obstacles = this.obstacles.filter(function (o) { return inBounds(o.x, o.y); });
 
-    if (this.checkCollision() || this.swappedWithPlayer(origins, playerFrom)) {
+    if (this.checkCollision() || this.swappedWithPlayer(origins, playerFrom) || this.checkBeamCollision()) {
       this.endGame();
       return;
     }
@@ -306,16 +395,28 @@
     for (var i = 0; i < spawnAttempts; i++) {
       var obstacle = spawnObstacle(this.turn, function (x, y) {
         return self.occupiedByObstacle(x, y) || (x === self.player.x && y === self.player.y);
-      });
+      }, this.player);
       if (obstacle) this.obstacles.push(obstacle);
     }
 
     // Re-telegraph every surviving obstacle's next move.
     this.obstacles.forEach(function (o) {
-      o.nextMove = DECIDERS[o.type](o);
+      o.nextMove = DECIDERS[o.type](o, self.player);
     });
 
     this.render();
+  };
+
+  // A turret's beam is checked separately from checkCollision: it isn't
+  // an obstacle occupying the player's cell, it's a full row/column that
+  // was telegraphed as "about to fire" on last render and resolves the
+  // instant the player's new position lands anywhere on that line.
+  TimedSquares.prototype.checkBeamCollision = function () {
+    var player = this.player;
+    return this.obstacles.some(function (o) {
+      if (o.type !== "turret" || !o.nextMove || !o.nextMove.fire) return false;
+      return o.nextMove.axis === "row" ? o.y === player.y : o.x === player.x;
+    });
   };
 
   TimedSquares.prototype.endGame = function () {
@@ -355,6 +456,37 @@
     ctx.beginPath();
     ctx.arc(cx, cy, size * 1.15, 0, Math.PI * 2);
     ctx.stroke();
+    ctx.restore();
+  };
+
+  // A turret's countdown, in place of the arrow every other obstacle
+  // draws -- there's no {dx,dy} to point at, and a raw number is a more
+  // exact telegraph than an icon could be: it says precisely how many
+  // more resolves until the beam fires.
+  TimedSquares.prototype.drawCountdown = function (cx, cy, cell, n, color) {
+    var ctx = this.ctx;
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.font = "bold " + Math.round(cell * 0.34) + "px system-ui, -apple-system, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(n), cx, cy + cell * 0.02);
+    ctx.restore();
+  };
+
+  // The full row or column a turret is about to fire down, lit up a full
+  // turn ahead of the shot actually resolving -- same telegraph contract
+  // as every arrow: what's drawn now is exactly what checkBeamCollision
+  // tests against on the very next resolveTurn.
+  TimedSquares.prototype.drawBeam = function (o, cell) {
+    var ctx = this.ctx;
+    ctx.save();
+    ctx.fillStyle = COLORS.turretBeam;
+    if (o.nextMove.axis === "row") {
+      ctx.fillRect(0, o.y * cell, GRID_SIZE * cell, cell);
+    } else {
+      ctx.fillRect(o.x * cell, 0, cell, GRID_SIZE * cell);
+    }
     ctx.restore();
   };
 
@@ -423,6 +555,15 @@
       ctx.stroke();
     }
 
+    // Turret beams: drawn as a full-board pass before any obstacle body,
+    // so a turret's own square renders on top of its own warning stripe
+    // rather than getting buried under it.
+    this.obstacles.forEach(function (o) {
+      if (o.type === "turret" && o.nextMove && o.nextMove.fire) {
+        this.drawBeam(o, cell);
+      }
+    }, this);
+
     // Obstacles + telegraph.
     var pad = cell * 0.12;
     this.obstacles.forEach(function (o) {
@@ -434,6 +575,17 @@
       var cx = px + cell / 2;
       var cy = py + cell / 2;
       var move = o.nextMove;
+
+      // The turret never has a {dx,dy} worth drawing as an arrow -- it
+      // either shows a countdown while charging or lets the beam stripe
+      // above speak for itself on the turn it actually fires.
+      if (o.type === "turret") {
+        if (!move.fire) {
+          this.drawCountdown(cx, cy, cell, move.turnsLeft, COLORS.glyph);
+        }
+        return;
+      }
+
       var mag = Math.max(Math.abs(move.dx), Math.abs(move.dy)) || 1;
       this.drawArrow(cx, cy, move.dx / mag, move.dy / mag, cell * 0.22, COLORS.glyph);
       if (o.type === "lmover") {
