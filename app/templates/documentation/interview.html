@@ -27,18 +27,18 @@
 
   <main style="grid-column: 1 / -1;">
 <div class="part">
-  <span class="part-label">Part VIII</span>
+  <span class="part-label">Part IX</span>
   <h2>Interview question bank</h2>
 </div>
 
-<section class="chunk" id="s31">
-  <h3><i>31</i><span>Questions and what a strong answer covers</span></h3>
+<section class="chunk" id="s34">
+  <h3><i>34</i><span>Questions and what a strong answer covers</span></h3>
 
   <p class="lede">Start with the ten core stories below, not the question list. The questions are grouped by what the interviewer is actually probing, and each answer sketch is the shape of a good response rather than a script &mdash; the section reference points back at the detail that supports it.</p>
 
-  <h4>Prepare ten stories, not thirty-nine answers</h4>
+  <h4>Prepare ten stories, not forty-four answers</h4>
 
-  <p>There are 39 questions below. Memorising 39 polished answers is the wrong
+  <p>There are 44 questions below. Memorising 44 polished answers is the wrong
   preparation: it sounds rehearsed, and it collapses the moment an interviewer asks a
   slightly different question. Almost every question here is a different door into one
   of ten underlying stories. Learn the ten, and the answers assemble themselves &mdash; the eight core questions below are simply the most common doors into them.</p>
@@ -297,6 +297,24 @@
     </details>
 
     <details class="q">
+      <summary>Your Redis has no persistence configured. Is that a bug?</summary>
+      <div class="answer">
+        <p>No &mdash; it is a deliberate choice, and being able to say why is the point. The <code>redis</code> service declares no volume, so the keyspace is purely in-memory and a restart starts it empty. That is fine for everything it holds: the cache-aside entries repopulate on the next miss, a rate-limit window resetting early is harmless, and the hit/miss numbers are only a rollup for a dashboard.</p>
+        <p>The one thing genuinely at risk is an RQ job sitting in the queue during a restart. Today that is an acceptable loss for a personal site; if it were not, the fix is a volume plus append-only-file persistence, so the log replays on restart. Name the two mechanisms &mdash; RDB snapshots versus AOF &mdash; and which one you would reach for. <span class="pill p-info">&sect;32</span></p>
+        <div class="broader"><b>Broader framing</b>How do you decide what has to be durable and what can be rebuilt?</div>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Why does the rate limiter connect to <code>redis&hellip;/1</code> while the queue uses <code>/0</code>?</summary>
+      <div class="answer">
+        <p>Redis logical databases. One instance carries sixteen numbered keyspaces; the trailing number in the URL picks one. DB&nbsp;0 holds the RQ queues and the world cache, DB&nbsp;1 holds the Flask-Limiter counters.</p>
+        <p>The reason to split them is blast radius and clarity: a flood of per-IP rate-limit keys cannot collide with a queue key, and either keyspace can be inspected or flushed without disturbing the other. Be precise that it is <b>namespacing between key names on one process</b>, not isolation of memory or CPU &mdash; a slow command still blocks both. <span class="pill p-info">&sect;32</span></p>
+        <div class="broader"><b>Broader framing</b>How do you keep unrelated workloads on shared infrastructure from interfering?</div>
+      </div>
+    </details>
+
+    <details class="q">
       <summary>How does a failure travel from the worker back to the web process?</summary>
       <div class="answer">
         <p>Through the database row, because an exception cannot cross a process boundary &mdash; there is no shared call stack to unwind and no in-memory future to await.</p>
@@ -405,6 +423,33 @@
   <h4>Containers and deployment</h4>
   <div class="qa">
     <details class="q">
+      <summary>What actually isolates a container from the host?</summary>
+      <div class="answer">
+        <p>Three Linux kernel features, not a hypervisor. <b>Namespaces</b> give the process its own view of PIDs, network interfaces, mounts and hostname, so it cannot see the host or its siblings. <b>cgroups</b> cap and meter its CPU, memory and I/O. A <b>union filesystem</b> layers a thin writable layer over the read-only image, so writes never touch the image and vanish when the container is removed.</p>
+        <p>The consequence worth stating: a container shares the host <i>kernel</i>, so it is a weaker boundary than a VM. That is exactly why the Dockerfile runs as a non-root <code>appuser</code> &mdash; uid 0 inside the container is uid 0 on the shared kernel, and an escape from a root process is a host-root escape. <span class="pill p-info">&sect;29 &sect;31</span></p>
+        <div class="broader"><b>Broader framing</b>What is the real difference between a container and a virtual machine?</div>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>The connection string says <code>@postgres:5432</code>. What is <code>postgres</code>?</summary>
+      <div class="answer">
+        <p>A hostname, resolved by Docker Compose's internal DNS to whichever container currently holds that service name. Compose puts every service on one private network and registers each by name, so the app addresses Postgres and Redis as <code>postgres</code> and <code>redis</code>, never <code>localhost</code> and never an IP.</p>
+        <p>The "never an IP" part is the substance: a recreated container gets a new address, and hard-coding one would break on the next <code>up</code>. The name is stable across recreations. It is also why the connection strings live in <code>environment:</code>, derived from the service names plus credentials, rather than as a fourth hand-written value in <code>.env</code> that could disagree. <span class="pill p-info">&sect;29 &sect;31</span></p>
+        <div class="broader"><b>Broader framing</b>How does service discovery work in your setup?</div>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Why terminate TLS at Caddy instead of in the app?</summary>
+      <div class="answer">
+        <p>Because certificate lifecycle, HTTP parsing and static serving are solved problems that do not belong in the Python process. Caddy is the only service the internet reaches; it obtains and renews the Let's Encrypt certificate over ACME with no certbot or cron, and everything behind it &mdash; <code>web</code>, <code>worker</code>, <code>postgres</code>, <code>redis</code> &mdash; speaks plain HTTP or TCP on the internal network. TLS exists only on the edge hop.</p>
+        <p>Caddy adds <code>X-Forwarded-For</code> and <code>X-Forwarded-Proto</code> so Flask still sees the real client IP and knows the request began as HTTPS. Two more things fall out of it: proxy config changes by editing a bind-mounted <code>Caddyfile</code> and reloading, with no image rebuild, and <code>postgres</code>/<code>redis</code> can stay entirely unpublished because the only internet-facing process is one hardened proxy. <span class="pill p-info">&sect;30 &sect;33</span></p>
+        <div class="broader"><b>Broader framing</b>Where should cross-cutting HTTP concerns live &mdash; in the app or in front of it?</div>
+      </div>
+    </details>
+
+    <details class="q">
       <summary>Walk me through your Dockerfile.</summary>
       <div class="answer">
         <p>Lead with the layer ordering, because that is the part with an actual engineering reason behind it. <code>requirements.txt</code> is copied and installed <b>before</b> the application code. Docker invalidates every layer after the first one that changes; dependencies change rarely and code changes constantly, so this ordering means a normal code edit reuses the cached <code>pip install</code> layer instead of reinstalling the whole tree.</p>
@@ -420,6 +465,7 @@
         <p>Both declare <code>build: .</code> and the same <code>image:</code> tag; the worker overrides <code>command</code> to run <code>worker.py</code> instead of gunicorn. The image builds once and is reused.</p>
         <p>The reason that matters here specifically: the worker and the web process share the entire service layer &mdash; the worker runs <code>pipeline.run_pipeline</code> and <code>risk_engine.run_risk_request_job</code>, which call the same validators and pricing code the routes call. Two images could drift, and the symptom would be jobs behaving differently from the routes that enqueued them, which is a genuinely confusing bug to chase. One image makes that unrepresentable.</p>
         <p>It also halves build time and image storage, but that is the lesser reason. <span class="pill p-info">&sect;29</span></p>
+        <div class="broader"><b>Broader framing</b>How do you stop two things that have to stay identical from drifting apart?</div>
       </div>
     </details>
 

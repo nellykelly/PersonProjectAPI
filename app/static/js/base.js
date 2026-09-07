@@ -1,28 +1,45 @@
-// Site-wide behavior: fade-in on load (mirrors Dimension's is-preload
-// pattern from main.css) and the mobile nav toggle. Vanilla JS -- no
-// jQuery dependency needed for this small amount of interaction.
-window.addEventListener("load", function () {
+// Site-wide behavior: fade-in (mirrors Dimension's is-preload pattern
+// from main.css) and the mobile nav toggle. Vanilla JS -- no jQuery
+// dependency needed for this small amount of interaction.
+//
+// is-preload only suppresses entry animations, so it's cleared as soon
+// as the DOM is parsed -- it must NOT wait on window.load, which doesn't
+// fire until every font/image/CDN script has settled. A single stalled
+// subresource would otherwise leave animations dead for the life of the
+// page. window.load stays wired up too as a belt-and-suspenders.
+function clearPreload() {
   document.body.classList.remove("is-preload");
-});
+}
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", clearPreload);
+} else {
+  clearPreload();
+}
+window.addEventListener("load", clearPreload);
 
-// Welcome gate: called immediately (not queued behind DOMContentLoaded)
-// so its load-wait timer starts as early as possible -- this script tag
-// sits at the very end of body, after #welcome-gate already exists, so
-// there's nothing to wait for here.
+// Welcome gate: an opaque, full-viewport, z-index 9999 overlay (see
+// #welcome-gate in custom.css) that masks a slow first paint. Because it
+// sits above everything and swallows scroll/click, dismissing it MUST
+// NOT depend on window.load -- that waits on every font, image and CDN
+// script, so one slow resource used to leave the visitor unable to
+// scroll for the full (formerly 5s) cap. The DOM being parsed is the
+// real "there's something to show" signal; MAX_MS is now just a short
+// safety net for a backgrounded tab whose timers were throttled, or a
+// DOMContentLoaded that somehow never fires.
+//
+// This IIFE runs from a script tag at the very end of <body>, so
+// #welcome-gate already exists and readyState is typically "interactive".
 (function initWelcomeGate() {
   var gate = document.getElementById("welcome-gate");
   if (!gate) return;
   if (document.documentElement.classList.contains("skip-welcome")) return;
 
-  // Minimum keeps the animation from looking like a broken flash on a
-  // fast connection; the load listener is what actually gates on "did
-  // the page finish" per the brief (the site is slow sometimes); the
-  // hard cap is a safety net so a stalled load doesn't strand a visitor
-  // behind this indefinitely. The word's own draw-in animation (see
-  // custom.css) runs 1.1s -- MIN_MS gives it room to fully finish plus a
-  // short hold, rather than cutting it off mid-draw on a fast load.
+  // MIN_MS keeps the gate from flashing like a broken frame on a fast
+  // connection: the word's draw-in animation (custom.css) runs 1.1s and
+  // this gives it room to finish plus a short hold. MAX_MS is the hard
+  // ceiling on how long the overlay can block input, no matter what.
   var MIN_MS = 1600;
-  var MAX_MS = 5000;
+  var MAX_MS = 2600;
   var start = Date.now();
   var finished = false;
 
@@ -34,10 +51,15 @@ window.addEventListener("load", function () {
     setTimeout(function () { gate.remove(); }, 250);
   }
 
-  window.addEventListener("load", function () {
-    var remaining = Math.max(0, MIN_MS - (Date.now() - start));
-    setTimeout(finish, remaining);
-  });
+  function scheduleFinish() {
+    setTimeout(finish, Math.max(0, MIN_MS - (Date.now() - start)));
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", scheduleFinish);
+  } else {
+    scheduleFinish();
+  }
 
   setTimeout(finish, MAX_MS);
 })();
