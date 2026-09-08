@@ -1768,11 +1768,18 @@ html.skip-welcome #welcome-gate {
   justify-content: center;
   background: var(--bg);
   transition: opacity 0.25s ease;
+  /* The gate is a purely visual curtain over a slow first paint -- it must
+     never intercept input. Without this, a full-viewport fixed overlay
+     eats every touch/scroll until JS removes it, which on mobile is a
+     visible "the page won't scroll for a second or two" on the first load
+     of a session (and every load if sessionStorage is blocked). Letting
+     pointer events through means the page under the curtain is already
+     scrollable while the WELCOME animation plays out. */
+  pointer-events: none;
   /* Failsafe: if base.js never runs (blocked, 404, parse error) nothing
-     would ever remove this overlay and the whole page stays unscrollable
-     behind it. A pure-CSS delayed animation guarantees it stops trapping
-     input on its own. base.js normally dismisses it well before this
-     fires (MAX_MS 2.6s), so this only bites when the script is dead. */
+     would ever remove this overlay and it would sit on top of the page
+     (visually) forever. A pure-CSS delayed animation hides it on its own.
+     base.js normally dismisses it well before this fires. */
   animation: welcome-gate-failsafe 0.01s linear 3.5s forwards;
 }
 #welcome-gate.is-leaving {

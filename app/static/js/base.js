@@ -18,14 +18,14 @@ if (document.readyState === "loading") {
 window.addEventListener("load", clearPreload);
 
 // Welcome gate: an opaque, full-viewport, z-index 9999 overlay (see
-// #welcome-gate in custom.css) that masks a slow first paint. Because it
-// sits above everything and swallows scroll/click, dismissing it MUST
-// NOT depend on window.load -- that waits on every font, image and CDN
-// script, so one slow resource used to leave the visitor unable to
-// scroll for the full (formerly 5s) cap. The DOM being parsed is the
-// real "there's something to show" signal; MAX_MS is now just a short
-// safety net for a backgrounded tab whose timers were throttled, or a
-// DOMContentLoaded that somehow never fires.
+// #welcome-gate in custom.css) that masks a slow first paint. It's
+// pointer-events: none, so the page under it is already scrollable while
+// it's visible -- these timers only control how long the WELCOME curtain
+// is *shown*, not how long input is blocked (it never is). Dismissal
+// still must not depend on window.load, which waits on every font, image
+// and CDN script; the DOM being parsed is the real "there's something to
+// show" signal, and MAX_MS is a short safety net for a throttled
+// background tab or a DOMContentLoaded that never fires.
 //
 // This IIFE runs from a script tag at the very end of <body>, so
 // #welcome-gate already exists and readyState is typically "interactive".
@@ -35,11 +35,11 @@ window.addEventListener("load", clearPreload);
   if (document.documentElement.classList.contains("skip-welcome")) return;
 
   // MIN_MS keeps the gate from flashing like a broken frame on a fast
-  // connection: the word's draw-in animation (custom.css) runs 1.1s and
-  // this gives it room to finish plus a short hold. MAX_MS is the hard
-  // ceiling on how long the overlay can block input, no matter what.
-  var MIN_MS = 1600;
-  var MAX_MS = 2600;
+  // connection: the word's draw-in animation (custom.css) runs 1.1s, so
+  // this lets it finish. MAX_MS is the ceiling on how long the curtain
+  // stays on screen. Both are short now that the gate never blocks input.
+  var MIN_MS = 1100;
+  var MAX_MS = 1800;
   var start = Date.now();
   var finished = false;
 
