@@ -223,6 +223,11 @@ class Config:
     # Q&A, and (unlike the gpt-oss models) it doesn't spend the output
     # budget on a reasoning preamble.
     GROQ_MODEL = os.environ.get("GROQ_MODEL", "qwen/qwen3.8-27b")
+    # A separate model for the one path that needs reliable function
+    # calling: the owner's job-tracker tool calls (admin, signed in,
+    # /job-tracker unlocked). Normal chat stays on GROQ_MODEL. Falls back
+    # to GROQ_MODEL if this is blanked.
+    GROQ_TOOL_MODEL = os.environ.get("GROQ_TOOL_MODEL", "llama-3.3-70b-versatile")
 
     # Which generation backend the orchestrator uses. "groq" in real use;
     # TestingConfig forces "fake" so the suite never touches the network.

@@ -3,10 +3,14 @@
 `GET /assistant` renders the chat page (or a calm "offline" panel when no
 backend is configured). `POST /api/assistant/chat` runs one RAG turn.
 
-Security posture (Phase 1 slice of personal-assistant-spec.md):
+Security posture:
 - per-IP rate limit, hard input-length cap, server-side history truncation
 - the system prompt treats retrieved text and history as data, not
-  instructions; Phase 1 registers no tools, so there is nothing to escalate
+  instructions
+- the job-tracker tools are handed to the model only when
+  `can_use_job_tools()` holds -- the owner is signed in AND the
+  /job-tracker gate is unlocked this session; for anyone else the tool
+  schemas are never built, so there is nothing to escalate to
 - NOT csrf-exempt: the fetch() sends an X-CSRFToken header
 - every call is written to `assistant_queries` (question truncated, IP only
   ever stored hashed)
@@ -18,12 +22,12 @@ import hashlib
 import time
 
 from flask import current_app, jsonify, render_template, request, url_for
-from flask_login import current_user
 
 from app.blueprints.assistant import bp
 from app.extensions import db, limiter
 from app.models import AssistantQuery
 from app.services import assistant
+from app.services.assistant.authz import can_use_job_tools, is_owner
 
 _QUESTION_LOG_MAX = 500
 _OFFLINE_MESSAGE = (
@@ -66,15 +70,10 @@ def _ip_hash() -> str | None:
     return hashlib.sha256(f"{ip}{salt}".encode("utf-8")).hexdigest()
 
 
-def _is_admin() -> bool:
-    """Phase 1: recorded for the log only. Phase 2 uses the same check to
-    decide whether the job-tracker tools are offered to the model."""
-    admin = (current_app.config.get("ADMIN_USERNAME") or "").strip().lower()
-    return bool(
-        admin
-        and current_user.is_authenticated
-        and getattr(current_user, "username_ci", None) == admin
-    )
+# The owner check lives in app.services.assistant.authz now, so the route
+# and the orchestrator's tool layer share one implementation. Kept under
+# the old name because `_is_admin()` is what the logging path below reads.
+_is_admin = is_owner
 
 
 @bp.route("/assistant", methods=["GET"])
@@ -103,11 +102,16 @@ def chat():
     message = data.get("message")
     history = data.get("history", [])
     is_admin = _is_admin()
+    job_tools_ok = can_use_job_tools()
 
     started = time.monotonic()
     try:
         result = assistant.answer(
-            message, history, config=current_app.config, is_admin=is_admin
+            message,
+            history,
+            config=current_app.config,
+            is_admin=is_admin,
+            job_tools_authorized=job_tools_ok,
         )
     except assistant.AssistantInputError as exc:
         return jsonify({"reply": str(exc), "error": True}), 400

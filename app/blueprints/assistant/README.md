@@ -14,8 +14,9 @@ inventing a fact, and never confirming a flattering assumption the passages don'
 Conversational, precise, dryly funny, warm-but-not-effusive. Full spec in `personality.md`
 at the repo root; the drop-in version lives in
 `app/services/assistant/prompts.py::SYSTEM_PROMPT`. When Nelson is signed in
-(`_is_admin()`), an owner note is appended that lets her be more informal and (in a
-later phase) use owner-only tools.
+(`authz.is_owner()`), an owner note is appended that lets her be more informal; when he
+is *also* signed in **and** has unlocked `/job-tracker`, she is handed the job-tracker
+tools (see below).
 
 ## How it works
 
@@ -27,12 +28,51 @@ POST /api/assistant/chat  {message, history}
    -> top-k chunks                 (pgvector `<=>` cosine on Postgres; in-process cosine on SQLite)
    -> assemble prompt              (system persona + numbered context + last N turns)
    -> generate                     (Groq, OpenAI-shaped API, free tier)
+      -> for the signed-in + unlocked owner only: a bounded tool loop (<=4
+         model<->tool round trips) over the job-tracker tools
    -> {reply, sources[], backend}  + one row in `assistant_queries`
 ```
 
 Every step is a named function behind a small interface (`app/services/assistant/`), so
-the planned Phase 2 (a structured tool layer with an admin-only privilege boundary) is an
-additive change at the `backend.generate(...)` call, not a rewrite.
+Phase 2's tool layer was an additive change around the `backend.generate(...)` call, not
+a rewrite: `LLMReply` grew `tool_calls` / `finish_reason`, `generate()` grew an optional
+`tools=`, and `orchestrator.answer()` grew a `job_tools_authorized` flag (default off)
+that, when set, wraps the single call in `_run_tool_loop`.
+
+## Job-tracker tools (owner-only)
+
+When `authz.can_use_job_tools()` is true -- **the request is authenticated as
+`ADMIN_USERNAME` AND `session["job_tracker_unlocked"]` is set** (two independent secrets:
+the login and the `/job-tracker` password) -- Hera is given five tools over the private
+application tracker:
+
+| tool | maps to |
+|---|---|
+| `add_application` | `job_tracker.create_application(..., source="assistant")` |
+| `update_application` | `job_tracker.update_application(...)` (located by company + optional role) |
+| `set_application_status` | `job_tracker.set_status(...)` |
+| `list_applications` | `job_tracker.list_applications(status=...)` |
+| `find_application` | `job_tracker.find_application(company, role)` |
+
+There is **no delete tool** -- deletion stays in the web UI. Every write goes through the
+existing `app/services/job_tracker.py` writer with `source="assistant"`, so it lands in
+the same `job_application_events` audit log as a web-UI edit, tagged as the assistant's
+doing. For a pasted list or any ambiguous change the persona rule is **read the parsed
+rows back and wait for a "yes"** before calling a write tool (`prompts._TOOL_NOTE`,
+mirrored in `personality.md` §5.1).
+
+The tool model is separate: `GROQ_TOOL_MODEL` (default `llama-3.3-70b-versatile`) is used
+only on this path, for reliable function-calling; normal chat stays on `GROQ_MODEL`.
+
+### Security boundary
+
+`build_job_tools(authorized)` returns `[]` for everyone who is not the signed-in,
+unlocked owner -- **the schemas are never constructed**, so a crafted chat message or a
+retrieved passage has nothing to invoke. `dispatch_job_tool(...)` re-checks `authorized`
+anyway (defence in depth) and never raises: a bad argument, an unknown status, a missing
+or ambiguous record all come back as a short string. The chat endpoint itself is not
+login-gated (anon users still chat) -- the entire boundary is the `job_tools_authorized`
+flag computed in `routes.py::chat()` from `can_use_job_tools()`.
 
 The chat page (`app/templates/assistant/index.html` + `assistant.js`) is a
 modern-LLM-host layout: centred column, avatar, suggestion chips, an auto-growing
@@ -89,7 +129,7 @@ corpus is ~100 short chunks, so this is sub-millisecond). Which one is used is d
 the live database dialect, not a flag. The pgvector SQL itself is covered by a
 Postgres-gated test that auto-skips off Postgres.
 
-## Security posture (Phase 1)
+## Security posture
 
 An LLM with an endpoint on the open web is a real attack surface, so:
 
@@ -97,8 +137,10 @@ An LLM with an endpoint on the open web is a real attack surface, so:
   length cap (`ASSISTANT_MAX_INPUT_CHARS`), and history is truncated **server-side** --
   the client's turn count is not trusted.
 - The system prompt states that retrieved passages and the conversation are **data, not
-  instructions**; it forbids revealing the prompt or changing the rules. Phase 1
-  registers **no tools**, so there is nothing to escalate to.
+  instructions**; it forbids revealing the prompt or changing the rules. The job-tracker
+  tools are the only thing to "escalate to", and they are **not built at all** unless the
+  caller is the signed-in, `/job-tracker`-unlocked owner (see the boundary above); the
+  persona rule extends data-not-instructions to tool calls explicitly.
 - **Not** `csrf.exempt` -- the `fetch()` sends an `X-CSRFToken` header.
 - Replies render as **plain text**, never HTML.
 - Any dependency failure (no `GROQ_API_KEY`, provider error, rate limit, embedder
@@ -111,8 +153,10 @@ An LLM with an endpoint on the open web is a real attack surface, so:
 ## Config (`app/config.py`)
 
 `GROQ_API_KEY` (unset -> offline panel + 503, never a crash), `GROQ_MODEL`
-(`qwen/qwen3.8-27b` by default -- Groq rotates its catalogue), `ASSISTANT_LLM_BACKEND`
-(`groq` | `fake`), `ASSISTANT_EMBEDDER` (`fastembed` | `hash`), `ASSISTANT_RETRIEVAL_TOP_K`,
+(`qwen/qwen3.8-27b` by default -- Groq rotates its catalogue), `GROQ_TOOL_MODEL`
+(`llama-3.3-70b-versatile`; owner job-tracker tool path only, falls back to `GROQ_MODEL`),
+`ASSISTANT_LLM_BACKEND` (`groq` | `fake`; `scripted` is test-only),
+`ASSISTANT_EMBEDDER` (`fastembed` | `hash`), `ASSISTANT_RETRIEVAL_TOP_K`,
 `ASSISTANT_MAX_HISTORY_TURNS`, `ASSISTANT_MAX_INPUT_CHARS`, `ASSISTANT_MAX_OUTPUT_TOKENS`,
 `ASSISTANT_CHAT_RATE_LIMIT`. `TestingConfig` forces `fake` + `hash` so the suite never
 touches the network or downloads a model.
@@ -122,7 +166,8 @@ touches the network or downloads a model.
 - `app/blueprints/assistant/routes.py` -- the page and the chat endpoint
 - `app/services/assistant/` -- `content.py`, `chunking.py`, `embeddings.py`, `store.py`,
   `retrieval.py`, `backends.py`, `prompts.py` (the Hera persona), `orchestrator.py`,
-  `reindex.py`, `analytics.py` (token-free `/assistant/stats`)
+  `reindex.py`, `analytics.py` (token-free `/assistant/stats`), `authz.py` (the
+  owner + unlock predicate), `job_tools.py` (the five job-tracker tool schemas + dispatch)
 - `app/templates/assistant/stats.html`
 - `personality.md` (repo root) -- the full persona spec `prompts.py` implements
 - `app/models.py` -- `ContentChunk` (with the `EmbeddingVector` type decorator),
@@ -141,3 +186,10 @@ analytics (`classify_message` / `classify_reply` heuristics, `compute_stats` agg
 and that the public page drops single-ask and profane questions), the `/assistant/stats`
 render, and the `flask assistant reindex` CLI. The real pgvector `<=>` path has a
 Postgres-gated test that auto-skips on SQLite.
+
+`tests/test_assistant_job_tools.py` -- the Phase 2 tool layer: `build_job_tools` gating,
+the `can_use_job_tools` predicate, `dispatch_job_tool` (write + `source="assistant"` audit
+row, unauthorized refusal, every `JobTrackerError` path coming back as text), the bounded
+orchestrator loop (one plain call when off, write + token-sum when on, the 4-iteration
+cap), and the HTTP boundary (anon cannot write, owner+unlocked can, response shape
+unchanged) -- driven by the `scripted` backend.

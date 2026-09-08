@@ -1,9 +1,12 @@
 """The RAG loop: validate input -> retrieve -> assemble prompt -> generate.
 
 Nothing here does access control or rate limiting -- that's the route's
-job (app/blueprints/assistant/routes.py). This function trusts its caller
-and takes `is_admin` only so it can be recorded in the query log; Phase 1
-registers no tools, so it changes nothing about the answer yet.
+job (app/blueprints/assistant/routes.py). This function trusts its caller:
+`is_admin` is recorded in the query log, and `job_tools_authorized` (the
+route's `can_use_job_tools()` result) is the only thing that turns the
+job-tracker tool loop on. When it is false the code path is exactly the
+old single-call RAG turn -- no tools are built, so there is nothing for a
+crafted message or a retrieved passage to invoke.
 """
 from __future__ import annotations
 
@@ -12,12 +15,18 @@ from dataclasses import dataclass, field
 from .backends import build_backend
 from .embeddings import build_embedder
 from .errors import AssistantInputError
+from .job_tools import build_job_tools, dispatch_job_tool
 from .prompts import build_messages
 from .retrieval import retrieve
 from .store import build_store
 
 _ALLOWED_ROLES = {"user", "assistant"}
 _MAX_TURN_CHARS = 2000
+
+# How many model<->tool round trips a single chat turn may take before we
+# stop and return whatever text we have. Four covers "parse a pasted list,
+# read it back, then write on confirmation" with headroom.
+_MAX_TOOL_ITERS = 4
 
 
 @dataclass
@@ -123,7 +132,68 @@ def _clean_history(history, max_turns: int) -> list[dict]:
     return cleaned[-(max_turns * 2) :]
 
 
-def answer(question: str, history, *, config, is_admin: bool = False) -> AssistantAnswer:
+def _sum_tokens(a: int | None, b: int | None) -> int | None:
+    if a is None and b is None:
+        return None
+    return (a or 0) + (b or 0)
+
+
+def _run_tool_loop(backend, messages, tools, max_tokens):
+    """Drive up to `_MAX_TOOL_ITERS` model<->tool round trips. Returns
+    `(final_text, prompt_tokens, completion_tokens, model)`. Never raises on
+    a tool result -- `dispatch_job_tool` always hands back a string."""
+    convo = list(messages)
+    p_tok = c_tok = None
+    model = ""
+    last_text = ""
+
+    for _ in range(_MAX_TOOL_ITERS):
+        reply = backend.generate(convo, max_tokens=max_tokens, tools=tools)
+        model = reply.model or model
+        p_tok = _sum_tokens(p_tok, reply.prompt_tokens)
+        c_tok = _sum_tokens(c_tok, reply.completion_tokens)
+        if reply.text:
+            last_text = reply.text
+
+        if not reply.tool_calls:
+            return reply.text, p_tok, c_tok, model
+
+        convo.append(
+            {
+                "role": "assistant",
+                "content": reply.text or "",
+                "tool_calls": [
+                    {
+                        "id": tc["id"],
+                        "type": "function",
+                        "function": {"name": tc["name"], "arguments": tc["arguments"]},
+                    }
+                    for tc in reply.tool_calls
+                ],
+            }
+        )
+        for tc in reply.tool_calls:
+            out = dispatch_job_tool(tc["name"], tc["arguments"], authorized=True)
+            convo.append(
+                {"role": "tool", "tool_call_id": tc["id"], "content": out}
+            )
+
+    # Ran out of iterations still asking for tools.
+    fallback = last_text or (
+        "I couldn't finish that in one go -- try again, or use the "
+        "/job-tracker page directly."
+    )
+    return fallback, p_tok, c_tok, model
+
+
+def answer(
+    question: str,
+    history,
+    *,
+    config,
+    is_admin: bool = False,
+    job_tools_authorized: bool = False,
+) -> AssistantAnswer:
     q = (question or "").strip()
     if not q:
         raise AssistantInputError("Please enter a question.")
@@ -142,25 +212,38 @@ def answer(question: str, history, *, config, is_admin: bool = False) -> Assista
         store=store,
     )
 
-    backend = build_backend(config)
+    want_tools = bool(job_tools_authorized)
+    backend = build_backend(config, for_tools=want_tools)
     messages = build_messages(
         question=q,
         context_text=result.context_text,
         history=history,
         is_admin=is_admin,
+        job_tools=want_tools,
     )
-    reply = backend.generate(
-        messages, max_tokens=int(config["ASSISTANT_MAX_OUTPUT_TOKENS"])
-    )
+    max_tokens = int(config["ASSISTANT_MAX_OUTPUT_TOKENS"])
 
-    sources = _pick_sources(result.chunks, reply.text)
+    if want_tools:
+        final_text, p_tok, c_tok, model = _run_tool_loop(
+            backend, messages, build_job_tools(True), max_tokens
+        )
+    else:
+        reply = backend.generate(messages, max_tokens=max_tokens)
+        final_text, p_tok, c_tok, model = (
+            reply.text,
+            reply.prompt_tokens,
+            reply.completion_tokens,
+            reply.model,
+        )
+
+    sources = _pick_sources(result.chunks, final_text)
 
     return AssistantAnswer(
-        reply=reply.text.strip(),
+        reply=(final_text or "").strip(),
         sources=sources,
         backend=backend.name,
-        model=reply.model,
+        model=model,
         n_chunks=len(result.chunks),
-        prompt_tokens=reply.prompt_tokens,
-        completion_tokens=reply.completion_tokens,
+        prompt_tokens=p_tok,
+        completion_tokens=c_tok,
     )
