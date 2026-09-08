@@ -72,4 +72,4 @@ def test_page_title_still_customizes_per_page(client):
     # The og:title plumbing reuses the existing {% block title %} --
     # confirms that override still actually reaches the <title> tag.
     resp = client.get("/about")
-    assert b"<title>About | Software Engineer II</title>" in resp.data
+    assert b"<title>About | Software Engineer</title>" in resp.data

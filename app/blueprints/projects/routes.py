@@ -75,6 +75,18 @@ PROJECTS = [
         "tags": ["Vanilla JS", "localStorage", "No backend state"],
         "icon": "assets/img/icons/leetcode.svg",
     },
+    {
+        "slug": "assistant",
+        "title": "AI Assistant",
+        "blurb": "A retrieval-grounded chatbot that answers questions about this site and its "
+        "projects, using only a curated content corpus -- RAG over a pgvector store, local "
+        "embeddings, and Groq for generation behind a rate-limited, prompt-injection-aware "
+        "public endpoint. A stats page tracks tone, volume, and top questions from the logs, "
+        "with no model calls.",
+        "endpoint": "assistant.index",
+        "tags": ["RAG", "pgvector", "Embeddings", "Groq"],
+        "icon": "assets/img/icons/assistant.svg",
+    },
 ]
 
 # Smaller, earlier projects -- not part of this site's live demos, just

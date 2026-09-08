@@ -1,7 +1,8 @@
 # Nelson Koskela -- Personal Site
 
-Personal portfolio site for Nelson Koskela, Software Engineer II at JPMorgan Chase & Co.,
-Corporate & Investment Banking. Built with Flask (blueprints, one per section/project),
+Personal portfolio site for Nelson Koskela, a software engineer in Houston, TX (Software
+Engineer II at JPMorgan Chase & Co., Corporate & Investment Banking, 2022&ndash;2026).
+Built with Flask (blueprints, one per section/project),
 Docker, and (for Pipeline World) Redis + Postgres, per [`docs/build-spec.md`](docs/build-spec.md)
 and [`docs/build-spec-pipeline-world.md`](docs/build-spec-pipeline-world.md).
 
@@ -25,6 +26,7 @@ and [`docs/build-spec-pipeline-world.md`](docs/build-spec-pipeline-world.md).
 | [SRE Infra Layer](app/blueprints/sre_infra/README.md) | `/projects/sre-infra` | The Redis queue/cache-aside/rate-limit infrastructure underneath Pipeline World, dashboarded |
 | [Site Traffic Analytics](app/blueprints/sniffer/README.md) | `/projects/network-sniffer` | An analytics board over this app's own inbound requests and outbound API calls -- volume over time, latency percentiles, error rate, busiest endpoints/hosts |
 | [Timed-Squares](app/blueprints/timed_squares/README.md) | `/projects/timed-squares` | A turn-based survival game on a 10x10 grid, playable in-browser (HTML5 Canvas) -- dodge obstacles that telegraph their next move before they make it, with a public leaderboard |
+| [AI Assistant](app/blueprints/assistant/README.md) | `/assistant`, `/assistant/stats` | A retrieval-grounded chatbot ("Hera" persona) over a curated content corpus (`app/assistant_content/`): local `fastembed` embeddings into a `pgvector` store, Groq for generation, behind a rate-limited, prompt-injection-aware public endpoint. Answers only from the corpus and says so when it can't. `/assistant/stats` is a public, token-free usage board (tone, volume, top words, most-asked questions) built purely from stored logs. |
 | Documentation | `/documentation` | A long-form engineering reference for this codebase -- architecture, data model, every subsystem, UML/sequence diagrams. Its own stylesheet, not part of the site's dark theme. |
 | Documentation &rarr; Interview questions | `/documentation/interview` | Password-gated section of the reference above (`DOCS_PASSWORD_HASH`) -- an interview-prep question bank keyed to the codebase. Fails closed if unconfigured; never linked or indexed. |
 | Contact | `/contact` | Email / LinkedIn / GitHub |
@@ -33,10 +35,12 @@ and [`docs/build-spec-pipeline-world.md`](docs/build-spec-pipeline-world.md).
 ## Tech stack
 
 Flask 3 (application-factory + blueprints), Flask-SQLAlchemy, Flask-Limiter, Flask-SocketIO,
-RQ + Redis, Postgres (Pipeline World; Trading Simulator's position/risk data works against
-either) / SQLite (everything else works against either), `yfinance`, SEC EDGAR's public
-`data.sec.gov` API, vanilla JS + Chart.js (CDN) + Socket.IO client (CDN) on the frontend,
-gunicorn + Docker for deployment. See [`requirements.txt`](requirements.txt).
+RQ + Redis, Postgres (Pipeline World + the AI Assistant's `pgvector` store; Trading
+Simulator's position/risk data works against either) / SQLite (everything else works
+against either), `yfinance`, SEC EDGAR's public `data.sec.gov` API, `fastembed` (local
+ONNX embeddings) + Groq (LLM inference) for the AI Assistant, vanilla JS + Chart.js (CDN)
++ Socket.IO client (CDN) on the frontend, gunicorn + Docker for deployment. See
+[`requirements.txt`](requirements.txt).
 
 One RQ worker pool (`worker.py`, its own container) now does two jobs: Pipeline World's
 character-join pipeline, and the Trading Simulator's risk pricing -- a risk request is

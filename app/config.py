@@ -125,6 +125,26 @@ class Config:
     # one endpoint where repeated guessing is the entire attack.
     DOCS_UNLOCK_RATE_LIMIT = os.environ.get("DOCS_UNLOCK_RATE_LIMIT", "10 per hour")
 
+    # Password gate on /job-tracker -- Nelson's private, real job-
+    # application tracker (see job-tracker-spec.md). Exactly the same
+    # fail-closed model as DOCS_PASSWORD_HASH above: a Werkzeug hash lives
+    # in the environment, never a plaintext or checked-in value, and unset
+    # means the whole section is closed (503), never open. A *separate*
+    # secret from the docs gate on purpose -- different audience, and no
+    # reason for one password to unlock both. The .env `$$`-escaping
+    # gotcha applies (Werkzeug hashes contain `$`) -- see the README.
+    JOB_TRACKER_PASSWORD_HASH = os.environ.get("JOB_TRACKER_PASSWORD_HASH")
+    JOB_TRACKER_UNLOCK_RATE_LIMIT = os.environ.get(
+        "JOB_TRACKER_UNLOCK_RATE_LIMIT", "10 per hour"
+    )
+    # The one account the personal AI assistant will accept job-tracker
+    # tool calls from (see personal-assistant-spec.md), matched case-
+    # insensitively against User.username_ci. Decided as an env var rather
+    # than an is_admin column: there is one owner, admin is never self-
+    # assignable, and it needs no migration. Unused until the assistant
+    # ships; defined here now so the decision is recorded in code.
+    ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "")
+
     # Accounts (login gating the LeetCode 150 tracker). Registration is
     # open by default; flip REGISTRATION_ENABLED=false to close signups
     # without a redeploy (existing accounts keep working, /register starts
@@ -191,6 +211,36 @@ class Config:
     # earned.
     TIMED_SQUARES_MAX_TURNS = int(os.environ.get("TIMED_SQUARES_MAX_TURNS", "100000"))
 
+    # ------------------------------------------------------------------
+    # Personal AI assistant (app/services/assistant, app/blueprints/assistant)
+    # ------------------------------------------------------------------
+    # Chat runs on Groq's free tier (OpenAI-shaped API, no card). Unset
+    # GROQ_API_KEY => the /assistant page renders an "offline" panel and
+    # the chat endpoint returns a clean 503, never a stack trace.
+    GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+    # Groq rotates its catalogue; check `client.models.list()` if this
+    # 404s. Qwen3 27B is a good default here -- fast, accurate on grounded
+    # Q&A, and (unlike the gpt-oss models) it doesn't spend the output
+    # budget on a reasoning preamble.
+    GROQ_MODEL = os.environ.get("GROQ_MODEL", "qwen/qwen3.8-27b")
+
+    # Which generation backend the orchestrator uses. "groq" in real use;
+    # TestingConfig forces "fake" so the suite never touches the network.
+    ASSISTANT_LLM_BACKEND = os.environ.get("ASSISTANT_LLM_BACKEND", "groq")
+    # Local ONNX embedder (fastembed). "hash" is a deterministic, model-
+    # free stand-in used by the tests.
+    ASSISTANT_EMBEDDER = os.environ.get("ASSISTANT_EMBEDDER", "fastembed")
+    ASSISTANT_EMBED_MODEL = os.environ.get("ASSISTANT_EMBED_MODEL", "BAAI/bge-small-en-v1.5")
+    ASSISTANT_EMBED_DIM = int(os.environ.get("ASSISTANT_EMBED_DIM", "384"))
+
+    ASSISTANT_RETRIEVAL_TOP_K = int(os.environ.get("ASSISTANT_RETRIEVAL_TOP_K", "5"))
+    ASSISTANT_MAX_HISTORY_TURNS = int(os.environ.get("ASSISTANT_MAX_HISTORY_TURNS", "4"))
+    ASSISTANT_MAX_INPUT_CHARS = int(os.environ.get("ASSISTANT_MAX_INPUT_CHARS", "1000"))
+    ASSISTANT_MAX_OUTPUT_TOKENS = int(os.environ.get("ASSISTANT_MAX_OUTPUT_TOKENS", "600"))
+    # A chat message is a real LLM call against a shared free-tier quota,
+    # so this is tighter than the read-only limits elsewhere on the site.
+    ASSISTANT_CHAT_RATE_LIMIT = os.environ.get("ASSISTANT_CHAT_RATE_LIMIT", "20 per hour")
+
 
 class DevelopmentConfig(Config):
     DEBUG = True
@@ -219,6 +269,13 @@ class TestingConfig(Config):
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
     RATELIMIT_ENABLED = False
     WTF_CSRF_ENABLED = False
+
+    # The assistant never touches the network or downloads a model in the
+    # suite: a canned generation backend and a deterministic, model-free
+    # embedder, with retrieval served from an in-memory store instead of
+    # pgvector (which needs Postgres -- exercised by its own gated tests).
+    ASSISTANT_LLM_BACKEND = "fake"
+    ASSISTANT_EMBEDDER = "hash"
 
     # No real per-stage delay in tests -- queue.py already makes RQ
     # execute jobs synchronously under TESTING, so this just keeps that

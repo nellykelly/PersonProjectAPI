@@ -34,6 +34,9 @@
             {{ form.submit(class="button primary fit") }}
         </form>
 
+        <p class="field-hint auth-terms">By creating an account you confirm you are at least 13
+            years old and agree to the <a href="{{ url_for('legal.index') }}">terms &amp; privacy
+            notice</a>.</p>
         <p class="muted auth-alt">Already have an account? <a href="{{ url_for('auth.login') }}">Log in</a>.</p>
         {% endif %}
     </div>

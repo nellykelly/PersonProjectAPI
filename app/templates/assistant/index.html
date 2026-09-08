@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Assistant{% endblock %}
+{% block meta_description %}Ask an AI assistant about Nelson Koskela and the projects on this site. It only answers from this site's own content.{% endblock %}
+{% block content_class %}wide assistant-page{% endblock %}
+
+{% block extra_head %}
+<meta name="csrf-token" content="{{ csrf_token() }}">
+{% endblock %}
+
+{% block content %}
+<section class="asst">
+    <header class="asst-head">
+        <div class="asst-head-id">
+            <span class="asst-avatar" aria-hidden="true">H</span>
+            <div>
+                <h1 class="asst-name">Hera</h1>
+                <p class="asst-tag">Nelson's site assistant &mdash; answers from what's published here</p>
+            </div>
+        </div>
+        <button type="button" class="asst-newchat" id="asst-new" hidden>New chat</button>
+    </header>
+
+    {% if not assistant_online %}
+    <div class="asst-offline" role="status">
+        The assistant is offline right now. You can still reach Nelson directly at
+        <a href="mailto:{{ EMAIL }}">{{ EMAIL }}</a>.
+    </div>
+    {% else %}
+    <div class="asst-window" id="asst-window"
+         data-max-input="{{ config['ASSISTANT_MAX_INPUT_CHARS'] }}"
+         data-max-history="{{ config['ASSISTANT_MAX_HISTORY_TURNS'] }}">
+
+        <div class="asst-scroll" id="asst-scroll">
+            <div class="asst-thread" id="asst-thread" aria-live="polite"></div>
+
+            <div class="asst-empty" id="asst-empty">
+                <span class="asst-empty-avatar" aria-hidden="true">H</span>
+                <p class="asst-empty-title">Ask me about Nelson or his projects</p>
+                <p class="asst-empty-note">I know Nelson's work fairly well. I only know what's on
+                    this site, and I'll tell you when something isn't here rather than guess.</p>
+                <div class="asst-suggest">
+                    <button type="button" class="asst-chip">What has he built with Redis?</button>
+                    <button type="button" class="asst-chip">Walk me through the pipeline project</button>
+                    <button type="button" class="asst-chip">Is he open to a backend role?</button>
+                    <button type="button" class="asst-chip">What's the strongest thing he's built?</button>
+                </div>
+            </div>
+        </div>
+
+        <form class="asst-composer" id="asst-form">
+            <div class="asst-inputwrap">
+                <label class="asst-sr" for="asst-input">Message Hera</label>
+                <textarea id="asst-input" rows="1" placeholder="Message Hera&hellip;"
+                          maxlength="{{ config['ASSISTANT_MAX_INPUT_CHARS'] }}"
+                          autocomplete="off" spellcheck="false"></textarea>
+                <button type="submit" class="asst-send" id="asst-send" aria-label="Send message">
+                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                        <path d="M12 20V5M6 11l6-6 6 6" fill="none" stroke="currentColor"
+                              stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+            </div>
+            <p class="asst-fineprint">
+                Hera is an AI that answers only from this site's content. Replies can be wrong,
+                are not a binding statement by Nelson, and are not financial or legal advice.
+                &middot; <a href="{{ url_for('legal.index') }}#assistant">Full disclaimer</a>
+                &middot; <a href="{{ url_for('assistant.stats') }}">Usage stats</a>
+            </p>
+        </form>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/assistant.js') }}"></script>
+{% endblock %}

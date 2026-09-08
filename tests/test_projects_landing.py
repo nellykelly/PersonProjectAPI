@@ -6,6 +6,7 @@ LISTED_PROJECTS = (
     ("Site Traffic Analytics", "/projects/network-sniffer"),
     ("Timed-Squares", "/projects/timed-squares"),
     ("Top Interview 150 Tracker", "/leetcode-150"),
+    ("AI Assistant", "/assistant"),
 )
 
 

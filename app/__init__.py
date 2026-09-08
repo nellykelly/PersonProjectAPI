@@ -22,6 +22,18 @@ def create_app(config_name: str | None = None) -> Flask:
             "value, e.g. `python -c \"import secrets; print(secrets.token_hex(32))\"`."
         )
 
+    # Behind Caddy (docker-compose): trust exactly one hop of the
+    # X-Forwarded-* headers it sets. Without this, Werkzeug sees the
+    # request as http://web:8000 -- so `_external` URLs (canonical tag,
+    # JSON-LD, og:url) carry the wrong scheme/host, and `request.remote_addr`
+    # is the proxy's docker IP, which would make every per-IP rate limit
+    # effectively global and the assistant's IP hash meaningless. Dev
+    # (`flask run`, no proxy) leaves the WSGI app untouched.
+    if config_name == "production":
+        from werkzeug.middleware.proxy_fix import ProxyFix
+
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
     os.makedirs(app.instance_path, exist_ok=True)
     if not app.config.get("SQLALCHEMY_DATABASE_URI"):
         db_path = os.path.join(app.instance_path, "site.db")
@@ -128,12 +140,53 @@ def create_app(config_name: str | None = None) -> Flask:
     # ever adds missing tables and can never alter an existing one, which
     # has silently masked real schema drift more than once during
     # development. Dev/test keep the create_all() convenience since a
-    # throwaway/in-memory DB has no migration history to preserve anyway.
+    # throwaway/in-memory DB has no migration history to preserve anyway --
+    # plus a dev-only SQLite column backfill so a file DB that predates a
+    # new nullable model column doesn't 500 deep in a query (it did,
+    # repeatedly, for the assistant analytics columns).
     if config_name != "production":
         with app.app_context():
             db.create_all()
+            _dev_sqlite_add_missing_columns(app)
 
     return app
+
+
+def _dev_sqlite_add_missing_columns(app: Flask) -> None:
+    """Best-effort: for a file-backed SQLite dev DB, `ALTER TABLE ADD
+    COLUMN` any nullable model column the table is missing. Never touches
+    Postgres (migrations own that) or a NOT-NULL column (needs a real
+    migration -- logs a warning instead)."""
+    from sqlalchemy import inspect, text
+
+    engine = db.engine
+    if engine.dialect.name != "sqlite" or ":memory:" in str(engine.url):
+        return
+
+    inspector = inspect(engine)
+    have_tables = set(inspector.get_table_names())
+    with engine.begin() as conn:
+        for table in db.metadata.sorted_tables:
+            if table.name not in have_tables:
+                continue
+            existing = {c["name"] for c in inspector.get_columns(table.name)}
+            for column in table.columns:
+                if column.name in existing:
+                    continue
+                if not column.nullable and column.default is None and column.server_default is None:
+                    app.logger.warning(
+                        "dev DB: %s.%s is missing and can't be auto-added "
+                        "(NOT NULL, no default) -- run `flask db upgrade` or "
+                        "delete instance/site.db",
+                        table.name,
+                        column.name,
+                    )
+                    continue
+                col_type = column.type.compile(engine.dialect)
+                conn.execute(
+                    text(f'ALTER TABLE "{table.name}" ADD COLUMN "{column.name}" {col_type}')
+                )
+                app.logger.info("dev DB: added %s.%s (%s)", table.name, column.name, col_type)
 
 
 def _register_blueprints(app: Flask) -> None:
@@ -150,6 +203,9 @@ def _register_blueprints(app: Flask) -> None:
     from app.blueprints.timed_squares import bp as timed_squares_bp
     from app.blueprints.leetcode import bp as leetcode_bp
     from app.blueprints.auth import bp as auth_bp
+    from app.blueprints.job_tracker import bp as job_tracker_bp
+    from app.blueprints.assistant import bp as assistant_bp
+    from app.blueprints.legal import bp as legal_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(about_bp, url_prefix="/about")
@@ -164,6 +220,17 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(timed_squares_bp, url_prefix="/projects/timed-squares")
     app.register_blueprint(leetcode_bp, url_prefix="/leetcode-150")
     app.register_blueprint(auth_bp, url_prefix="/auth")
+    # Private job-application tracker. Password-gated (JOB_TRACKER_PASSWORD_HASH),
+    # never linked anywhere, noindex. NOT csrf-exempt -- its forms carry a
+    # token, unlike the older public-write blueprints below.
+    app.register_blueprint(job_tracker_bp, url_prefix="/job-tracker")
+    # Personal AI assistant: GET /assistant + POST /api/assistant/chat
+    # (absolute rule paths, so no url_prefix). NOT csrf-exempt -- the
+    # fetch() sends an X-CSRFToken header.
+    app.register_blueprint(assistant_bp)
+    # /legal -- terms, privacy, cookies, AI disclaimer, accessibility,
+    # abuse contact. Absolute rule path, linked from the footer.
+    app.register_blueprint(legal_bp)
 
     # CSRF is on app-wide (see extensions.csrf), but these blueprints
     # predate accounts and post without a token -- from public,
@@ -218,3 +285,18 @@ def _register_cli(app: Flask) -> None:
         user.set_password(password)
         db.session.commit()
         click.echo(f"Password updated for {user.username!r}.")
+
+    @app.cli.group("assistant")
+    def assistant_cli() -> None:
+        """Personal AI assistant maintenance."""
+
+    @assistant_cli.command("reindex")
+    def assistant_reindex() -> None:
+        """Re-embed app/assistant_content/ into the content_chunks table."""
+        from app.services import assistant as assistant_service
+
+        info = assistant_service.reindex()
+        click.echo(
+            f"Reindexed {info['chunks']} chunks from {info['files']} files "
+            f"(embedder: {info['embedder']})."
+        )

@@ -16,7 +16,7 @@ Build a personal portfolio website for a software engineer (JPMorgan Chase & Co.
 
 ## 2. About Section Content (use as-is or adapt)
 
-Bio: Software Engineer at JPMorgan Chase & Co. (Houston, TX) since July 2022, started as SEP intern in 2021. BS Computer Science from Cogswell University of Silicon Valley (started at Howard University). Trained in classical vocal performance at Ruth Asawa School of the Arts. Blends technical and creative background. Builds independent projects in trading systems, financial data pipelines, and network diagnostics.
+Bio: Software engineer in Houston, TX; was a Software Engineer II at JPMorgan Chase & Co. from July 2022 to September 2026 (started as an SEP intern in 2021), now working independently. BS Computer Science from Cogswell University of Silicon Valley (started at Howard University). Trained in classical vocal performance at Ruth Asawa School of the Arts. Blends technical and creative background. Builds independent projects in trading systems, financial data pipelines, and network diagnostics.
 
 Contact links needed: Resume PDF (static file), LinkedIn (https://www.linkedin.com/in/nelson-k-70180a101), Email (koskela.nelson@gmail.com), GitHub (https://github.com/nellykelly).
 

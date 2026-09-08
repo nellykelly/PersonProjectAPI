@@ -18,7 +18,15 @@ RUN mkdir -p /app/instance && chown -R appuser:appuser /app
 USER appuser
 
 ENV FLASK_ENV=production \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    HF_HUB_DISABLE_TELEMETRY=1
+
+# Bake the personal AI assistant's embedding model into the image so the
+# first request doesn't block on a HuggingFace fetch and the running
+# container needs no outbound access to Hugging Face. Runs as appuser so
+# the fastembed cache lands in its home dir. Keep the model id in sync
+# with ASSISTANT_EMBED_MODEL in app/config.py.
+RUN python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='BAAI/bge-small-en-v1.5')"
 
 EXPOSE 8000
 

@@ -1,0 +1,105 @@
+{% extends "job_tracker/_layout.html" %}
+{% block title %}{{ "Edit" if application else "Add" }} application{% endblock %}
+
+{% block content %}
+<div class="jt-form-head">
+  <h1>{{ "Edit application" if application else "Add application" }}</h1>
+  <a class="jt-link" href="{{ url_for('job_tracker.dashboard') }}">&larr; Back to board</a>
+</div>
+
+{% if error %}<div class="jt-err" role="alert">{{ error }}</div>{% endif %}
+
+<form class="jt-form" method="post"
+      action="{{ url_for('job_tracker.edit_application', app_id=application.id) if application else url_for('job_tracker.new_application') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <div class="jt-grid">
+    <label>Company <span class="req">*</span>
+      <input type="text" name="company_name" value="{{ form.company_name }}" required>
+    </label>
+    <label>Role title <span class="req">*</span>
+      <input type="text" name="role_title" value="{{ form.role_title }}" required>
+    </label>
+    <label class="jt-wide">Job posting URL
+      <input type="url" name="job_posting_url" value="{{ form.job_posting_url }}" placeholder="https://…">
+    </label>
+    <label>Date applied
+      <input type="date" name="date_applied" value="{{ form.date_applied }}">
+    </label>
+    <label>Status
+      <select name="status">
+        {% for s in statuses %}
+          <option value="{{ s }}" {{ 'selected' if s == (form.status or 'Applied') }}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Source
+      <input type="text" name="source" value="{{ form.source }}" list="jt-sources" placeholder="LinkedIn, Referral, …">
+      <datalist id="jt-sources">
+        <option>Otta</option><option>LinkedIn</option><option>Referral</option>
+        <option>Company site</option><option>Other</option>
+      </datalist>
+    </label>
+    <label>Resume version
+      <input type="text" name="resume_version" value="{{ form.resume_version }}" placeholder="SRE, Master, …">
+    </label>
+    <label class="jt-check">
+      <input type="checkbox" name="cover_letter_used" {{ 'checked' if form.cover_letter_used }}>
+      Cover letter used
+    </label>
+
+    <label>Company industry
+      <input type="text" name="company_industry" value="{{ form.company_industry }}">
+    </label>
+    <label>Company size / stage
+      <input type="text" name="company_size_stage" value="{{ form.company_size_stage }}" placeholder="Seed, Series B, Public, …">
+    </label>
+    <label>Location / remote policy
+      <input type="text" name="location_remote_policy" value="{{ form.location_remote_policy }}">
+    </label>
+    <label class="jt-wide">Tech stack <span class="jt-hint">comma-separated</span>
+      <input type="text" name="tech_stack" value="{{ form.tech_stack }}" placeholder="Python, AWS, Kubernetes">
+    </label>
+    <label>Salary range
+      <input type="text" name="salary_range" value="{{ form.salary_range }}">
+    </label>
+    <label>Match grade <span class="jt-hint">0–100</span>
+      <input type="number" name="match_grade" min="0" max="100" value="{{ form.match_grade }}">
+    </label>
+    <label class="jt-wide">Match notes
+      <textarea name="match_notes" rows="2">{{ form.match_notes }}</textarea>
+    </label>
+    <label class="jt-wide">Notes
+      <textarea name="notes" rows="5">{{ form.notes }}</textarea>
+    </label>
+  </div>
+
+  <div class="jt-form-actions">
+    <button type="submit" class="jt-btn jt-btn-primary">{{ "Save changes" if application else "Add application" }}</button>
+    <a class="jt-btn" href="{{ url_for('job_tracker.dashboard') }}">Cancel</a>
+    {% if application %}
+      <button type="submit" class="jt-btn jt-btn-danger" formaction="{{ url_for('job_tracker.delete_application', app_id=application.id) }}"
+              formnovalidate onclick="return confirm('Delete this application? The audit trail is kept.');">Delete</button>
+    {% endif %}
+  </div>
+</form>
+
+{% if application and events %}
+<section class="jt-history">
+  <h2>Recent changes</h2>
+  <ul>
+    {% for e in events %}
+    <li>
+      <span class="jt-when">{{ e.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+      <span class="jt-src jt-src--{{ e.source }}">{{ e.source }}</span>
+      {% if e.action == 'update' %}
+        <code>{{ e.field_name }}</code>: {{ e.old_value or "∅" }} → {{ e.new_value or "∅" }}
+      {% else %}
+        {{ e.summary }}
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endblock %}

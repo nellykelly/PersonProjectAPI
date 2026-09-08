@@ -44,7 +44,13 @@ services:
     restart: unless-stopped
 
   postgres:
-    image: postgres:16-alpine
+    # pgvector/pgvector:pg16 is stock PostgreSQL 16 (Debian, not Alpine)
+    # with the `vector` extension available to CREATE EXTENSION. Drop-in
+    # for postgres:16-alpine -- same PGDATA layout, the existing
+    # postgres_data volume is reused untouched. Needed by the personal
+    # AI assistant's retrieval (app/services/assistant); the migration
+    # runs `CREATE EXTENSION IF NOT EXISTS vector`.
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-pipelineworld}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pipelineworld}

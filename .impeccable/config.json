@@ -1,0 +1,53 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "gradient-text",
+        "value": "*",
+        "files": [
+          "app/static/css/custom.css"
+        ],
+        "createdAt": "2026-08-28T04:43:47.035Z",
+        "reason": "pre-existing site hero headline style at custom.css:110 (.gradient-text), outside the LeetCode tracker change scope; not introduced by this work"
+      },
+      {
+        "rule": "overused-font",
+        "value": "space grotesk",
+        "createdAt": "2026-08-28T04:48:59.547Z",
+        "reason": "site-wide established typeface in custom.css; user brief required matching the existing site's fonts"
+      },
+      {
+        "rule": "layout-transition",
+        "value": "width",
+        "createdAt": "2026-08-28T04:48:59.636Z",
+        "reason": "progress-bar fill animation (.lc-progressbar-fill), matches the pre-existing .host-bar-fill pattern in the same file; width is the correct property for a determinate progress bar"
+      },
+      {
+        "rule": "layout-transition",
+        "value": "*",
+        "files": [
+          "app/static/css/custom.css"
+        ],
+        "createdAt": "2026-08-28T06:16:46.210Z",
+        "reason": "progress-bar fill animations (.host-bar-fill pre-existing, .lc-progressbar-fill new): width is the determinate value being shown, bars are fixed-height sole children so no surrounding layout thrash; scaleX would distort the gradient fill"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "app/static/css/docs.css"
+        ],
+        "createdAt": "2026-09-07T18:26:41.013Z",
+        "reason": "pre-existing rules in the shipped standalone engineering-reference stylesheet (.pre code blocks L292, .note callouts L348, .broader interview markers L422) — border-left accents are a standard docs convention here; outside the scope of this change, which only added a .backbar-right flex nav wrapper"
+      },
+      {
+        "rule": "bounce-easing",
+        "value": "asst-bounce",
+        "createdAt": "2026-09-07T23:36:20.265Z",
+        "reason": "typing-indicator dot animation (3 bouncing dots while the assistant is generating) -- the standard LLM-chat loading pattern used by Claude/ChatGPT/iMessage, not decorative bounce easing on a real UI object; motion is a smooth translateY rise/fall, disabled under prefers-reduced-motion"
+      }
+    ]
+  }
+}

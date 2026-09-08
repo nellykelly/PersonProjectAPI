@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from flask_login import UserMixin
+from sqlalchemy.types import JSON, TypeDecorator
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from app.extensions import db
@@ -8,6 +9,44 @@ from app.extensions import db
 
 def utcnow():
     return datetime.now(timezone.utc)
+
+
+class EmbeddingVector(TypeDecorator):
+    """An embedding column: pgvector ``vector(N)`` on PostgreSQL, a JSON
+    array of floats everywhere else (SQLite, for dev and the test suite).
+
+    Storage only. Similarity search is PostgreSQL-only and issues the
+    ``<=>`` cosine operator as raw SQL in
+    ``app/services/assistant/store.py`` -- the same "hand-written Postgres
+    where it earns its keep" choice as ``app/services/analytics.py``.
+    """
+
+    impl = JSON
+    cache_ok = True
+
+    def __init__(self, dim: int, **kwargs):
+        self.dim = dim
+        super().__init__(**kwargs)
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "postgresql":
+            try:
+                from pgvector.sqlalchemy import Vector
+
+                return dialect.type_descriptor(Vector(self.dim))
+            except ImportError:  # pragma: no cover - prod always has it
+                pass
+        return dialect.type_descriptor(JSON())
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        return [float(x) for x in value]
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        return [float(x) for x in value]
 
 
 class Instrument(db.Model):
@@ -744,3 +783,245 @@ class LeetCodeProgress(db.Model):
     __table_args__ = (
         db.UniqueConstraint("user_id", "slug", name="uq_leetcode_progress_user_slug"),
     )
+
+
+# The application funnel, in order. "Ghosted" and "Withdrawn" are terminal
+# states that aren't "Rejected" -- a silent non-response and a
+# candidate-initiated exit read very differently in the stats. Shared
+# source of truth for the model column, the service, and the dashboard's
+# status <select>. Longest value ("Technical Interview") is 20 chars.
+JOB_APPLICATION_STATUSES = (
+    "Applied",
+    "Phone Screen",
+    "Technical Interview",
+    "Onsite/Final",
+    "Offer",
+    "Rejected",
+    "Ghosted",
+    "Withdrawn",
+)
+
+# Statuses that mean the application actually advanced past the initial
+# submission or got an explicit decision -- used for the dashboard's
+# "response rate" (see app/services/job_tracker.py). "Applied" (still
+# waiting) and "Ghosted" (never answered) are the non-responses.
+JOB_APPLICATION_RESPONDED_STATUSES = (
+    "Phone Screen",
+    "Technical Interview",
+    "Onsite/Final",
+    "Offer",
+    "Rejected",
+    "Withdrawn",
+)
+
+JOB_APPLICATION_ACTIVE_STATUSES = (
+    "Phone Screen",
+    "Technical Interview",
+    "Onsite/Final",
+)
+
+
+class JobApplication(db.Model):
+    """One row per job Nelson has applied to -- his real, private
+    application tracker (the gated /job-tracker section), not a portfolio
+    demo. Only reachable behind JOB_TRACKER_PASSWORD_HASH, and the only
+    other writer is the personal AI assistant, and only when the request
+    is authenticated as the admin account (see personal-assistant-spec.md).
+
+    Every mutation goes through app/services/job_tracker.py, which also
+    writes a JobApplicationEvent audit row -- so "who changed what, when"
+    is a fact on disk, not something reconstructed from memory.
+
+    Free-text fields are db.Text (no declared width) on purpose: they hold
+    whatever gets typed into the form or handed over by the assistant, and
+    Postgres must never silently truncate a job posting's notes. Only
+    `status` is a bounded String, because it comes from a fixed vocabulary
+    (JOB_APPLICATION_STATUSES).
+    """
+
+    __tablename__ = "job_applications"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    company_name = db.Column(db.Text, nullable=False)
+    role_title = db.Column(db.Text, nullable=False)
+    job_posting_url = db.Column(db.Text, nullable=True)
+    date_applied = db.Column(db.Date, nullable=True)
+
+    status = db.Column(db.String(24), nullable=False, default="Applied")
+    # Bumped by the service whenever `status` actually changes value, not
+    # on every edit -- "how long has this been sitting in this stage" is
+    # the useful question.
+    status_updated_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+
+    source = db.Column(db.Text, nullable=True)  # Otta / LinkedIn / Referral / Company site / ...
+    resume_version = db.Column(db.Text, nullable=True)
+    cover_letter_used = db.Column(db.Boolean, nullable=False, default=False)
+
+    company_industry = db.Column(db.Text, nullable=True)
+    company_size_stage = db.Column(db.Text, nullable=True)
+    location_remote_policy = db.Column(db.Text, nullable=True)
+    # Comma-separated tags (e.g. "Python, AWS, Kubernetes"). Stored as one
+    # portable Text column rather than a Postgres array so the model works
+    # unchanged on SQLite -- see .tech_stack_list / .set_tech_stack.
+    tech_stack = db.Column(db.Text, nullable=True)
+    salary_range = db.Column(db.Text, nullable=True)
+
+    match_grade = db.Column(db.Integer, nullable=True)  # 0-100, see match_label()
+    match_notes = db.Column(db.Text, nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+
+    events = db.relationship(
+        "JobApplicationEvent",
+        backref="application",
+        lazy="dynamic",
+        cascade="all, delete-orphan",
+        order_by="JobApplicationEvent.created_at.desc()",
+    )
+
+    @property
+    def tech_stack_list(self) -> list[str]:
+        if not self.tech_stack:
+            return []
+        return [t.strip() for t in self.tech_stack.split(",") if t.strip()]
+
+    def set_tech_stack(self, value) -> None:
+        """Accepts a list/tuple or a comma-separated string; stores the
+        normalised comma-separated form (or NULL when empty)."""
+        if isinstance(value, (list, tuple)):
+            items = [str(v).strip() for v in value if str(v).strip()]
+        else:
+            items = [t.strip() for t in str(value or "").split(",") if t.strip()]
+        self.tech_stack = ", ".join(items) or None
+
+    def __repr__(self) -> str:  # pragma: no cover - debug aid only
+        return f"<JobApplication {self.company_name!r} / {self.role_title!r} [{self.status}]>"
+
+
+class JobApplicationEvent(db.Model):
+    """Audit trail for JobApplication. One row per change: `action` is
+    'create' / 'update' / 'delete', `source` is 'web' (the gated form),
+    'assistant' (the AI assistant, admin session only) or 'cli'. For an
+    'update' there is one event per changed field, carrying the old and
+    new value as text; 'create' and 'delete' carry a NULL field and a
+    human-readable `summary`.
+    """
+
+    __tablename__ = "job_application_events"
+
+    id = db.Column(db.Integer, primary_key=True)
+    application_id = db.Column(
+        db.Integer,
+        db.ForeignKey("job_applications.id", ondelete="CASCADE"),
+        nullable=True,  # kept readable after the row it described is deleted
+        index=True,
+    )
+    action = db.Column(db.String(8), nullable=False)  # 'create' | 'update' | 'delete'
+    source = db.Column(db.String(12), nullable=False)  # 'web' | 'assistant' | 'cli'
+    field_name = db.Column(db.Text, nullable=True)
+    old_value = db.Column(db.Text, nullable=True)
+    new_value = db.Column(db.Text, nullable=True)
+    summary = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow, index=True)
+
+    def __repr__(self) -> str:  # pragma: no cover - debug aid only
+        return f"<JobApplicationEvent {self.action} app={self.application_id} {self.field_name}>"
+
+
+# Kinds of source a content chunk can come from -- display-only grouping
+# for citations, and what `flask assistant reindex` scans. Shared with
+# app/services/assistant/content.py.
+ASSISTANT_CONTENT_KINDS = ("bio", "faq", "project", "resume")
+
+# Cheap, token-free classification of a chat turn, written at log time and
+# aggregated by the /assistant/stats page. See
+# app/services/assistant/analytics.py -- lexicon/regex only, no LLM.
+ASSISTANT_SENTIMENTS = ("positive", "neutral", "negative")
+ASSISTANT_MESSAGE_CATEGORIES = (
+    "greeting",
+    "about_bio",
+    "skills_experience",
+    "project_specific",
+    "contact_availability",
+    "meta_bot",
+    "off_topic",
+)
+ASSISTANT_REPLY_KINDS = (
+    "answered",
+    "unanswered_gap",
+    "redirect_offtopic",
+    "refused",
+    "error",
+)
+
+
+class ContentChunk(db.Model):
+    """One embedded passage the personal AI assistant can retrieve.
+
+    Populated by ``flask assistant reindex`` from the Markdown files under
+    ``app/assistant_content/`` -- delete-and-replace per ``source`` so an
+    edit-then-reindex is clean. Retrieval (PostgreSQL + pgvector only,
+    like ``/pipeline-analytics``) lives in
+    ``app/services/assistant/store.py``.
+    """
+
+    __tablename__ = "content_chunks"
+
+    id = db.Column(db.Integer, primary_key=True)
+    # The file it came from, e.g. "bio", "faq", "projects/pipeline-world".
+    source = db.Column(db.String(120), nullable=False, index=True)
+    kind = db.Column(db.String(16), nullable=False)  # ASSISTANT_CONTENT_KINDS
+    title = db.Column(db.Text, nullable=False)  # human label, shown as the citation
+    chunk_index = db.Column(db.Integer, nullable=False)  # order within `source`
+    content = db.Column(db.Text, nullable=False)
+    token_estimate = db.Column(db.Integer, nullable=False, default=0)
+    embedding = db.Column(EmbeddingVector(384), nullable=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint("source", "chunk_index", name="uq_content_chunks_source_idx"),
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover - debug aid only
+        return f"<ContentChunk {self.source}#{self.chunk_index} {self.title!r}>"
+
+
+class AssistantQuery(db.Model):
+    """One row per call to the assistant chat endpoint -- the audit/usage
+    log the spec asks for. Portable columns (this half of the feature is
+    not Postgres-bound); the question is truncated and the IP is only ever
+    stored hashed, so this is not a log of visitor IPs or full transcripts.
+    """
+
+    __tablename__ = "assistant_queries"
+
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow, index=True)
+    ip_hash = db.Column(db.String(64), nullable=True)  # sha256(ip + SECRET_KEY)
+    is_admin = db.Column(db.Boolean, nullable=False, default=False)  # wired for Phase 2
+    backend = db.Column(db.String(16), nullable=True)  # 'groq' | 'fake' | ...
+    model = db.Column(db.Text, nullable=True)
+    latency_ms = db.Column(db.Integer, nullable=True)
+    prompt_tokens_est = db.Column(db.Integer, nullable=True)
+    completion_tokens_est = db.Column(db.Integer, nullable=True)
+    n_chunks = db.Column(db.Integer, nullable=True)
+    n_sources = db.Column(db.Integer, nullable=True)
+    question = db.Column(db.Text, nullable=True)  # truncated to 500 chars
+    reply = db.Column(db.Text, nullable=True)  # truncated to 800 chars
+    error = db.Column(db.Text, nullable=True)
+
+    # Token-free heuristic classification (app/services/assistant/analytics.py),
+    # written here at log time so the /assistant/stats page is a plain
+    # aggregation query -- no LLM, no re-processing.
+    word_count = db.Column(db.Integer, nullable=True)
+    sentiment = db.Column(db.String(12), nullable=True)  # ASSISTANT_SENTIMENTS
+    is_frustrated = db.Column(db.Boolean, nullable=True)
+    profanity_count = db.Column(db.Integer, nullable=True)
+    category = db.Column(db.String(24), nullable=True)  # ASSISTANT_MESSAGE_CATEGORIES
+    reply_kind = db.Column(db.String(20), nullable=True)  # ASSISTANT_REPLY_KINDS
+
+    def __repr__(self) -> str:  # pragma: no cover - debug aid only
+        return f"<AssistantQuery {self.created_at:%Y-%m-%d %H:%M} {self.backend} err={bool(self.error)}>"

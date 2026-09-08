@@ -555,3 +555,64 @@ actually serving real traffic to the real internet, not `localhost`:
   dropping `www` from the Caddyfile until its own DNS record existed, letting the bare
   domain get a clean production cert on its own, then adding `www` back in once it had
   real DNS -- a multi-domain certificate is only as good as the least-ready domain in it.
+
+## H. Auditing the site against the "vibe-coded" and "getting sued" checklists
+
+Two public checklists went around -- one of visual/technical *tells* that a site
+was pasted out of an AI and shipped without review, one of the statutes an
+AI-built app most often trips. Ran both against this site. Most items were
+already handled by choices made for other reasons; the audit is worth keeping
+because of what it *did* turn up.
+
+**The one real bug, found by adding a canonical tag.** The fix for "no canonical
+tag" is one line in `base.html`: `<link rel="canonical" href="{{ request.base_url }}">`.
+Writing it exposed that `request.base_url` was wrong in production. Caddy proxies
+to gunicorn and sets `X-Forwarded-Proto: https` / `X-Forwarded-Host:
+nelsonkoskela.dev`, but Werkzeug ignores forwarded headers unless `ProxyFix` is
+installed -- and it wasn't. So every `_external` URL rendered as
+`http://web:8000/...`: the new canonical would have pointed search engines at an
+unreachable internal host, and `og:url` (which used `request.url`) already had the
+same defect. The quieter consequence was worse: `request.remote_addr` was Caddy's
+container IP, so Flask-Limiter's per-IP limits were all one shared bucket and the
+assistant's salted IP hash was hashing the same proxy address for every visitor.
+`app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)`, applied in
+production only, fixes the URLs, the rate limiting, and the IP hashing together.
+The lesson worth stating in an interview: a canonical tag is only as correct as
+the request object it is built from, and adding SEO metadata is a good forcing
+function for checking that the proxy layer is actually understood.
+
+**What the audit added (all cheap, all real gaps):**
+
+- **Structured data.** A JSON-LD `@graph` in `base.html` -- a `Person` (job
+  title, schools, `knowsAbout`, `sameAs` to GitHub/LinkedIn) and a `WebSite` --
+  so crawlers get facts instead of parsing prose.
+- **`/sitemap.xml`**, generated from the same `listed_projects()` the nav renders
+  from, so it cannot drift; the two password-gated sections are excluded, and a
+  `Sitemap:` line was added to `robots.txt`.
+- **`/llms.txt`**, a short prose map of the site for LLM crawlers, mirroring what
+  the on-site assistant is grounded on.
+- **`/legal`**, a single page: terms, a plain-language privacy notice (username +
+  hashed password, no email; a salted SHA-256 IP hash, never the raw IP; no
+  third-party analytics or pixels), the cookie position (only strictly-necessary
+  cookies, so no banner), an **AI-assistant disclaimer** written against
+  *Moffatt v. Air Canada* ("whatever the bot says, you said") -- replies are
+  informational, not a binding statement by the owner, not financial or legal
+  advice -- an accessibility statement, an abuse/DMCA contact, and a 13+ age
+  statement. Linked from the footer of every page; the assistant fine-print and
+  the registration form point at it.
+- **A skip-to-content link** as the first focusable element, plus a confirmed
+  single `<h1>` per page and `alt` coverage on every image.
+
+**What was already fine, and why it's worth being able to say so:** server-rendered
+Flask (real view-source), a real domain with its own TLS, per-page titles and meta
+descriptions, a themed 404, `robots.txt` that does *not* block AI crawlers
+(a portfolio wants to be summarised), no third-party trackers at all (so no CIPA
+pixel-before-consent exposure), no email sending (so CAN-SPAM doesn't apply), no
+biometrics (BIPA), no bundler or source maps. The honest framing is that the
+platform choice -- server-rendered, no SPA build, no analytics SDK -- removed most
+of these categories before they could become problems.
+
+**Left explicitly to the owner** (a code change can't do them): register a DMCA
+agent with the Copyright Office; enable full-disk encryption on the VPS;
+commission a proper Open Graph card image. Named in `/documentation` §34 rather
+than pretended-done.

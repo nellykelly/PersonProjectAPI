@@ -5,8 +5,8 @@
     <meta http-equiv="x-ua-compatible" content="ie=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     {% set page_title %}{% block title %}Nelson Koskela{% endblock %}{% endset %}
-    {% set page_description %}{% block meta_description %}Nelson Koskela -- Software Engineer II at JPMorgan Chase &amp; Co. Personal portfolio site with independent trading, quant scoring, pipeline visualization, and network monitoring projects.{% endblock %}{% endset %}
-    <title>{{ page_title }} | Software Engineer II</title>
+    {% set page_description %}{% block meta_description %}Nelson Koskela -- software engineer in Houston, TX. Personal portfolio site with independent trading, quant scoring, pipeline visualization, and network monitoring projects.{% endblock %}{% endset %}
+    <title>{{ page_title }} | Software Engineer</title>
     <meta name="description" content="{{ page_description }}">
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='assets/img/favicon.ico') }}">
 
@@ -20,12 +20,52 @@
     <meta property="og:site_name" content="Nelson Koskela">
     <meta property="og:title" content="{{ page_title }}">
     <meta property="og:description" content="{{ page_description }}">
-    <meta property="og:url" content="{{ request.url }}">
+    <meta property="og:url" content="{{ request.base_url }}">
     <meta property="og:image" content="{% block og_image %}{{ url_for('static', filename='assets/img/bg.jpg', _external=True) }}{% endblock %}">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="{{ page_title }}">
     <meta name="twitter:description" content="{{ page_description }}">
     <meta name="twitter:image" content="{% block twitter_image %}{{ url_for('static', filename='assets/img/bg.jpg', _external=True) }}{% endblock %}">
+
+    {# Canonical + indexability. request.base_url is scheme+host+path with
+       no query string, so ?utm=... variants don't read as duplicate
+       pages. The gated standalone templates (documentation, job-tracker)
+       set their own noindex and don't extend this file. #}
+    <link rel="canonical" href="{{ request.base_url }}">
+    <meta name="robots" content="{% block robots %}index, follow{% endblock %}">
+
+    {# JSON-LD: a Person + WebSite graph so search engines (and AI
+       crawlers) get structured facts instead of parsing prose. #}
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Person",
+          "@id": "{{ url_for('main.index', _external=True) }}#nelson",
+          "name": "Nelson Koskela",
+          "url": "{{ url_for('main.index', _external=True) }}",
+          "jobTitle": "Software Engineer",
+          "address": {"@type": "PostalAddress", "addressLocality": "Houston", "addressRegion": "TX", "addressCountry": "US"},
+          "alumniOf": [
+            {"@type": "CollegeOrUniversity", "name": "Cogswell University of Silicon Valley"},
+            {"@type": "CollegeOrUniversity", "name": "Howard University"}
+          ],
+          "knowsAbout": ["Python", "Distributed systems", "Data pipelines", "Site reliability engineering", "Flask", "PostgreSQL", "Redis"],
+          "sameAs": [{{ GITHUB_URL | tojson }}, {{ LINKEDIN_URL | tojson }}]
+        },
+        {
+          "@type": "WebSite",
+          "@id": "{{ url_for('main.index', _external=True) }}#site",
+          "url": "{{ url_for('main.index', _external=True) }}",
+          "name": "Nelson Koskela",
+          "description": {{ page_description | tojson }},
+          "inLanguage": "en",
+          "publisher": {"@id": "{{ url_for('main.index', _external=True) }}#nelson"}
+        }
+      ]
+    }
+    </script>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -57,6 +97,7 @@
     {% block extra_head %}{% endblock %}
 </head>
 <body class="is-preload">
+<a class="skip-link" href="#content">Skip to content</a>
 <div id="welcome-gate" role="presentation">
     <div class="welcome-gate-text">
         <span class="welcome-gate-word">WELCOME</span>
@@ -77,6 +118,7 @@
             <a href="{{ url_for('main.index') }}">Home</a>
             <a href="{{ url_for('about.index') }}">About</a>
             <a href="{{ url_for('projects.index') }}">Projects</a>
+            <a href="{{ url_for('assistant.index') }}">Assistant</a>
             <a href="{{ url_for('contact.index') }}">Contact</a>
         </nav>
 
@@ -140,6 +182,7 @@
             <a href="{{ GITHUB_URL }}" target="_blank" rel="noopener">GitHub</a>
             <a href="{{ LINKEDIN_URL }}" target="_blank" rel="noopener">LinkedIn</a>
             <a href="mailto:{{ EMAIL }}">{{ EMAIL }}</a>
+            <a href="{{ url_for('legal.index') }}">Legal &amp; privacy</a>
         </div>
         <div class="footer-credit">
             &copy; {{ CURRENT_YEAR }} Nelson Koskela &middot; Built with Flask &middot;

@@ -563,6 +563,51 @@
 
   <hr class="rule">
 
+  <h4>Craft, SEO, and the legal surface</h4>
+  <div class="qa">
+    <details class="q">
+      <summary>How do you keep a site built with heavy AI assistance from looking like it?</summary>
+      <div class="answer">
+        <p>Run it against the checklist of tells and close each one. The structural ones are decided by the stack: this is server-rendered Flask, so view-source is real HTML, not an empty shell; it's on a real domain with its own TLS; every page sets its own <code>&lt;title&gt;</code> and meta description through Jinja blocks; there's a themed 404; there's exactly one <code>&lt;h1&gt;</code> per page.</p>
+        <p>The audit still found gaps worth naming: no JSON-LD, no canonical tag, no sitemap, no <code>llms.txt</code>. Those are cheap and now present &mdash; a <code>Person</code>/<code>WebSite</code> <code>@graph</code>, a canonical built from <code>request.base_url</code>, a <code>/sitemap.xml</code> generated from the same project list the nav uses so it can't drift, and a <code>/llms.txt</code> that mirrors what the on-site assistant is grounded on. <span class="pill p-info">&sect;34</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>The audit found an actual bug. What was it?</summary>
+      <div class="answer">
+        <p>Adding the canonical tag surfaced it. Caddy proxies to gunicorn and sets <code>X-Forwarded-Proto</code> and <code>X-Forwarded-Host</code>, but Werkzeug ignores those unless <code>ProxyFix</code> is installed &mdash; and it wasn't. So every <code>_external</code> URL was rendering as <code>http://web:8000/&hellip;</code>: the new canonical would have pointed search engines at an unreachable host, and <code>og:url</code> had the same problem already.</p>
+        <p>The same root cause had a quieter effect: <code>request.remote_addr</code> was Caddy's container IP, not the visitor's. Flask-Limiter keys per-IP, so every "per IP" rate limit was effectively one global bucket, and the assistant's salted IP hash was hashing the same proxy address for everyone. One line &mdash; <code>ProxyFix(x_for=1, x_proto=1, x_host=1)</code>, production only &mdash; fixes the URLs and the rate limiting together. The lesson: a canonical tag is only as correct as the request object it's built from. <span class="pill p-info">&sect;34</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>Your site has a chatbot. What's the legal exposure, and how is it limited?</summary>
+      <div class="answer">
+        <p>The reference point is <i>Moffatt v. Air Canada</i> (2024): a company's bot invented a refund policy, the company argued the bot was a separate legal entity, and the tribunal made them pay anyway. Whatever the bot says, you said.</p>
+        <p>So the assistant is built not to say things that aren't there: it answers only from a curated corpus, retrieved text and user messages are treated as data not instructions, it's told never to invent a number, date, or credential, and it hands off commitments (offers, salary, start dates) to a direct email. On top of that, the UI fine-print and <code>/legal#assistant</code> state plainly that replies are informational, may be wrong, are <b>not a binding statement</b> by the site owner, and are not financial or legal advice. Separately, the FTC's <i>Operation AI Comply</i> is about overstated AI claims &mdash; so every "AI" description on the site is literal and points at something real. <span class="pill p-info">&sect;34</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>How would this hold up in an ADA / accessibility review?</summary>
+      <div class="answer">
+        <p>Federal website-accessibility suits ran to roughly 3,100 in 2025, and the cheapest ones cite missing <code>alt</code> text. The baseline here: semantic HTML with one <code>&lt;h1&gt;</code> per page, a skip-to-content link as the first focusable element, <code>alt</code> on every meaningful image (decorative ones are explicitly <code>alt=""</code> so a screen reader skips them), keyboard operability with visible focus outlines, a declared page <code>lang</code>, and <code>prefers-reduced-motion</code> respected by the animations.</p>
+        <p>It's not a conformance certificate &mdash; <code>/legal#accessibility</code> says it <i>aims</i> at WCAG&nbsp;2.1 AA and gives an email to report problems, which is the honest position for a solo project. <span class="pill p-info">&sect;34</span></p>
+      </div>
+    </details>
+
+    <details class="q">
+      <summary>What do robots.txt, llms.txt, and a sitemap actually buy you?</summary>
+      <div class="answer">
+        <p>Different jobs. <code>robots.txt</code> is a crawl-permission hint &mdash; here it allows everyone, including AI crawlers, because a portfolio <i>wants</i> to be summarised, and its only Disallows are the two password-gated sections and the auth pages, which have nothing to index. It also now carries a <code>Sitemap:</code> line.</p>
+        <p><code>sitemap.xml</code> is a discovery aid: it lists every public page with a priority, so a crawler doesn't have to find them by following links. Generating it from the live project list means it can't fall behind the nav. <code>llms.txt</code> is the newer convention &mdash; a short prose map an LLM can read instead of scraping the DOM, so its summary of the site comes from a description the owner wrote. None of the three is access control; the server-side gates are. <span class="pill p-info">&sect;34</span></p>
+      </div>
+    </details>
+  </div>
+
+  <hr class="rule">
+
   <h4>Questions worth asking them</h4>
   <p>Drawn from problems this project actually raised, so they lead somewhere real rather than sounding rehearsed:</p>
   <ul>

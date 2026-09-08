@@ -30,3 +30,12 @@ Flask-Migrate>=4.0,<5.0
 # and every SSE endpoint's concurrency cap in sse_limits.py also needs a
 # Redis connection) -- a production install without it crashes on boot.
 fakeredis>=2.20,<3.0
+
+# Personal AI assistant (app/services/assistant, app/blueprints/assistant).
+# All three are imported lazily -- the app still boots, and the test suite
+# still runs, without them installed (the /assistant page just reports
+# "offline"). Retrieval requires Postgres + the pgvector extension, same
+# as /pipeline-analytics; there is no SQLite path for it.
+groq>=0.11,<1.0          # Groq LPU chat inference (Llama 3.3 70B), free tier
+fastembed>=0.3,<0.8      # local ONNX sentence embeddings (bge-small-en-v1.5, 384-d), no torch
+pgvector>=0.3,<0.5       # SQLAlchemy vector column type + `<=>` cosine operator on Postgres

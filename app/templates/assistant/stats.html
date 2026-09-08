@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Assistant stats{% endblock %}
+{% block meta_description %}Usage statistics for the AI assistant on this site: message volume, tone, most-asked questions, and top words -- all computed from stored logs with no LLM calls.{% endblock %}
+{% block content_class %}wide assistant-stats-page{% endblock %}
+
+{% macro barlist(items, label_key, count_key, max) %}
+<ul class="stx-bars">
+  {% for it in items %}
+  <li>
+    <span class="stx-bar-label">{{ it[label_key] }}</span>
+    <span class="stx-bar-track"><span class="stx-bar-fill" style="width: {{ (100 * it[count_key] / max) if max else 0 }}%"></span></span>
+    <span class="stx-bar-count">{{ it[count_key] }}</span>
+  </li>
+  {% endfor %}
+</ul>
+{% endmacro %}
+
+{% block content %}
+<section>
+  <div class="section-title">
+    <h1 class="major">Assistant stats</h1>
+    <a class="button small" href="{{ url_for('assistant.index') }}">&larr; Back to the assistant</a>
+  </div>
+
+  <p class="muted">
+    Last {{ stats.days }} days. Every number here comes from stored request logs and a
+    handful of keyword and regex rules &mdash; <strong>no model runs to build this page,
+    and it costs no tokens</strong>. A question only appears under &ldquo;most asked&rdquo;
+    once it's been asked more than once, and anything that tripped the profanity filter is
+    left out. Generated {{ stats.generated_at }}.
+  </p>
+
+  {% if not stats.total_messages %}
+  <p class="stx-empty">No assistant activity in the last {{ stats.days }} days yet. Ask it something and check back.</p>
+  {% else %}
+
+  <div class="stx-tiles">
+    <div class="stx-tile"><span class="stx-n">{{ stats.total_messages }}</span><span class="stx-l">Messages</span></div>
+    <div class="stx-tile"><span class="stx-n">{{ stats.unique_visitors }}</span><span class="stx-l">Unique visitors</span></div>
+    <div class="stx-tile"><span class="stx-n">{{ stats.answered_pct }}%</span><span class="stx-l">Answered from the corpus</span></div>
+    <div class="stx-tile"><span class="stx-n stx-good">{{ stats.positive_pct }}%</span><span class="stx-l">Positive tone</span></div>
+    <div class="stx-tile"><span class="stx-n stx-warn">{{ stats.frustrated_pct }}%</span><span class="stx-l">Frustrated</span></div>
+    <div class="stx-tile"><span class="stx-n stx-bad">{{ stats.cursing_pct }}%</span><span class="stx-l">Contained cursing</span></div>
+    <div class="stx-tile"><span class="stx-n">{{ stats.error_rate }}%</span><span class="stx-l">Errored</span></div>
+    <div class="stx-tile"><span class="stx-n">{{ stats.latency.p50 if stats.latency.p50 is not none else "—" }}<small>ms</small></span><span class="stx-l">Median response</span></div>
+  </div>
+
+  <p class="muted stx-sub">
+    The assistant itself spent about <strong>{{ "{:,}".format(stats.tokens_in) }}</strong>
+    input and <strong>{{ "{:,}".format(stats.tokens_out) }}</strong> output tokens
+    answering those messages (this page adds none). Average message:
+    {{ stats.avg_words_per_message }} words.
+  </p>
+
+  <div class="stx-grid">
+    <div class="stx-panel">
+      <h2>Top words in questions</h2>
+      {% if stats.top_words %}
+        {{ barlist(stats.top_words, 'word', 'count', stats.top_words[0].count) }}
+      {% else %}<p class="muted">Not enough data yet.</p>{% endif %}
+    </div>
+
+    <div class="stx-panel">
+      <h2>Most asked questions</h2>
+      {% if stats.top_questions %}
+      <ol class="stx-questions">
+        {% for q in stats.top_questions %}
+        <li><span class="stx-q">{{ q.question }}</span><span class="stx-q-count">&times;{{ q.count }}</span></li>
+        {% endfor %}
+      </ol>
+      {% else %}<p class="muted">No question has been asked more than once yet.</p>{% endif %}
+    </div>
+
+    <div class="stx-panel">
+      <h2>What people ask about</h2>
+      {% if stats.category_breakdown %}
+        {{ barlist(stats.category_breakdown, 'label', 'count', stats.category_breakdown[0].count) }}
+      {% else %}<p class="muted">Not enough data yet.</p>{% endif %}
+    </div>
+
+    <div class="stx-panel">
+      <h2>How it answered</h2>
+      {% if stats.reply_breakdown %}
+        {{ barlist(stats.reply_breakdown, 'label', 'count', stats.reply_breakdown[0].count) }}
+      {% else %}<p class="muted">Not enough data yet.</p>{% endif %}
+    </div>
+
+    <div class="stx-panel">
+      <h2>Tone</h2>
+      {{ barlist(stats.sentiment_breakdown, 'label', 'count', stats.total_messages) }}
+    </div>
+
+    <div class="stx-panel">
+      <h2>Busiest hours (UTC)</h2>
+      {% if stats.busiest_hours %}
+      <ul class="stx-bars">
+        {% for h in stats.busiest_hours %}
+        <li>
+          <span class="stx-bar-label">{{ "%02d:00"|format(h.hour) }}</span>
+          <span class="stx-bar-track"><span class="stx-bar-fill" style="width: {{ 100 * h.count / stats.busiest_hours[0].count }}%"></span></span>
+          <span class="stx-bar-count">{{ h.count }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="muted">Not enough data yet.</p>{% endif %}
+    </div>
+  </div>
+
+  <div class="stx-panel stx-wide">
+    <h2>Messages per day</h2>
+    <div class="stx-spark">
+      {% set vmax = (stats.volume | map(attribute='count') | max) or 1 %}
+      {% for d in stats.volume %}
+      <span class="stx-spark-bar" style="height: {{ (4 + 96 * d.count / vmax) }}%" title="{{ d.date }}: {{ d.count }}"></span>
+      {% endfor %}
+    </div>
+  </div>
+
+  <p class="muted stx-note">
+    &ldquo;Frustrated&rdquo; and &ldquo;cursing&rdquo; are best-effort keyword heuristics,
+    not judgements &mdash; a sarcastic &ldquo;great, thanks&rdquo; will read as positive,
+    and a calm sentence with a swear in it counts as cursing. They're here to show the
+    shape of the traffic, not to grade anyone.
+  </p>
+  {% endif %}
+</section>
+{% endblock %}

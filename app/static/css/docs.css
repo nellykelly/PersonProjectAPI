@@ -467,6 +467,7 @@
   position: sticky; top: 0; z-index: 10;
 }
 .backbar span { color: var(--ink-3); }
+.backbar-right { display: inline-flex; gap: 1.5rem; }
 .backbar a { color: var(--accent-ink); text-decoration: none; }
 .backbar a:hover { text-decoration: underline; }
 .backbar a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

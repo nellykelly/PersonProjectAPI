@@ -16,7 +16,14 @@
 <div class="backbar">
   <a href="{{ url_for('main.index') }}">&larr; nelsonkoskela.dev</a>
   <span>Engineering reference</span>
-  <a href="{{ url_for('projects.index') }}">Projects &rarr;</a>
+  <span class="backbar-right">
+    {# The job tracker is otherwise unlinked and noindex -- this is its one
+       entry point, from inside a section that is itself password-gated and
+       noindex, so it stays hidden from the public while being reachable
+       without bookmarking a bare URL. #}
+    <a href="{{ url_for('job_tracker.gate') }}">Job tracker &rarr;</a>
+    <a href="{{ url_for('projects.index') }}">Projects &rarr;</a>
+  </span>
 </div>
 
 <div class="shell">
@@ -90,6 +97,10 @@
       <li><a href="#s31"><i>31</i><span>How Docker works</span></a></li>
       <li><a href="#s32"><i>32</i><span>How Redis works</span></a></li>
       <li><a href="#s33"><i>33</i><span>How Caddy works</span></a></li>
+    </ol>
+    <h2>Part X &mdash; Polish &amp; compliance</h2>
+    <ol>
+      <li><a href="#s34"><i>34</i><span>Not looking (or getting sued for looking) AI-built</span></a></li>
     </ol>
     <h2>Part IX</h2>
     <ol>
@@ -1956,9 +1967,63 @@ RATELIMIT_STORAGE_URI  redis://redis:6379/1    Flask-Limiter counters</code></pr
 </section>
 
 <div class="part">
-  <span class="part-label">Part IX</span>
-  <h2>Interview question bank</h2>
+  <span class="part-label">Part X</span>
+  <h2>Polish &amp; compliance</h2>
 </div>
+
+<section class="chunk" id="s34">
+  <h3><i>34</i><span>Not looking (or getting sued for looking) AI-built</span></h3>
+
+  <p class="lede">Two audits, run against public checklists of "tells" that a site was pasted out of an AI and shipped without review, and of the statutes an AI-built app most often trips. Most items were already handled by the choices elsewhere in this reference &mdash; server-rendered Flask, a real domain, one <code>&lt;h1&gt;</code> per page &mdash; but the audit closed real gaps: structured data, a canonical tag, a sitemap, an <code>llms.txt</code>, a <code>/legal</code> page, and a proxy fix that was making every external URL wrong.</p>
+
+  <h4>Craft tells &mdash; and what was done</h4>
+  <table>
+    <thead><tr><th>Tell</th><th>State</th><th>How / why</th></tr></thead>
+    <tbody>
+      <tr><td>Default hosting subdomain</td><td>N/A</td><td>Real domain, <code>nelsonkoskela.dev</code>, TLS via Caddy (&sect;33).</td></tr>
+      <tr><td>Empty view-source (JS shell)</td><td>N/A</td><td>Server-rendered Jinja; every page is complete HTML on first byte.</td></tr>
+      <tr><td>No 404 page</td><td>Already fine</td><td><code>@app.errorhandler(404)</code> renders a themed <code>errors/404.html</code>.</td></tr>
+      <tr><td>Framework-default tab title</td><td>Already fine</td><td><code>&lt;title&gt;{{ '{{ page_title }}' }} | Software Engineer&lt;/title&gt;</code>, set per page via a Jinja block.</td></tr>
+      <tr><td>Same title on every page</td><td>Already fine</td><td>Every blueprint overrides <code>{{ '{% block title %}' }}</code>.</td></tr>
+      <tr><td>No meta description</td><td>Already fine</td><td>Per-page <code>{{ '{% block meta_description %}' }}</code>, defaulted in <code>base.html</code>.</td></tr>
+      <tr><td>No OG image</td><td>Already fine</td><td>OG + Twitter tags present; image is the site background (a bespoke card is a nice-to-have, noted below).</td></tr>
+      <tr><td>No structured data</td><td><b>Fixed</b></td><td>JSON-LD <code>@graph</code> in <code>base.html</code>: a <code>Person</code> (name, job title, schools, <code>knowsAbout</code>, <code>sameAs</code> to GitHub/LinkedIn) and a <code>WebSite</code>, so search and AI crawlers get facts instead of parsing prose.</td></tr>
+      <tr><td>Zero or multiple <code>&lt;h1&gt;</code></td><td>Already fine</td><td>Audited every template: exactly one <code>&lt;h1&gt;</code> per rendered page (the two in <code>register.html</code> are the two arms of an <code>if/else</code>).</td></tr>
+      <tr><td>No canonical tag</td><td><b>Fixed</b></td><td><code>&lt;link rel="canonical" href="{{ '{{ request.base_url }}' }}"&gt;</code> &mdash; scheme + host + path, no query string, so <code>?utm=&hellip;</code> variants don't read as duplicates.</td></tr>
+      <tr><td>No <code>llms.txt</code></td><td><b>Fixed</b></td><td><code>GET /llms.txt</code>: a short plain-text map of the site and its projects for LLM crawlers, mirroring what the on-site assistant is grounded on.</td></tr>
+      <tr><td>AI crawlers blocked in <code>robots.txt</code></td><td>Already fine (made explicit)</td><td><code>User-agent: *</code> / <code>Allow: /</code> &mdash; GPTBot, ClaudeBot, PerplexityBot, Google-Extended are <i>not</i> blocked; being summarisable is the point for a portfolio. A comment now says so.</td></tr>
+      <tr><td>No favicon</td><td>Already fine</td><td><code>&lt;link rel="icon"&gt;</code> plus a root <code>/favicon.ico</code> route (browsers request it regardless of the tag).</td></tr>
+      <tr><td>No <code>sitemap.xml</code></td><td><b>Fixed</b></td><td><code>GET /sitemap.xml</code> built from the same <code>listed_projects()</code> the nav uses, so it can't drift; the two password-gated sections are excluded on purpose, and a <code>Sitemap:</code> line was added to <code>robots.txt</code>.</td></tr>
+      <tr><td>Missing / empty <code>lang</code></td><td>Already fine</td><td><code>&lt;html lang="en"&gt;</code> in <code>base.html</code> and in every standalone gated template.</td></tr>
+      <tr><td>Missing image <code>alt</code></td><td>Already fine</td><td>Every <code>&lt;img&gt;</code> carries <code>alt</code>; decorative images (project icons, bio-graph nodes) use <code>alt=""</code> so a screen reader skips them.</td></tr>
+      <tr><td>Source maps in production</td><td>N/A</td><td>No build step. The JavaScript is hand-written and served as-is; there is nothing to map.</td></tr>
+      <tr><td>Console full of errors</td><td>Verified clean</td><td>No errors or warnings on load across the public pages. CSP ships report-only (&sect;25) so violations surface without breaking anything.</td></tr>
+      <tr><td>Enormous JS bundles</td><td>N/A</td><td>No bundler. A few small vanilla files; Chart.js and the Socket.IO client come from a CDN and are cached.</td></tr>
+      <tr><td>Wrong external URLs behind the proxy</td><td><b>Fixed (found by the audit)</b></td><td>Caddy sends <code>X-Forwarded-Proto/Host</code>, but Werkzeug ignores them without <code>ProxyFix</code> &mdash; so <code>_external</code> URLs (the new canonical, JSON-LD, <code>og:url</code>) were rendering as <code>http://web:8000/&hellip;</code>, and <code>request.remote_addr</code> was Caddy's container IP, which quietly made every per-IP rate limit global and the assistant's IP hash meaningless. <code>ProxyFix(x_for=1, x_proto=1, x_host=1)</code> is now applied in production only.</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Legal surface &mdash; the statutes an app like this can trip</h4>
+  <p>Real statutes; the headline dollar figures are statutory maxima, not typical outcomes. The point of the audit was to make sure the site doesn't hand a plaintiff an easy one.</p>
+  <table>
+    <thead><tr><th>Risk</th><th>Applies?</th><th>Position</th></tr></thead>
+    <tbody>
+      <tr><td>TCPA &mdash; SMS without opt-in</td><td>No</td><td>The site sends no SMS.</td></tr>
+      <tr><td>DMCA &mdash; no registered agent</td><td>Low</td><td>The only user content is short submitted <i>text</i> (character and leaderboard names); no files or media are hosted. <code>/legal</code> now names an abuse/takedown contact and a remove-promptly commitment. Registering a formal DMCA agent ($6, ten minutes) is recommended if UGC ever grows &mdash; an owner action.</td></tr>
+      <tr><td>CCPA &mdash; unencrypted user data / no notice</td><td>Partly</td><td>Minimal collection: a username and a Werkzeug-hashed password (<b>no email</b>), a salted SHA-256 IP hash (never the raw IP), truncated assistant Q/A. <code>/legal</code> now states all of this plainly. Full-disk encryption on the VPS is a recommended owner step.</td></tr>
+      <tr><td>Chatbot liability &mdash; <i>Moffatt v. Air Canada</i></td><td><b>Yes</b></td><td>"Whatever the bot says, you said." Mitigations: the assistant answers only from a curated corpus, is told to treat retrieved text as data not instructions, never invents specifics, and hands off commitments. Its fine-print and <code>/legal#assistant</code> now state that replies are informational, <b>not a binding statement by Nelson</b>, and not financial or legal advice.</td></tr>
+      <tr><td>BIPA &mdash; biometric consent</td><td>No</td><td>No FaceID, voiceprint, or fingerprint anywhere.</td></tr>
+      <tr><td>CIPA / VPPA &mdash; pixel before consent / video tracking</td><td>No</td><td>No Meta Pixel, no Google Analytics, no third-party tracker of any kind; no video. The only cookies are strictly necessary (session, rate-limit scope, "remember me"), so there is nothing to gate behind a banner.</td></tr>
+      <tr><td>ADA &mdash; web accessibility</td><td><b>Yes</b></td><td>~3,100 federal website suits in 2025. Addressed: one <code>&lt;h1&gt;</code> per page, a skip-to-content link as the first focusable element, <code>alt</code> on meaningful images, keyboard operability, visible focus, declared <code>lang</code>, <code>prefers-reduced-motion</code> honoured. An accessibility statement lives at <code>/legal#accessibility</code>.</td></tr>
+      <tr><td>COPPA + Texas App Store Act &mdash; age gating</td><td>Low</td><td>Not a mobile app, and no PII is collected from anyone under 13 (game handles aren't identity). Registration now states you must be 13+, and <code>/legal</code> says the site isn't directed to children.</td></tr>
+      <tr><td>CAN-SPAM &mdash; email without unsubscribe</td><td>No</td><td>The app sends no email. The contact page is a <code>mailto:</code> link. If that ever changes, an unsubscribe link, a physical address, and honest headers become mandatory.</td></tr>
+      <tr><td>FTC &mdash; overstated AI claims</td><td><b>Yes</b></td><td><i>Operation AI Comply</i> (AccessiBe, DoNotPay). Every "AI" description on the site is literal: the assistant is called "a retrieval-augmented large language model", "agentic engineering" refers to a demonstrable project, and no tool claims a capability it doesn't have.</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Left to the owner</h4>
+  <p>Three things a code change can't do: register a DMCA agent with the Copyright Office; enable full-disk encryption on the VPS; and commission a proper Open Graph card image. All three are noted here rather than pretended-done.</p>
+</section>
 
 <section class="chunk">
   <div class="note">

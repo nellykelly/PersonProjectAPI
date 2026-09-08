@@ -128,6 +128,21 @@ def test_documentation_links_back_into_the_site(unlocked_client):
     assert b'href="/projects"' in resp.data
 
 
+def test_documentation_reference_links_to_the_job_tracker(unlocked_client):
+    """The job tracker is otherwise unlinked and noindex. The unlocked
+    engineering reference (itself password-gated and noindex) is its one
+    entry point -- if this link disappears there's no way to reach it
+    without typing the bare URL."""
+    resp = unlocked_client.get("/documentation")
+    assert b"/job-tracker" in resp.data
+
+
+def test_locked_documentation_does_not_leak_the_job_tracker_link(locked_client):
+    """...and that entry point must not show through the gate."""
+    resp = locked_client.get("/documentation")
+    assert b"/job-tracker" not in resp.data
+
+
 def test_documentation_loads_mermaid_and_has_diagrams_to_render(unlocked_client):
     resp = unlocked_client.get("/documentation")
     assert b"mermaid.esm.min.mjs" in resp.data
@@ -172,6 +187,20 @@ def test_documentation_covers_every_project(unlocked_client):
         b"Timed-Squares",
     ):
         assert heading in resp.data
+
+
+def test_documentation_covers_the_seo_and_legal_audit(unlocked_client):
+    """The 'vibe-code tells + statutes' pass has its own section (#s34)
+    covering both checklists, and the interview bank has matching Q&A."""
+    ref = unlocked_client.get("/documentation").data
+    assert b'id="s34"' in ref
+    for topic in (b"canonical", b"llms.txt", b"sitemap.xml", b"ProxyFix",
+                  b"Moffatt v. Air Canada", b"structured data", b"skip"):
+        assert topic in ref, f"missing from doc section 34: {topic!r}"
+
+    bank = unlocked_client.get("/documentation/interview").data
+    assert b"vibe-coded" in bank or b"looking like it" in bank
+    assert b"ProxyFix" in bank and b"Moffatt" in bank
 
 
 def test_documentation_page_is_not_indexable(locked_client):

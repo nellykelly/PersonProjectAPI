@@ -1,0 +1,84 @@
+{% extends "job_tracker/_layout.html" %}
+{% block title %}Board{% endblock %}
+
+{% block content %}
+<div class="jt-stats">
+  <div class="jt-stat"><span class="jt-stat-n">{{ stats.total }}</span><span class="jt-stat-l">Applications</span></div>
+  <div class="jt-stat"><span class="jt-stat-n">{{ stats.active_interviews }}</span><span class="jt-stat-l">Active interviews</span></div>
+  <div class="jt-stat"><span class="jt-stat-n">{{ stats.offers }}</span><span class="jt-stat-l">Offers</span></div>
+  <div class="jt-stat"><span class="jt-stat-n">{{ stats.response_rate }}%</span><span class="jt-stat-l">Response rate</span></div>
+</div>
+
+<form class="jt-filters" method="get" action="{{ url_for('job_tracker.dashboard') }}">
+  <input type="search" name="q" value="{{ search }}" placeholder="Company or role" aria-label="Search company or role">
+  <select name="status" aria-label="Filter by status">
+    <option value="">All statuses</option>
+    {% for s in statuses %}
+      <option value="{{ s }}" {{ 'selected' if s == active_status }}>{{ s }} ({{ status_counts[s] }})</option>
+    {% endfor %}
+  </select>
+  <select name="sort" aria-label="Sort by">
+    <option value="-date_applied" {{ 'selected' if sort == '-date_applied' }}>Newest applied</option>
+    <option value="date_applied" {{ 'selected' if sort == 'date_applied' }}>Oldest applied</option>
+    <option value="-status_updated_at" {{ 'selected' if sort == '-status_updated_at' }}>Recently updated</option>
+    <option value="-match_grade" {{ 'selected' if sort == '-match_grade' }}>Best match</option>
+    <option value="company_name" {{ 'selected' if sort == 'company_name' }}>Company A-Z</option>
+  </select>
+  <button type="submit">Apply</button>
+  <a class="jt-btn jt-btn-primary" href="{{ url_for('job_tracker.new_application') }}">+ Add application</a>
+</form>
+
+{% if not applications %}
+  <p class="jt-empty">No applications yet. <a href="{{ url_for('job_tracker.new_application') }}">Add the first one.</a></p>
+{% else %}
+<div class="jt-table-wrap">
+<table class="jt-table">
+  <thead>
+    <tr>
+      <th>Company</th><th>Role</th><th>Applied</th><th>Status</th>
+      <th>Resume</th><th>Match</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for a in applications %}
+    <tr>
+      <td>
+        <a class="jt-company" href="{{ url_for('job_tracker.edit_application', app_id=a.id) }}">{{ a.company_name }}</a>
+        {% if a.company_industry %}<span class="jt-sub">{{ a.company_industry }}</span>{% endif %}
+      </td>
+      <td>
+        {% if a.job_posting_url %}
+          <a href="{{ a.job_posting_url }}" target="_blank" rel="noopener">{{ a.role_title }}</a>
+        {% else %}{{ a.role_title }}{% endif %}
+        {% if a.location_remote_policy %}<span class="jt-sub">{{ a.location_remote_policy }}</span>{% endif %}
+      </td>
+      <td class="jt-nowrap">{{ a.date_applied.isoformat() if a.date_applied else "—" }}</td>
+      <td>
+        <form method="post" action="{{ url_for('job_tracker.change_status', app_id=a.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}">
+          <select name="status" class="jt-status jt-status--{{ a.status | lower | replace(' ', '-') | replace('/', '-') }}"
+                  onchange="this.form.submit()" aria-label="Status for {{ a.company_name }}">
+            {% for s in statuses %}
+              <option value="{{ s }}" {{ 'selected' if s == a.status }}>{{ s }}</option>
+            {% endfor %}
+          </select>
+          <noscript><button type="submit">Set</button></noscript>
+        </form>
+      </td>
+      <td class="jt-nowrap">{{ a.resume_version or "—" }}</td>
+      <td class="jt-nowrap">
+        {% if a.match_grade is not none %}
+          <span class="jt-grade" title="{{ match_label(a.match_grade) }}">{{ a.match_grade }}</span>
+        {% else %}—{% endif %}
+      </td>
+      <td class="jt-nowrap">
+        <a class="jt-link" href="{{ url_for('job_tracker.edit_application', app_id=a.id) }}">Edit</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

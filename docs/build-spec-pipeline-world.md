@@ -87,6 +87,7 @@ This is genuine non-trivial SQL — joins across `characters` and `pipeline_runs
 
 ## Resume-Corrected Notes for the Site
 
-- Python is a **current, confirmed skill** used daily at JPMC — not a gap. Update site copy accordingly (do not frame these projects as "learning Python," frame them as "continuing to build with Python outside of work").
+- **Update (Sept 2026):** Nelson has left JPMorgan Chase (tenure July 2022 – September 2026). Site copy is past-tense about that role; he is now building independently.
+- Python is a **confirmed skill** used daily in that role — not a gap. Update site copy accordingly (do not frame these projects as "learning Python," frame them as "continuing to build with Python outside of work").
 - Actual title is **Software Engineer II**, Corporate & Investment Banking — more specific than "Software Engineer," worth using the precise title.
 - Resume also surfaces two more projects not yet reflected in the site outline: **Beeznest** (Ruby on Rails B2B platform, 2nd place at StreetCode Accelerator Demo Day) and **Timed-Squares** (JS/Processing + Python/Pygame puzzle game). These could round out an "earlier projects" or "archive" section on the Projects page — they're smaller than the four flagship builds but show range (Rails, game dev) and one has a concrete award attached, which is good social proof worth surfacing.

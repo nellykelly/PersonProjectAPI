@@ -1,0 +1,211 @@
+/* Nelson's private job-application tracker (/job-tracker/board and friends).
+
+   Layered on top of docs.css: that file defines the colour tokens
+   (--surface, --ink, --rule, --accent, --good/--warn/--crit …) and the
+   light/dark swap. This file is only the job-tracker-specific furniture
+   -- the top bar, stat tiles, the applications table, status pills, and
+   the add/edit form. Standalone pages, not part of the site's dark
+   theme, same as the /documentation reference. */
+
+body.jt {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.jt a { color: var(--accent-ink); }
+
+/* ---- top bar ---- */
+.jt-bar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--rule);
+}
+.jt-bar-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: .85rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+.jt-brand {
+  font-weight: 700;
+  letter-spacing: -.01em;
+  text-decoration: none;
+  color: var(--ink);
+}
+.jt-nav {
+  display: flex;
+  gap: 1.1rem;
+  margin-left: auto;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: .78rem;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.jt-nav a { text-decoration: none; color: var(--ink-3); padding-bottom: 2px; }
+.jt-nav a:hover { color: var(--ink); }
+.jt-nav a.is-here { color: var(--accent-ink); border-bottom: 2px solid var(--accent); }
+.jt-nav a.jt-lock { color: var(--warn); }
+
+.jt-main {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.75rem 1.5rem 4rem;
+}
+
+/* ---- stat tiles ---- */
+.jt-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: .9rem;
+  margin-bottom: 1.5rem;
+}
+.jt-stat {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 1rem 1.1rem;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+}
+.jt-stat-n { font-size: 1.6rem; font-weight: 700; line-height: 1; }
+.jt-stat-l {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: .68rem; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+/* ---- filter row ---- */
+.jt-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .6rem;
+  align-items: center;
+  margin-bottom: 1.2rem;
+}
+.jt-filters input[type="search"] { min-width: 14rem; flex: 1 1 14rem; }
+.jt input, .jt select, .jt textarea {
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: .5rem .6rem;
+}
+.jt input:focus, .jt select:focus, .jt textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+.jt button, .jt .jt-btn {
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  padding: .5rem .9rem;
+  border-radius: 4px;
+  border: 1px solid var(--rule);
+  background: var(--surface-2);
+  color: var(--ink);
+  text-decoration: none;
+  display: inline-block;
+}
+.jt .jt-btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.jt .jt-btn-danger { background: var(--crit-soft); border-color: var(--crit); color: var(--crit); }
+.jt button:hover, .jt .jt-btn:hover { filter: brightness(1.05); }
+
+/* ---- table ---- */
+.jt-table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 6px; }
+.jt-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  font-size: .92rem;
+}
+.jt-table th, .jt-table td {
+  text-align: left;
+  padding: .6rem .75rem;
+  border-bottom: 1px solid var(--rule-soft);
+  vertical-align: top;
+}
+.jt-table th {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: .66rem; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink-3);
+  background: var(--surface-2);
+  position: sticky; top: 0;
+}
+.jt-table tr:last-child td { border-bottom: none; }
+.jt-nowrap { white-space: nowrap; }
+.jt-company { font-weight: 600; text-decoration: none; }
+.jt-sub { display: block; font-size: .78rem; color: var(--ink-3); margin-top: .15rem; }
+.jt-link { font-size: .85rem; text-decoration: none; }
+.jt-grade {
+  display: inline-block; min-width: 2ch; text-align: center;
+  font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.jt-empty { color: var(--ink-2); padding: 2rem 0; }
+
+/* ---- status pill / select ---- */
+.jt-status {
+  font-size: .8rem;
+  font-weight: 600;
+  padding: .3rem .5rem;
+  border-radius: 999px;
+  border: 1px solid var(--rule);
+  background: var(--surface-2);
+  max-width: 12rem;
+}
+.jt-status--applied              { background: var(--surface-2); color: var(--ink-2); }
+.jt-status--phone-screen         { background: var(--accent-soft); color: var(--accent-ink); border-color: var(--accent); }
+.jt-status--technical-interview  { background: var(--accent-soft); color: var(--accent-ink); border-color: var(--accent); }
+.jt-status--onsite-final         { background: var(--warn-soft); color: var(--warn); border-color: var(--warn); }
+.jt-status--offer                { background: var(--good-soft); color: var(--good); border-color: var(--good); }
+.jt-status--rejected             { background: var(--crit-soft); color: var(--crit); border-color: var(--crit); }
+.jt-status--ghosted              { background: var(--surface-2); color: var(--ink-3); }
+.jt-status--withdrawn            { background: var(--surface-2); color: var(--ink-3); }
+
+/* ---- form ---- */
+.jt-form-head, .jt-form-actions { display: flex; align-items: center; gap: 1rem; }
+.jt-form-head { justify-content: space-between; margin-bottom: 1rem; }
+.jt-form-head h1 { font-size: 1.3rem; margin: 0; }
+.jt-form { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 1.5rem; box-shadow: var(--shadow); }
+.jt-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem 1.25rem; }
+.jt-form label { display: flex; flex-direction: column; gap: .35rem; font-size: .8rem; font-weight: 600; color: var(--ink-2); }
+.jt-form label input, .jt-form label select, .jt-form label textarea { font-weight: 400; color: var(--ink); }
+.jt-form .jt-wide { grid-column: 1 / -1; }
+.jt-form .jt-check { flex-direction: row; align-items: center; gap: .5rem; }
+.jt-form .req { color: var(--crit); }
+.jt-hint, .jt-form .jt-hint { font-weight: 400; color: var(--ink-3); font-size: .72rem; }
+.jt-form-actions { margin-top: 1.5rem; }
+.jt-err {
+  border: 1px solid var(--crit);
+  background: var(--crit-soft); color: var(--crit);
+  border-radius: 4px; padding: .6rem .8rem; margin-bottom: 1rem;
+}
+
+/* ---- change history ---- */
+.jt-history { margin-top: 2rem; }
+.jt-history h2 { font-size: 1rem; margin: 0 0 .6rem; }
+.jt-history ul { list-style: none; margin: 0; padding: 0; font-size: .85rem; }
+.jt-history li { padding: .35rem 0; border-bottom: 1px solid var(--rule-soft); }
+.jt-history code { background: var(--code-bg); padding: .05rem .3rem; border-radius: 3px; }
+.jt-when { color: var(--ink-3); font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .75rem; margin-right: .5rem; }
+.jt-src {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: .66rem; text-transform: uppercase; letter-spacing: .08em;
+  padding: .1rem .4rem; border-radius: 3px; margin-right: .5rem;
+  background: var(--surface-2); color: var(--ink-3);
+}
+.jt-src--assistant { background: var(--accent-soft); color: var(--accent-ink); }
+.jt-src--web { background: var(--good-soft); color: var(--good); }
+
+@media (max-width: 720px) {
+  .jt-stats { grid-template-columns: repeat(2, 1fr); }
+  .jt-grid { grid-template-columns: 1fr; }
+}

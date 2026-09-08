@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Legal &amp; privacy{% endblock %}
+{% block meta_description %}Terms of use, privacy notice, cookie policy, AI-assistant disclaimer, and accessibility statement for nelsonkoskela.dev.{% endblock %}
+
+{% block content %}
+<section class="legal-page">
+  <h1 class="major">Legal &amp; privacy</h1>
+  <p class="muted">Last updated {{ last_updated }}. This is a personal portfolio site, not a
+    commercial service. Plain language, no dark patterns.</p>
+
+  <h2 id="terms">Terms of use</h2>
+  <p>
+    The site and its projects are provided as-is, for demonstration, with no warranty of
+    any kind. The Trading Simulator, Company Scorer, and any market figures use
+    <strong>simulated or delayed data</strong> and are <strong>not financial, investment,
+    tax, or legal advice</strong>. Don't make decisions based on anything here. Interactive
+    demos (Pipeline World, Timed-Squares) accept short text you submit knowingly and
+    display it publicly &mdash; don't submit anything private.
+  </p>
+
+  <h2 id="privacy">Privacy</h2>
+  <p>What is collected, and nothing else:</p>
+  <ul>
+    <li><strong>Accounts</strong> (optional, only for the LeetCode tracker): a username
+      and a hashed password. <strong>No email address</strong> is stored, and there is no
+      email or marketing list.</li>
+    <li><strong>Functional cookies</strong>: a signed session cookie, a random
+      <code>session_id</code> used only to scope rate limiting, and a "remember me" cookie
+      if you tick it at login. Nothing else.</li>
+    <li><strong>Request logs for the assistant</strong>: for each chat message, a truncated
+      copy of the question, the reply, timing, and your IP address <strong>stored only as
+      a salted SHA-256 hash</strong> &mdash; never the raw IP. Used for the public
+      <a href="{{ url_for('assistant.stats') }}">usage stats</a> page, which shows
+      aggregates only.</li>
+    <li><strong>Public submissions</strong>: character names and icebreaker answers in
+      Pipeline World, and leaderboard names in Timed-Squares, are shown publicly by design.</li>
+  </ul>
+  <p>
+    <strong>No third-party analytics, advertising, pixels, or trackers</strong> run on
+    this site &mdash; no Google Analytics, no Meta Pixel, nothing. Data is not sold or
+    shared. Everything lives on a single European VPS. To request deletion of an account
+    or a submission, email the address below.
+  </p>
+
+  <h2 id="cookies">Cookies</h2>
+  <p>
+    Only <strong>strictly necessary</strong> cookies are set (session, rate-limit scope,
+    optional "remember me"). There are no advertising or analytics cookies, so there is no
+    consent banner &mdash; there is nothing non-essential to consent to.
+  </p>
+
+  <h2 id="assistant">AI assistant disclaimer</h2>
+  <p>
+    &ldquo;Hera&rdquo; on the <a href="{{ url_for('assistant.index') }}">Assistant</a> page
+    is a retrieval-augmented large language model. It answers only from this site's own
+    published content. Its responses:
+  </p>
+  <ul>
+    <li>are <strong>informational only</strong> and may be inaccurate, incomplete, or
+      out of date;</li>
+    <li>are <strong>not a binding statement, promise, or offer</strong> by Nelson Koskela,
+      and do not create any agreement;</li>
+    <li>are <strong>not financial, legal, or professional advice</strong>.</li>
+  </ul>
+  <p>
+    For anything that matters &mdash; roles, availability, commitments &mdash;
+    <a href="{{ url_for('contact.index') }}">contact Nelson directly</a> rather than
+    relying on the assistant.
+  </p>
+
+  <h2 id="accessibility">Accessibility</h2>
+  <p>
+    This site aims to meet <strong>WCAG&nbsp;2.1 AA</strong>: semantic HTML and a single
+    <code>&lt;h1&gt;</code> per page, a skip-to-content link, alt text on meaningful
+    images (decorative images are marked empty), keyboard operability, visible focus
+    outlines, a declared page language, and respect for <code>prefers-reduced-motion</code>.
+    If something is hard to use with a screen reader or keyboard, please email the address
+    below and it will be fixed.
+  </p>
+
+  <h2 id="abuse">Reporting abuse or infringing content</h2>
+  <p>
+    The only user-generated content is short submitted text (names, icebreaker answers,
+    leaderboard handles); no files, images, or media are hosted. To report content that is
+    abusive, infringes a copyright, or shouldn't be here, email
+    <a href="mailto:{{ EMAIL }}?subject=Content%20report">{{ EMAIL }}</a> with the URL and
+    what's wrong. Reported content is reviewed and removed promptly.
+  </p>
+
+  <h2 id="eligibility">Eligibility</h2>
+  <p>
+    You must be at least <strong>13 years old</strong> to create an account. This site is
+    a professional portfolio and is not directed to children.
+  </p>
+
+  <h2 id="contact">Contact</h2>
+  <p>
+    <a href="mailto:{{ EMAIL }}">{{ EMAIL }}</a> &middot;
+    <a href="{{ GITHUB_URL }}" target="_blank" rel="noopener">GitHub</a> &middot;
+    <a href="{{ LINKEDIN_URL }}" target="_blank" rel="noopener">LinkedIn</a>
+  </p>
+</section>
+{% endblock %}

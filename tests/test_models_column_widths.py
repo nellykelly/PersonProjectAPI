@@ -53,6 +53,20 @@ ENUMERABLE_COLUMNS = [
     # with a longer key than the column holds fails here rather than in
     # production. Read from the registry itself, not a copy of it.
     (models.RiskRequest, "model_key", [m.key for m in risk_models.list_models()]),
+    # Job tracker. status is the fixed funnel vocabulary; the audit
+    # table's action/source are tiny fixed sets. Every other string-ish
+    # column on those two models is db.Text (unbounded) on purpose.
+    (models.JobApplication, "status", list(models.JOB_APPLICATION_STATUSES)),
+    (models.JobApplicationEvent, "action", ["create", "update", "delete"]),
+    (models.JobApplicationEvent, "source", ["web", "assistant", "cli"]),
+    # Personal AI assistant. kind is the fixed content vocabulary; backend
+    # is the small set of generation backends the orchestrator can pick;
+    # the rest are the token-free heuristic classification vocabularies.
+    (models.ContentChunk, "kind", list(models.ASSISTANT_CONTENT_KINDS)),
+    (models.AssistantQuery, "backend", ["groq", "fake", "ollama"]),
+    (models.AssistantQuery, "sentiment", list(models.ASSISTANT_SENTIMENTS)),
+    (models.AssistantQuery, "category", list(models.ASSISTANT_MESSAGE_CATEGORIES)),
+    (models.AssistantQuery, "reply_kind", list(models.ASSISTANT_REPLY_KINDS)),
 ]
 
 # Columns holding free text, bounded by a validator or a known format
@@ -89,6 +103,9 @@ BOUNDED_COLUMNS = [
     (models.User, "username", models.User.USERNAME_MAX),
     (models.User, "username_ci", models.User.USERNAME_MAX),
     (models.User, "password_hash", len(generate_password_hash("width-probe"))),
+    # AssistantQuery.ip_hash is sha256(ip + SECRET_KEY).hexdigest() -- a
+    # 64-char hex string, or NULL. Never the raw IP.
+    (models.AssistantQuery, "ip_hash", 64),
 ]
 
 
@@ -157,6 +174,9 @@ def test_every_string_column_is_covered_by_this_file():
     exempt = {
         ("Instrument", "underlying_ticker"),  # validated against TICKER_WHITELIST
         ("PriceCache", "ticker"),  # same whitelist
+        # "projects/<slug>" / "bio" / "faq" -- derived from filenames the
+        # owner controls under app/assistant_content/, never visitor input.
+        ("ContentChunk", "source"),
     }
 
     uncovered = []

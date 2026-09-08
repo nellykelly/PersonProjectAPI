@@ -1,0 +1,44 @@
+{% extends "job_tracker/_layout.html" %}
+{% block title %}Audit{% endblock %}
+
+{% block content %}
+<div class="jt-form-head">
+  <h1>Audit trail</h1>
+  <a class="jt-link" href="{{ url_for('job_tracker.dashboard') }}">&larr; Back to board</a>
+</div>
+
+{% if not events %}
+  <p class="jt-empty">Nothing recorded yet.</p>
+{% else %}
+<div class="jt-table-wrap">
+<table class="jt-table">
+  <thead>
+    <tr><th>When</th><th>By</th><th>Action</th><th>Application</th><th>Change</th></tr>
+  </thead>
+  <tbody>
+    {% for e in events %}
+    <tr>
+      <td class="jt-nowrap">{{ e.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+      <td><span class="jt-src jt-src--{{ e.source }}">{{ e.source }}</span></td>
+      <td>{{ e.action }}</td>
+      <td>
+        {% if e.application %}
+          <a class="jt-link" href="{{ url_for('job_tracker.edit_application', app_id=e.application_id) }}">{{ e.application.company_name }} — {{ e.application.role_title }}</a>
+        {% else %}
+          <span class="jt-sub">#{{ e.application_id or "—" }}</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if e.action == 'update' %}
+          <code>{{ e.field_name }}</code>: {{ e.old_value or "∅" }} → {{ e.new_value or "∅" }}
+        {% else %}
+          {{ e.summary }}
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}
