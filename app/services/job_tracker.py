@@ -16,7 +16,7 @@ SQLite (the app default) and Postgres.
 """
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Iterable
 
 from app.extensions import db
@@ -422,6 +422,32 @@ def find_application(company: str, role: str | None = None) -> JobApplication | 
             + " -- be more specific."
         )
     return matches[0]
+
+
+def sweep_stale_applications(
+    *, weeks: float = 2.5, source: str = "cli", now: datetime | None = None
+) -> list[JobApplication]:
+    """Move every application that has sat in "Applied" for at least
+    `weeks` weeks to "Ghosted". Each move goes through set_status(), so it
+    produces the normal Applied->Ghosted audit event, attributed to
+    `source`. Returns the rows that were moved (in the order they went
+    stale).
+
+    The clock is `status_updated_at` -- time in the *current* status, not
+    `date_applied` -- so a row that was bumped back to "Applied" is
+    measured from when it re-entered it. `now` is injectable for tests.
+    """
+    _check_source(source)
+    cutoff = (now or utcnow()) - timedelta(weeks=weeks)
+    stale = (
+        JobApplication.query.filter(
+            JobApplication.status == "Applied",
+            JobApplication.status_updated_at < cutoff,
+        )
+        .order_by(JobApplication.status_updated_at.asc())
+        .all()
+    )
+    return [set_status(app.id, "Ghosted", source=source) for app in stale]
 
 
 def iter_statuses() -> Iterable[str]:

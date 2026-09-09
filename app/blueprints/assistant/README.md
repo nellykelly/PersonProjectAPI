@@ -53,8 +53,12 @@ application tracker:
 | `set_application_status` | `job_tracker.set_status(...)` |
 | `list_applications` | `job_tracker.list_applications(status=...)` |
 | `find_application` | `job_tracker.find_application(company, role)` |
+| `ghost_stale_applications` | `job_tracker.sweep_stale_applications(...)` -- "Applied" past the staleness threshold -> "Ghosted" |
 
-There is **no delete tool** -- deletion stays in the web UI. Every write goes through the
+There is **no delete tool** -- deletion stays in the web UI. The staleness
+sweep also runs headless via `flask job-tracker sweep` (wire it to cron;
+`JOB_TRACKER_GHOST_AFTER_WEEKS`, default 2.5); the CLI run records `source="cli"`
+on the audit rows, a chat-triggered run records `source="assistant"`. Every write goes through the
 existing `app/services/job_tracker.py` writer with `source="assistant"`, so it lands in
 the same `job_application_events` audit log as a web-UI edit, tagged as the assistant's
 doing. For a pasted list or any ambiguous change the persona rule is **read the parsed

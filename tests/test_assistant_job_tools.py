@@ -69,7 +69,7 @@ def test_build_job_tools_is_empty_unless_authorized():
     assert build_job_tools(False) == []
 
 
-def test_build_job_tools_authorized_returns_the_five_schemas():
+def test_build_job_tools_authorized_returns_the_full_schema_set():
     tools = build_job_tools(True)
     names = {t["function"]["name"] for t in tools}
     assert names == {
@@ -78,6 +78,7 @@ def test_build_job_tools_authorized_returns_the_five_schemas():
         "set_application_status",
         "list_applications",
         "find_application",
+        "ghost_stale_applications",
     }
     assert "delete_application" not in names
 
@@ -212,6 +213,40 @@ def test_dispatch_update_reports_when_nothing_to_change(db_ready, app):
         )
         out = dispatch_job_tool("update_application", {"company": "Notion"}, authorized=True)
         assert "nothing to change" in out.lower()
+
+
+def test_dispatch_ghost_stale_applications_moves_old_applied_rows(db_ready, app):
+    from datetime import timedelta
+
+    from app.models import JobApplication, utcnow
+
+    with app.app_context():
+        old = job_tracker.create_application(
+            {"company_name": "Stale Corp", "role_title": "SWE"}, source="web"
+        )
+        old.status_updated_at = utcnow() - timedelta(days=25)
+        db.session.commit()
+        fresh = job_tracker.create_application(
+            {"company_name": "Fresh Corp", "role_title": "SWE"}, source="web"
+        )
+
+        out = dispatch_job_tool(
+            "ghost_stale_applications", {"weeks": 2.5}, authorized=True
+        )
+        assert "Stale Corp" in out
+        assert job_tracker.get_application(old.id).status == "Ghosted"
+        assert job_tracker.get_application(fresh.id).status == "Applied"
+        ev = JobApplicationEvent.query.filter_by(
+            application_id=old.id, field_name="status"
+        ).one()
+        assert ev.new_value == "Ghosted" and ev.source == "assistant"
+
+
+def test_dispatch_ghost_stale_uses_the_config_default_when_weeks_omitted(db_ready, app):
+    with app.app_context():
+        app.config["JOB_TRACKER_GHOST_AFTER_WEEKS"] = 2.5
+        out = dispatch_job_tool("ghost_stale_applications", {}, authorized=True)
+        assert "nothing has been sitting" in out.lower()
 
 
 # --------------------------------------------------------------------------

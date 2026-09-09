@@ -113,6 +113,19 @@ _TOOL_SPECS = [
         {"company": _COMPANY, "role": _ROLE_LOCATOR},
         ["company"],
     ),
+    _tool(
+        "ghost_stale_applications",
+        "Move every application that has sat in 'Applied' past the staleness "
+        "threshold (default 2.5 weeks) to 'Ghosted'. Use when Nelson asks to "
+        "tidy up or ghost old applications.",
+        {
+            "weeks": {
+                "type": "number",
+                "description": "Override the age threshold in weeks; omit for the default.",
+            }
+        },
+        [],
+    ),
 ]
 
 
@@ -235,12 +248,30 @@ def _find_application(args: dict) -> str:
     return _render_detail(job_tracker.application_as_dict(app))
 
 
+def _ghost_stale_applications(args: dict) -> str:
+    from flask import current_app
+
+    weeks = args.get("weeks")
+    if weeks in (None, ""):
+        weeks = current_app.config.get("JOB_TRACKER_GHOST_AFTER_WEEKS", 2.5)
+    try:
+        weeks = float(weeks)
+    except (TypeError, ValueError):
+        return "The 'weeks' value needs to be a number."
+    moved = job_tracker.sweep_stale_applications(weeks=weeks, source="assistant")
+    if not moved:
+        return f"Nothing has been sitting in 'Applied' for {weeks:g} weeks."
+    lines = "\n".join(f"- {m.company_name} — {m.role_title}" for m in moved)
+    return f"Moved {len(moved)} stale application(s) to Ghosted:\n{lines}"
+
+
 _HANDLERS = {
     "add_application": _add_application,
     "update_application": _update_application,
     "set_application_status": _set_application_status,
     "list_applications": _list_applications,
     "find_application": _find_application,
+    "ghost_stale_applications": _ghost_stale_applications,
 }
 
 

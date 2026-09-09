@@ -137,6 +137,12 @@ class Config:
     JOB_TRACKER_UNLOCK_RATE_LIMIT = os.environ.get(
         "JOB_TRACKER_UNLOCK_RATE_LIMIT", "10 per hour"
     )
+    # `flask job-tracker sweep` moves an application that has sat in
+    # "Applied" this many weeks (measured from status_updated_at) to
+    # "Ghosted". Wire the command to cron; nothing runs it automatically.
+    JOB_TRACKER_GHOST_AFTER_WEEKS = float(
+        os.environ.get("JOB_TRACKER_GHOST_AFTER_WEEKS", "2.5")
+    )
     # The one account the personal AI assistant will accept job-tracker
     # tool calls from (see personal-assistant-spec.md), matched case-
     # insensitively against User.username_ci. Decided as an env var rather

@@ -265,6 +265,76 @@ def test_find_application_none_one_and_ambiguous(db):
         job_tracker.find_application("Stripe")
 
 
+# ---------- sweep_stale_applications ----------
+
+
+def _age_status(app_row, *, days):
+    """Backdate a row's status_updated_at by `days` (the sweep's clock)."""
+    from datetime import timedelta
+
+    from app.models import utcnow
+
+    app_row.status_updated_at = utcnow() - timedelta(days=days)
+    db.session.commit()
+
+
+def test_sweep_ghosts_only_applications_stale_past_the_threshold(db):
+    old = job_tracker.create_application({"company_name": "Ghosted Co", "role_title": "SWE"})
+    fresh = job_tracker.create_application({"company_name": "Fresh Co", "role_title": "SWE"})
+    _age_status(old, days=20)          # > 2.5 weeks
+    _age_status(fresh, days=10)        # < 2.5 weeks
+
+    moved = job_tracker.sweep_stale_applications(weeks=2.5, source="cli")
+
+    assert [m.id for m in moved] == [old.id]
+    assert job_tracker.get_application(old.id).status == "Ghosted"
+    assert job_tracker.get_application(fresh.id).status == "Applied"
+
+
+def test_sweep_writes_an_applied_to_ghosted_audit_event(db):
+    row = job_tracker.create_application({"company_name": "Nash", "role_title": "SRE"})
+    JobApplicationEvent.query.delete()
+    db.session.commit()
+    _age_status(row, days=21)
+
+    job_tracker.sweep_stale_applications(weeks=2.5, source="cli")
+
+    ev = JobApplicationEvent.query.filter_by(
+        application_id=row.id, field_name="status"
+    ).one()
+    assert ev.old_value == "Applied"
+    assert ev.new_value == "Ghosted"
+    assert ev.source == "cli"
+
+
+def test_sweep_leaves_non_applied_rows_alone_however_old(db):
+    row = job_tracker.create_application(
+        {"company_name": "Kalshi", "role_title": "SWE", "status": "Phone Screen"}
+    )
+    _age_status(row, days=60)
+
+    assert job_tracker.sweep_stale_applications(weeks=2.5) == []
+    assert job_tracker.get_application(row.id).status == "Phone Screen"
+
+
+def test_sweep_now_is_injectable(db):
+    from datetime import timedelta
+
+    from app.models import utcnow
+
+    row = job_tracker.create_application({"company_name": "Later Inc", "role_title": "SWE"})
+    # Not stale today, but "stale" if the clock is a month from now.
+    moved = job_tracker.sweep_stale_applications(
+        weeks=2.5, now=utcnow() + timedelta(days=30)
+    )
+    assert [m.id for m in moved] == [row.id]
+
+
+def test_sweep_rejects_a_bad_source(db):
+    with pytest.raises(job_tracker.JobTrackerError):
+        job_tracker.sweep_stale_applications(source="cron")
+
+
 # ---------- the routes ----------
 
 
@@ -390,3 +460,46 @@ def test_forms_carry_a_csrf_token(unlocked_client):
     is deliberately not csrf-exempt)."""
     resp = unlocked_client.get("/job-tracker/new")
     assert b"csrf_token" in resp.data
+
+
+# ---------- the `flask job-tracker sweep` CLI ----------
+
+
+def test_sweep_cli_ghosts_stale_and_reports(app):
+    from datetime import timedelta
+
+    from app.models import utcnow
+
+    with app.app_context():
+        db.create_all()
+        row = job_tracker.create_application(
+            {"company_name": "Cron Corp", "role_title": "SWE"}, source="web"
+        )
+        row.status_updated_at = utcnow() - timedelta(days=30)
+        db.session.commit()
+
+        result = app.test_cli_runner().invoke(args=["job-tracker", "sweep"])
+        assert result.exit_code == 0, result.output
+        assert "Ghosted 1" in result.output and "Cron Corp" in result.output
+        assert job_tracker.get_application(row.id).status == "Ghosted"
+
+
+def test_sweep_cli_dry_run_changes_nothing(app):
+    from datetime import timedelta
+
+    from app.models import utcnow
+
+    with app.app_context():
+        db.create_all()
+        row = job_tracker.create_application(
+            {"company_name": "Peek Corp", "role_title": "SWE"}, source="web"
+        )
+        row.status_updated_at = utcnow() - timedelta(days=30)
+        db.session.commit()
+
+        result = app.test_cli_runner().invoke(
+            args=["job-tracker", "sweep", "--dry-run"]
+        )
+        assert result.exit_code == 0, result.output
+        assert "Would ghost 1" in result.output
+        assert job_tracker.get_application(row.id).status == "Applied"

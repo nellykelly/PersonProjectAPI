@@ -300,3 +300,57 @@ def _register_cli(app: Flask) -> None:
             f"Reindexed {info['chunks']} chunks from {info['files']} files "
             f"(embedder: {info['embedder']})."
         )
+
+    @app.cli.group("job-tracker")
+    def job_tracker_cli() -> None:
+        """Private job-application tracker maintenance."""
+
+    @job_tracker_cli.command("sweep")
+    @click.option(
+        "--weeks",
+        type=float,
+        default=None,
+        help="Override JOB_TRACKER_GHOST_AFTER_WEEKS for this run.",
+    )
+    @click.option(
+        "--dry-run", is_flag=True, help="Show what would move without changing anything."
+    )
+    def job_tracker_sweep(weeks: float | None, dry_run: bool) -> None:
+        """Move applications stuck in "Applied" past the threshold to "Ghosted".
+
+        Nothing runs this automatically -- wire it to cron, e.g. daily:
+            docker compose exec web flask job-tracker sweep
+        """
+        from app.services import job_tracker
+
+        weeks = app.config["JOB_TRACKER_GHOST_AFTER_WEEKS"] if weeks is None else weeks
+
+        if dry_run:
+            from datetime import timedelta
+
+            from app.models import JobApplication, utcnow
+
+            cutoff = utcnow() - timedelta(weeks=weeks)
+            stale = (
+                JobApplication.query.filter(
+                    JobApplication.status == "Applied",
+                    JobApplication.status_updated_at < cutoff,
+                )
+                .order_by(JobApplication.status_updated_at.asc())
+                .all()
+            )
+            if not stale:
+                click.echo(f"Nothing has been in 'Applied' for {weeks} weeks.")
+                return
+            click.echo(f"Would ghost {len(stale)} application(s):")
+            for a in stale:
+                click.echo(f"  - {a.company_name} - {a.role_title} (since {a.status_updated_at:%Y-%m-%d})")
+            return
+
+        moved = job_tracker.sweep_stale_applications(weeks=weeks, source="cli")
+        if not moved:
+            click.echo(f"Nothing has been in 'Applied' for {weeks} weeks.")
+            return
+        click.echo(f"Ghosted {len(moved)} application(s):")
+        for a in moved:
+            click.echo(f"  - {a.company_name} - {a.role_title}")
