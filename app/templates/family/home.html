@@ -1,0 +1,41 @@
+{% extends "family/_layout.html" %}
+{% block title %}Family{% endblock %}
+
+{% block content %}
+{% set hour = now.hour if now is defined else 12 %}
+<div class="fam-greet">
+  <div>
+    <div class="fam-greet__hi">Good {{ greeting_word }},</div>
+    <div class="fam-greet__date">{{ today_label }}</div>
+  </div>
+  <form class="fam-who" method="post" action="{{ url_for('family.set_active_member', slug='__x__') }}"
+        data-who-form>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" formaction="{{ url_for('family.set_active_member', slug='m1') }}"
+            class="is-m1" aria-pressed="{{ 'true' if active_member == 'm1' else 'false' }}"
+            title="Nelson"><span class="fam-dot fam-dot--m1"></span></button>
+    <button type="submit" formaction="{{ url_for('family.set_active_member', slug='m2') }}"
+            class="is-m2" aria-pressed="{{ 'true' if active_member == 'm2' else 'false' }}"
+            title="Savannah"><span class="fam-dot fam-dot--m2"></span></button>
+  </form>
+</div>
+<div class="fam-rule">{{ icon.node() }}</div>
+
+<section class="fam-tile">
+  <h2 class="fam-h">Today</h2>
+  <p class="fam-empty">Nothing on the calendar today.</p>
+</section>
+
+<section class="fam-tile">
+  <h2 class="fam-h">Groceries</h2>
+  <p class="fam-empty">No open order yet.</p>
+  <a class="fam-btn fam-btn--ghost" href="{{ url_for('family.grocery') }}" style="margin-top: var(--s3)">Open list</a>
+</section>
+
+<a class="fam-tile fam-tile--quiet" href="{{ url_for('family.chat') }}"
+   style="display:flex; align-items:center; gap:var(--s3); text-decoration:none; color:var(--soil-soft)">
+  {{ icon.hera() }}
+  <span style="flex:1">Ask Hera something</span>
+  {{ icon.chevronRight() }}
+</a>
+{% endblock %}

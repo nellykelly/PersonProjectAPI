@@ -143,6 +143,29 @@ class Config:
     JOB_TRACKER_GHOST_AFTER_WEEKS = float(
         os.environ.get("JOB_TRACKER_GHOST_AFTER_WEEKS", "2.5")
     )
+
+    # ------------------------------------------------------------------
+    # /family -- private household suite (app/blueprints/family)
+    # ------------------------------------------------------------------
+    # Same fail-closed model as the docs / job-tracker gates: a Werkzeug
+    # hash in the environment, never a checked-in value; unset means the
+    # whole /family section returns 503, never open. `$$`-escape the `$`
+    # in docker-compose's .env.
+    FAMILY_PASSWORD_HASH = os.environ.get("FAMILY_PASSWORD_HASH")
+    FAMILY_UNLOCK_RATE_LIMIT = os.environ.get("FAMILY_UNLOCK_RATE_LIMIT", "10 per hour")
+    # The Hera chatbot at /family/chat -- its own Groq key, separate from
+    # the portfolio assistant's. Unset -> the chat panel is offline (503),
+    # the rest of /family still works. FAMILY_GROQ_MODEL must support tool
+    # calling. FAMILY_LLM_BACKEND is "groq" in real use; TestingConfig
+    # forces "fake".
+    FAMILY_GROQ_API_KEY = os.environ.get("FAMILY_GROQ_API_KEY", "")
+    FAMILY_GROQ_MODEL = os.environ.get("FAMILY_GROQ_MODEL", "openai/gpt-oss-120b")
+    FAMILY_LLM_BACKEND = os.environ.get("FAMILY_LLM_BACKEND", "groq")
+    FAMILY_CHAT_RATE_LIMIT = os.environ.get("FAMILY_CHAT_RATE_LIMIT", "60 per hour")
+    FAMILY_MAX_INPUT_CHARS = int(os.environ.get("FAMILY_MAX_INPUT_CHARS", "2000"))
+    FAMILY_MAX_HISTORY_TURNS = int(os.environ.get("FAMILY_MAX_HISTORY_TURNS", "8"))
+    FAMILY_MAX_OUTPUT_TOKENS = int(os.environ.get("FAMILY_MAX_OUTPUT_TOKENS", "700"))
+    FAMILY_MEMORY_LIMIT = int(os.environ.get("FAMILY_MEMORY_LIMIT", "60"))
     # The one account the personal AI assistant will accept job-tracker
     # tool calls from (see personal-assistant-spec.md), matched case-
     # insensitively against User.username_ci. Decided as an env var rather
@@ -287,6 +310,9 @@ class TestingConfig(Config):
     # pgvector (which needs Postgres -- exercised by its own gated tests).
     ASSISTANT_LLM_BACKEND = "fake"
     ASSISTANT_EMBEDDER = "hash"
+    # /family Hera chatbot: canned backend, no network. FAMILY_PASSWORD_HASH
+    # is left unset so gated tests inject it per fixture (like job-tracker).
+    FAMILY_LLM_BACKEND = "fake"
 
     # No real per-stage delay in tests -- queue.py already makes RQ
     # execute jobs synchronously under TESTING, so this just keeps that

@@ -1025,3 +1025,8 @@ class AssistantQuery(db.Model):
 
     def __repr__(self) -> str:  # pragma: no cover - debug aid only
         return f"<AssistantQuery {self.created_at:%Y-%m-%d %H:%M} {self.backend} err={bool(self.error)}>"
+
+
+# The /family suite's models live in their own module for size; pull them
+# into this namespace so `flask db` and db.create_all() register them.
+from app.models_family import *  # noqa: E402,F401,F403

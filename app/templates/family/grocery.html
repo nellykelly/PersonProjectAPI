@@ -1,0 +1,78 @@
+{% extends "family/_layout.html" %}
+{% block title %}Grocery · Family{% endblock %}
+
+{% macro item_row(item, done=False) %}
+<li class="groc-row{{ ' is-got' if done }}">
+  <form method="post" action="{{ url_for('family.grocery_toggle_item', item_id=item.id) }}" class="groc-check">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="groc-box" aria-pressed="{{ 'true' if done else 'false' }}"
+            aria-label="{{ 'Uncheck' if done else 'Check off' }} {{ item.name }}">
+      {% if done %}{{ icon.check() }}{% endif %}
+    </button>
+  </form>
+  <span class="groc-name">{{ item.name }}{% if item.quantity %} <span class="groc-qty">{{ item.quantity }}</span>{% endif %}</span>
+  <span class="fam-dot fam-dot--m{{ 1 if item.added_by and item.added_by.slug == 'm1' else 2 }}" title="added by {{ item.added_by.name if item.added_by }}"></span>
+  <form method="post" action="{{ url_for('family.grocery_delete_item', item_id=item.id) }}" class="groc-del">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" aria-label="Remove {{ item.name }}">×</button>
+  </form>
+</li>
+{% endmacro %}
+
+{% block content %}
+<h1 class="fam-h" style="font-size: var(--fs-h2)">{{ order.title }}</h1>
+<div class="fam-rule">{{ icon.node() }}</div>
+
+<section class="fam-tile">
+  <form method="post" action="{{ url_for('family.grocery_add_item') }}" class="groc-add">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input class="fam-input" name="name" placeholder="Add an item" required aria-label="Item name">
+    <input class="fam-input groc-qty-in" name="quantity" placeholder="qty" aria-label="Quantity">
+    <button class="fam-btn" type="submit" aria-label="Add">{{ icon.plus() }}</button>
+  </form>
+
+  <ul class="groc-list">
+    {% for item in items_todo %}{{ item_row(item, done=False) }}{% endfor %}
+    {% for item in items_got %}{{ item_row(item, done=True) }}{% endfor %}
+  </ul>
+  {% if not items_todo and not items_got %}<p class="fam-empty">Nothing on the list yet.</p>{% endif %}
+
+  <div class="groc-actions">
+    <form method="post" action="{{ url_for('family.grocery_new_order') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="fam-btn fam-btn--ghost" type="submit">Start new order</button>
+    </form>
+    <form method="post" action="{{ url_for('family.grocery_archive_order') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="fam-btn fam-btn--ghost" type="submit">Archive this order</button>
+    </form>
+  </div>
+</section>
+
+<section class="fam-tile">
+  <h2 class="fam-h">Past orders</h2>
+  <div class="fam-rule">{{ icon.node() }}</div>
+  {% if history %}
+    {% for past in history %}
+    <details class="groc-past">
+      <summary>
+        <span>{{ past.title }}</span>
+        <span class="groc-past__meta">{{ past.items.count() }} items ·
+          {{ past.archived_at.strftime('%b') }} {{ past.archived_at.day if past.archived_at }}</span>
+      </summary>
+      <ul class="groc-past__items">
+        {% for it in past.items.all() %}
+        <li>{{ '✓' if it.got else '·' }} {{ it.name }}{% if it.quantity %} ({{ it.quantity }}){% endif %}</li>
+        {% endfor %}
+      </ul>
+      <form method="post" action="{{ url_for('family.grocery_copy_order', from_id=past.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="fam-btn fam-btn--block" type="submit">Copy forward</button>
+      </form>
+    </details>
+    {% endfor %}
+  {% else %}
+    <p class="fam-empty">No past orders yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

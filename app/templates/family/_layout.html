@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>{% block title %}Family{% endblock %}</title>
+<link rel="icon" href="{{ url_for('static', filename='family/img/favicon.svg') }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="{{ url_for('static', filename='family/family.css') }}">
+{% block extra_head %}{% endblock %}
+</head>
+<body class="family">
+<!--
+  DIRECTION CONTRACT — /family (v2: Daylight Glass)
+  THESIS: A household's sunroom rendered in glass. Every surface is a frosted,
+    light-catching pane floating over a garden of soft coloured light. Solarpunk
+    in full daylight — living greens and blooms diffused through glass, organised
+    by a fine botanical line. Refuses the flat "wellness app" card and the dark
+    glassmorphism cliché.
+  OWN-WORLD: A luminous ground — four blurred CSS blooms of leaf / sky / marigold
+    / dawn over warm white — under genuinely multi-layer glass: heavy blur,
+    lifted saturation, a bright specular top edge, a soft cast shadow, a hairline
+    refractive border, a wet top sheen. Greens in three registers, one marigold
+    bloom accent, a quiet sky. Bricolage Grotesque display, Figtree body.
+    Botanical-line icons. Growth motion — panes bloom in from blur and settle.
+  STORY: Two people (Nelson + Sav) unlock one glass door, land in a bright home
+    showing today and the list, move between Calendar / Grocery / Hera by a
+    floating glass tab capsule. Every added thing carries a coloured seed marking
+    who added it. Hera is theirs.
+  FIRST VIEWPORT (home): over the glowing garden ground — a greeting shelf (date
+    large, Bricolage), a Today glass pane, an Open-order glass pane, a low
+    Ask-Hera pane. Floating glass tab bar clears the bottom, Home active.
+  FORM: daylight glassmorphism / visionOS-material vocabulary in a solarpunk
+    palette — brief-pinned, rendered at full commitment. No seed key: world
+    pinned by the brief, roll skipped per the pinned-direction rule. Replaces v1.
+  FINISH: unreviewed and undocumented is unfinished; this build ends with the
+    finish review, the verdict, DESIGN.md, and every shipping raster carrying its
+    provenance.
+-->
+{% import "family/_icons.html" as icon %}
+<div class="fam-shell">
+  <main class="fam-main">
+    {% block content %}{% endblock %}
+  </main>
+
+  <nav class="fam-tabs" aria-label="Family sections">
+    <a href="{{ url_for('family.home') }}"     class="fam-tab {{ 'is-active' if tab == 'home' }}"     {{ 'aria-current=page' if tab == 'home' }}>{{ icon.leaf() }}<span>Home</span></a>
+    <a href="{{ url_for('family.calendar') }}" class="fam-tab {{ 'is-active' if tab == 'calendar' }}" {{ 'aria-current=page' if tab == 'calendar' }}>{{ icon.grid() }}<span>Calendar</span></a>
+    <a href="{{ url_for('family.grocery') }}"  class="fam-tab {{ 'is-active' if tab == 'grocery' }}"  {{ 'aria-current=page' if tab == 'grocery' }}>{{ icon.basket() }}<span>Grocery</span></a>
+    <a href="{{ url_for('family.chat') }}"     class="fam-tab {{ 'is-active' if tab == 'chat' }}"     {{ 'aria-current=page' if tab == 'chat' }}>{{ icon.bubble() }}<span>Hera</span></a>
+  </nav>
+</div>
+<script src="{{ url_for('static', filename='family/family.js') }}" defer></script>
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

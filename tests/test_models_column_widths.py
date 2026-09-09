@@ -67,6 +67,11 @@ ENUMERABLE_COLUMNS = [
     (models.AssistantQuery, "sentiment", list(models.ASSISTANT_SENTIMENTS)),
     (models.AssistantQuery, "category", list(models.ASSISTANT_MESSAGE_CATEGORIES)),
     (models.AssistantQuery, "reply_kind", list(models.ASSISTANT_REPLY_KINDS)),
+    # The /family suite. slug / order status / chat role are tiny fixed
+    # vocabularies; everything else on those models is db.Text.
+    (models.FamilyMember, "slug", list(models.FAMILY_MEMBER_SLUGS)),
+    (models.FamilyGroceryOrder, "status", list(models.FAMILY_GROCERY_ORDER_STATUSES)),
+    (models.FamilyChatMessage, "role", list(models.FAMILY_CHAT_ROLES)),
 ]
 
 # Columns holding free text, bounded by a validator or a known format
@@ -106,6 +111,12 @@ BOUNDED_COLUMNS = [
     # AssistantQuery.ip_hash is sha256(ip + SECRET_KEY).hexdigest() -- a
     # 64-char hex string, or NULL. Never the raw IP.
     (models.AssistantQuery, "ip_hash", 64),
+    # /family. name is truncated to FAMILY_MEMBER_NAME_MAX by `flask family
+    # rename`; accent holds a token name or a #hex; tool_call_id is a
+    # provider id truncated to the column width on write.
+    (models.FamilyMember, "name", models.FAMILY_MEMBER_NAME_MAX),
+    (models.FamilyMember, "accent", models.FAMILY_MEMBER_ACCENT_MAX),
+    (models.FamilyChatMessage, "tool_call_id", models.FAMILY_CHAT_TOOL_CALL_ID_MAX),
 ]
 
 

@@ -138,16 +138,37 @@ def _sum_tokens(a: int | None, b: int | None) -> int | None:
     return (a or 0) + (b or 0)
 
 
-def _run_tool_loop(backend, messages, tools, max_tokens):
-    """Drive up to `_MAX_TOOL_ITERS` model<->tool round trips. Returns
-    `(final_text, prompt_tokens, completion_tokens, model)`. Never raises on
-    a tool result -- `dispatch_job_tool` always hands back a string."""
+_DEFAULT_TOOL_FALLBACK = (
+    "I couldn't finish that in one pass -- ask me to keep going, or make the "
+    "rest of the change on the page."
+)
+
+
+def _run_tool_loop(
+    backend,
+    messages,
+    tools,
+    max_tokens,
+    *,
+    dispatch,
+    max_iters=_MAX_TOOL_ITERS,
+    fallback=_DEFAULT_TOOL_FALLBACK,
+):
+    """Drive up to `max_iters` model<->tool round trips. Returns
+    `(final_text, prompt_tokens, completion_tokens, model)`.
+
+    `dispatch(name, arguments) -> str` runs one tool call and must never
+    raise -- it always hands back a string for the model to read. The
+    assistant passes a job-tools dispatcher; the /family chat passes its
+    own (and a higher `max_iters` for pasted-list adds). This loop knows
+    nothing about either tool set. `fallback` is returned only if the loop
+    hits `max_iters` still wanting tools and has no text to show."""
     convo = list(messages)
     p_tok = c_tok = None
     model = ""
     last_text = ""
 
-    for _ in range(_MAX_TOOL_ITERS):
+    for _ in range(max_iters):
         reply = backend.generate(convo, max_tokens=max_tokens, tools=tools)
         model = reply.model or model
         p_tok = _sum_tokens(p_tok, reply.prompt_tokens)
@@ -173,17 +194,13 @@ def _run_tool_loop(backend, messages, tools, max_tokens):
             }
         )
         for tc in reply.tool_calls:
-            out = dispatch_job_tool(tc["name"], tc["arguments"], authorized=True)
+            out = dispatch(tc["name"], tc["arguments"])
             convo.append(
                 {"role": "tool", "tool_call_id": tc["id"], "content": out}
             )
 
     # Ran out of iterations still asking for tools.
-    fallback = last_text or (
-        "I couldn't finish that in one go -- try again, or use the "
-        "/job-tracker page directly."
-    )
-    return fallback, p_tok, c_tok, model
+    return (last_text or fallback), p_tok, c_tok, model
 
 
 def answer(
@@ -225,7 +242,11 @@ def answer(
 
     if want_tools:
         final_text, p_tok, c_tok, model = _run_tool_loop(
-            backend, messages, build_job_tools(True), max_tokens
+            backend,
+            messages,
+            build_job_tools(True),
+            max_tokens,
+            dispatch=lambda n, a: dispatch_job_tool(n, a, authorized=True),
         )
     else:
         reply = backend.generate(messages, max_tokens=max_tokens)

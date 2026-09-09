@@ -1,0 +1,41 @@
+{% extends "family/_layout.html" %}
+{% block title %}Hera · Family{% endblock %}
+
+{% block extra_head %}<meta name="csrf-token" content="{{ csrf_token() }}">{% endblock %}
+
+{% block content %}
+<div class="chat-head">
+  <div class="chat-who">{{ icon.hera() }}<span>Hera</span></div>
+  <form method="get" action="{{ url_for('family.chat') }}" class="chat-picker" data-chat-picker>
+    <select name="member" aria-label="Whose chat" onchange="this.form.submit()">
+      {% for m in members %}
+      <option value="{{ m.slug }}" {{ 'selected' if m.slug == member.slug }}>{{ m.name }}</option>
+      {% endfor %}
+    </select>
+    {{ icon.chevronDown() }}
+  </form>
+</div>
+<div class="fam-rule">{{ icon.node() }}</div>
+
+<div class="chat-thread" id="chat-thread" data-member="{{ member.slug }}">
+  {% if thread %}
+    {% for msg in thread %}
+    <div class="chat-msg chat-msg--{{ msg.role }}">
+      {% if msg.role == 'assistant' %}<span class="chat-h">{{ icon.hera() }}</span>{% endif %}
+      <div class="chat-bubble">{{ msg.content }}</div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="chat-msg chat-msg--assistant">
+      <span class="chat-h">{{ icon.hera() }}</span>
+      <div class="chat-bubble">It's just us, {{ member.name }}. What do you need?</div>
+    </div>
+  {% endif %}
+</div>
+
+<form class="chat-composer" id="chat-form">
+  <textarea id="chat-input" rows="1" placeholder="Message Hera" aria-label="Message Hera"
+            maxlength="{{ config['FAMILY_MAX_INPUT_CHARS'] }}"></textarea>
+  <button type="submit" id="chat-send" aria-label="Send">{{ icon.send() }}</button>
+</form>
+{% endblock %}

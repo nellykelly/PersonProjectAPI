@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Family</title>
+<link rel="icon" href="{{ url_for('static', filename='family/img/favicon.svg') }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="{{ url_for('static', filename='family/family.css') }}">
+</head>
+<body class="family">
+<div class="fam-gate">
+  <div class="fam-gate__card">
+    <div class="fam-gate__mark">Family</div>
+    {% if unavailable %}
+      <p class="fam-gate__sub">This corner of the garden isn't open right now.</p>
+    {% else %}
+      <p class="fam-gate__sub">A quiet room for the two of us.</p>
+      <form method="post" action="{{ url_for('family.unlock') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="fam-label" for="fam-pw">Password</label>
+        <input class="fam-input" id="fam-pw" type="password" name="password"
+               autocomplete="current-password" autofocus required>
+        {% if error %}<p class="fam-gate__err">{{ error }}</p>{% endif %}
+        <button class="fam-btn fam-btn--block" type="submit" style="margin-top: var(--s4)">Come in</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+</body>
+</html>

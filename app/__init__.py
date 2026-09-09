@@ -129,8 +129,22 @@ def create_app(config_name: str | None = None) -> Flask:
 
     @app.errorhandler(404)
     def not_found(_error):
-        from flask import render_template
+        from flask import render_template, request
 
+        # /family has its own standalone theme -- a 404 there must not render
+        # the Dimension chrome. (A blueprint errorhandler can't catch an
+        # unmatched-URL 404, so it's handled here by path.) Match the section
+        # exactly, not sibling paths like /familyfoo, and carry the noindex
+        # header the blueprint's after_request would (it doesn't run for an
+        # unmatched URL: request.blueprint is None).
+        if request.path == "/family" or request.path.startswith("/family/"):
+            resp = render_template("family/404.html"), 404
+            body, status = resp
+            from flask import make_response
+
+            r = make_response(body, status)
+            r.headers["X-Robots-Tag"] = "noindex, nofollow"
+            return r
         return render_template("errors/404.html"), 404
 
     from app import models  # noqa: F401  (ensures models are registered before create_all)
@@ -206,6 +220,7 @@ def _register_blueprints(app: Flask) -> None:
     from app.blueprints.job_tracker import bp as job_tracker_bp
     from app.blueprints.assistant import bp as assistant_bp
     from app.blueprints.legal import bp as legal_bp
+    from app.blueprints.family import bp as family_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(about_bp, url_prefix="/about")
@@ -231,6 +246,10 @@ def _register_blueprints(app: Flask) -> None:
     # /legal -- terms, privacy, cookies, AI disclaimer, accessibility,
     # abuse contact. Absolute rule path, linked from the footer.
     app.register_blueprint(legal_bp)
+    # /family -- private household suite (home / calendar / grocery / Hera
+    # chat). Password-gated (FAMILY_PASSWORD_HASH), fails closed, noindex,
+    # never linked. Its own standalone solarpunk theme. NOT csrf-exempt.
+    app.register_blueprint(family_bp, url_prefix="/family")
 
     # CSRF is on app-wide (see extensions.csrf), but these blueprints
     # predate accounts and post without a token -- from public,
@@ -354,3 +373,37 @@ def _register_cli(app: Flask) -> None:
         click.echo(f"Ghosted {len(moved)} application(s):")
         for a in moved:
             click.echo(f"  - {a.company_name} - {a.role_title}")
+
+    @app.cli.group("family")
+    def family_cli() -> None:
+        """Private /family suite maintenance."""
+
+    @family_cli.command("seed")
+    def family_seed() -> None:
+        """Create the two household members if they don't exist yet (the
+        migration seeds them in real deploys; this is for a dev DB built by
+        db.create_all())."""
+        from app.models import FamilyMember
+
+        defaults = [("m1", "Nelson", "leaf"), ("m2", "Savannah", "bloom")]
+        made = 0
+        for slug, name, accent in defaults:
+            if FamilyMember.by_slug(slug) is None:
+                db.session.add(FamilyMember(slug=slug, name=name, accent=accent))
+                made += 1
+        db.session.commit()
+        click.echo(f"family members: {made} created, {2 - made} already present.")
+
+    @family_cli.command("rename")
+    @click.argument("slug")
+    @click.argument("name")
+    def family_rename(slug: str, name: str) -> None:
+        """Rename a household member: `flask family rename m2 "Sav"`."""
+        from app.models import FamilyMember, FAMILY_MEMBER_NAME_MAX
+
+        member = FamilyMember.by_slug(slug)
+        if member is None:
+            raise click.ClickException(f"No member with slug {slug!r} (use m1 or m2).")
+        member.name = name.strip()[:FAMILY_MEMBER_NAME_MAX]
+        db.session.commit()
+        click.echo(f"{slug} is now {member.name!r}.")

@@ -1,0 +1,523 @@
+/* =========================================================================
+   /family -- "Daylight Glass" theme (v2). Standalone: this file is the whole
+   visual system for the section and shares nothing with the main Dimension
+   theme. Design record: docs/family-design.md.
+
+   The signature material is liquid glass -- multi-layer frosted panes that
+   float over a luminous garden ground (CSS gradient blooms). Unconditionally
+   light; a `[data-theme="dusk"]` opt-in is a warm evening light, never a
+   dark UI. No prefers-color-scheme dark block.
+   ========================================================================= */
+
+:root {
+  --paper:       #fbfaf4;
+  --leaf:        #3f8a53;
+  --leaf-deep:   #1f4a33;
+  --leaf-bright: #84c559;
+  --bloom:       #ef8a3c;
+  --bloom-ink:   #7a3d12;
+  --sky:         #5fa7c9;
+  --dawn:        #f2b8c6;
+  --soil:        #22331f;
+  --soil-soft:   #4c5f48;
+  --rule:        color-mix(in oklab, var(--leaf-deep) 16%, transparent);
+
+  --m1: #3f8a53;
+  --m2: #ef8a3c;
+
+  /* glass fills -- kept translucent enough that the coloured ground reads
+     through the blur; text still lands on an effective light surface */
+  --glass-fill:       color-mix(in oklab, var(--paper) 48%, transparent);
+  --glass-fill-raise: color-mix(in oklab, var(--paper) 60%, transparent);
+  --glass-fill-quiet: color-mix(in oklab, var(--paper) 26%, transparent);
+  --glass-rim:   1px solid rgba(255, 255, 255, 0.65);
+  --glass-lift:  0 22px 50px -16px rgba(31, 74, 51, 0.45),
+                 0 6px 16px -6px rgba(31, 74, 51, 0.28);
+
+  --fs-xs: .8125rem; --fs-sm: .875rem; --fs-base: 1rem;
+  --fs-md: 1.125rem; --fs-lg: 1.375rem; --fs-h2: 1.75rem; --fs-h1: 2.375rem;
+
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px;
+  --r-pane: 26px; --r-ctl: 16px; --r-pill: 999px;
+  --tabbar-h: 64px;
+
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur: 220ms;
+
+  --font-display: "Bricolage Grotesque", "Hanken Grotesk", "Trebuchet MS", sans-serif;
+  --font-body: "Figtree", -apple-system, "Segoe UI", system-ui, sans-serif;
+}
+
+/* warm evening daylight -- opt-in only, never automatic, never dark */
+:root[data-theme="dusk"] {
+  --paper: #f4efe4;
+  --glass-fill:       color-mix(in oklab, var(--paper) 68%, transparent);
+  --glass-fill-raise: color-mix(in oklab, var(--paper) 78%, transparent);
+  --glass-fill-quiet: color-mix(in oklab, var(--paper) 46%, transparent);
+}
+
+/* ---------- reset / base ---------- */
+* { box-sizing: border-box; }
+html { font-size: 16px; -webkit-text-size-adjust: 100%; }
+html, body { overflow-x: hidden; margin: 0; }
+
+body.family {
+  min-height: 100vh;
+  font-family: var(--font-body);
+  font-size: var(--fs-base);
+  line-height: 1.55;
+  color: var(--soil);
+  background-color: var(--paper);
+  /* the luminous garden ground: four saturated colour blooms + a faint
+     lattice. Bright, but deep enough that frosted glass has something to
+     blur -- glass over a flat wash reads as a plain rectangle. */
+  background-image:
+    radial-gradient(50vmax 50vmax at 10% 12%, color-mix(in oklab, var(--leaf)   62%, transparent) 0%, transparent 58%),
+    radial-gradient(46vmax 46vmax at 92% 6%,  color-mix(in oklab, var(--sky)    58%, transparent) 0%, transparent 60%),
+    radial-gradient(56vmax 56vmax at 84% 92%, color-mix(in oklab, var(--bloom)  55%, transparent) 0%, transparent 58%),
+    radial-gradient(42vmax 42vmax at 2% 96%,  color-mix(in oklab, var(--dawn)   60%, transparent) 0%, transparent 58%),
+    radial-gradient(30vmax 30vmax at 50% 45%, color-mix(in oklab, var(--leaf-bright) 30%, transparent) 0%, transparent 55%);
+  background-attachment: fixed;
+}
+/* the trellis lattice + a fine grain -- high-frequency detail the frosted
+   glass smears into a real frosted look (a smooth gradient alone just tints).
+   Plus a slow drifting highlight. All fixed behind everything. */
+body.family::before {
+  content: ""; position: fixed; inset: -10%; z-index: -2; pointer-events: none;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cg fill='none' stroke='%232f6b45' stroke-width='1.2' opacity='0.5'%3E%3Cpath d='M0 150 150 0 300 150 150 300Z'/%3E%3Cpath d='M150 0v300M0 150h300'/%3E%3Ccircle cx='150' cy='150' r='4' fill='%23ef8a3c' stroke='none'/%3E%3C/g%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  background-size: 300px 300px, 120px 120px;
+  opacity: .09;
+}
+body.family::after {
+  content: ""; position: fixed; inset: -20%; z-index: -1; pointer-events: none;
+  background: radial-gradient(40vmax 40vmax at 30% 40%,
+    color-mix(in oklab, var(--leaf-bright) 22%, transparent) 0%, transparent 60%);
+  animation: fam-drift 24s ease-in-out infinite alternate;
+}
+@keyframes fam-drift {
+  from { transform: translate3d(-3%, -2%, 0); }
+  to   { transform: translate3d(4%, 3%, 0); }
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display); font-weight: 700; line-height: 1.1;
+  letter-spacing: -0.01em; color: var(--leaf-deep); margin: 0;
+}
+a { color: var(--leaf); text-decoration: none; }
+a:hover { color: var(--leaf-deep); }
+button, input, select, textarea { font: inherit; color: inherit; }
+
+/* browser surfaces themed from the palette */
+::selection { background: color-mix(in oklab, var(--bloom) 30%, transparent); }
+:focus-visible { outline: 2px solid var(--leaf-bright); outline-offset: 2px; border-radius: 4px; }
+* { caret-color: var(--leaf); }
+* { scrollbar-color: color-mix(in oklab, var(--leaf) 45%, transparent) transparent; scrollbar-width: thin; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: color-mix(in oklab, var(--leaf) 40%, transparent); border-radius: 999px; }
+
+/* ---------- shell ---------- */
+.fam-shell { min-height: 100vh; }
+.fam-main {
+  max-width: 32rem; margin: 0 auto;
+  padding: var(--s5) var(--s5)
+           calc(var(--tabbar-h) + env(safe-area-inset-bottom) + var(--s7));
+}
+
+/* ---------- LIQUID GLASS ---------- */
+.fam-tile, .fam-glass {
+  position: relative;
+  /* the fill itself carries a faint diagonal tint so the pane reads as
+     tinted glass even where the ground behind it is pale */
+  background:
+    linear-gradient(135deg,
+      color-mix(in oklab, var(--leaf-bright) 14%, transparent) 0%,
+      transparent 45%,
+      color-mix(in oklab, var(--bloom) 12%, transparent) 100%),
+    var(--glass-fill);
+  -webkit-backdrop-filter: blur(32px) saturate(220%) brightness(1.12);
+  backdrop-filter: blur(32px) saturate(220%) brightness(1.12);
+  border: var(--glass-rim);
+  border-bottom-color: color-mix(in oklab, var(--leaf-deep) 24%, transparent);
+  border-right-color: color-mix(in oklab, var(--leaf-deep) 16%, transparent);
+  border-radius: var(--r-pane);
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.95) inset,
+    0 0 0 1px rgba(255, 255, 255, 0.35) inset,
+    0 -20px 40px -24px color-mix(in oklab, var(--leaf-deep) 55%, transparent) inset,
+    var(--glass-lift);
+  padding: var(--s4) var(--s4) var(--s5);
+  margin: var(--s4) 0;
+  overflow: hidden;
+}
+/* light source top-left: a soft radial sheen sitting on the pane */
+.fam-tile::before, .fam-glass::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+  background: radial-gradient(120% 80% at 15% 0%,
+    rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0.15) 32%, transparent 60%);
+  pointer-events: none;
+}
+/* a warm colour catch on the far corner, so the rim reads as glass not paint */
+.fam-tile::after, .fam-glass::after {
+  content: ""; position: absolute; right: 0; bottom: 0; width: 62%; height: 62%;
+  border-radius: inherit;
+  background: radial-gradient(100% 100% at 100% 100%,
+    color-mix(in oklab, var(--bloom) 44%, transparent) 0%, transparent 62%);
+  mix-blend-mode: multiply; pointer-events: none;
+}
+.fam-tile > *, .fam-glass > * { position: relative; z-index: 1; }
+
+.fam-glass--raise {
+  background: var(--glass-fill-raise);
+  -webkit-backdrop-filter: blur(44px) saturate(200%) brightness(1.1);
+  backdrop-filter: blur(44px) saturate(200%) brightness(1.1);
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.95) inset,
+    0 0 24px -6px rgba(255, 255, 255, 0.55) inset,
+    0 30px 70px -18px rgba(31, 74, 51, 0.5),
+    0 8px 20px -8px rgba(31, 74, 51, 0.3);
+}
+
+.fam-tile--quiet {
+  background: var(--glass-fill-quiet);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5) inset;
+  border-color: var(--rule);
+}
+.fam-tile--quiet::after, .fam-tile--quiet::before { display: none; }
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .fam-tile, .fam-glass, .fam-glass--raise { background: color-mix(in oklab, var(--paper) 92%, transparent); }
+  .fam-tile--quiet { background: color-mix(in oklab, var(--paper) 80%, transparent); }
+}
+
+.fam-tile.fam-unfurl { animation: fam-pane-bloom 280ms var(--ease); }
+@keyframes fam-pane-bloom {
+  from { opacity: 0; transform: scale(0.96) translateY(6px); filter: blur(6px); }
+  to   { opacity: 1; transform: none; filter: none; }
+}
+
+/* ---------- botanical hairline ---------- */
+.fam-rule { display: flex; align-items: center; gap: var(--s2); margin: var(--s3) 0 var(--s4); }
+.fam-rule::before { content: ""; flex: 1; height: 1px; background: var(--rule); }
+.fam-node { width: 16px; height: 16px; color: var(--leaf); flex: none; }
+
+.fam-h { font-family: var(--font-display); font-weight: 700; font-size: var(--fs-lg);
+  letter-spacing: -0.015em; color: var(--leaf-deep); margin: 0 0 var(--s2); }
+
+/* ---------- buttons ---------- */
+.fam-btn {
+  display: inline-flex; align-items: center; gap: var(--s2);
+  padding: var(--s2) var(--s5); min-height: 44px;
+  border-radius: var(--r-pill); border: 0; cursor: pointer;
+  font-weight: 600; font-size: var(--fs-base);
+  background: var(--bloom); color: var(--bloom-ink);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.4) inset,
+              0 8px 20px -8px color-mix(in oklab, var(--bloom) 60%, transparent);
+  transition: transform var(--dur) var(--ease), filter var(--dur) var(--ease);
+}
+.fam-btn:hover { filter: brightness(1.04); }
+.fam-btn:active { transform: scale(0.97); }
+.fam-btn--ghost {
+  background: var(--glass-fill-quiet);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  color: var(--leaf-deep); font-weight: 500;
+  border: 1.5px solid color-mix(in oklab, var(--leaf) 55%, transparent);
+  box-shadow: none;
+}
+.fam-btn--ghost:hover { background: color-mix(in oklab, var(--leaf) 12%, transparent); }
+.fam-btn--block { display: flex; width: 100%; justify-content: center; }
+
+/* ---------- form controls ---------- */
+.fam-field { display: block; width: 100%; margin: var(--s2) 0; }
+.fam-label { display: block; font-size: var(--fs-sm); color: var(--soil-soft); margin-bottom: var(--s1); }
+.fam-input, .fam-select, .fam-textarea {
+  width: 100%; padding: var(--s3); border-radius: var(--r-ctl);
+  background: var(--glass-fill-quiet);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  border: 1px solid var(--rule); color: var(--soil); font-size: var(--fs-base);
+}
+.fam-input:focus, .fam-select:focus, .fam-textarea:focus {
+  outline: 2px solid var(--leaf-bright); outline-offset: 1px;
+  border-color: var(--leaf); background: color-mix(in oklab, var(--paper) 55%, transparent);
+}
+.fam-textarea { resize: none; min-height: 44px; line-height: 1.4; }
+.fam-input::placeholder, .fam-textarea::placeholder { color: color-mix(in oklab, var(--soil-soft) 80%, transparent); }
+
+/* ---------- chips / attribution seed ---------- */
+.fam-chip {
+  display: inline-flex; align-items: center; gap: var(--s1);
+  padding: 2px var(--s2); border-radius: var(--r-pill);
+  font-size: var(--fs-xs); color: var(--soil-soft);
+  background: color-mix(in oklab, var(--sky) 16%, transparent);
+}
+.fam-dot {
+  width: 9px; height: 9px; flex: none;
+  border-radius: 3px 3px 3px 8px;               /* a seed, not a disc */
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6);
+}
+.fam-dot--m1 { background: var(--m1); }
+.fam-dot--m2 { background: var(--m2); }
+
+.fam-icon { width: 24px; height: 24px; display: block; }
+.fam-hera { width: 22px; height: 22px; color: var(--leaf); flex: none; }
+
+/* ---------- floating glass tab bar ---------- */
+.fam-tabs {
+  position: fixed; z-index: 20;
+  left: var(--s4); right: var(--s4);
+  bottom: calc(env(safe-area-inset-bottom) + var(--s3));
+  display: flex; height: var(--tabbar-h);
+  border-radius: var(--r-pill);
+  background: var(--glass-fill-raise);
+  border: var(--glass-rim);
+  -webkit-backdrop-filter: blur(44px) saturate(200%) brightness(1.1);
+  backdrop-filter: blur(44px) saturate(200%) brightness(1.1);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.95) inset,
+    0 0 24px -6px rgba(255,255,255,0.5) inset,
+    0 -18px 44px -18px rgba(31, 74, 51, 0.4);
+  overflow: hidden;
+}
+.fam-tab {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 2px; position: relative;
+  color: var(--soil-soft); font-size: var(--fs-xs); font-weight: 500;
+  text-decoration: none;
+  transition: color var(--dur) var(--ease);
+}
+.fam-tab .fam-icon { transition: transform var(--dur) var(--ease); }
+.fam-tab.is-active { color: var(--leaf-deep); }
+.fam-tab.is-active .fam-icon { color: var(--bloom); transform: translateY(-1px); }
+.fam-tab.is-active::before {
+  content: ""; position: absolute; inset: 8px 10px;
+  border-radius: var(--r-pill);
+  background: var(--glass-fill-quiet);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset;
+  z-index: -1;
+}
+
+/* ---------- greeting (home) ---------- */
+.fam-greet { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); }
+.fam-greet__hi { font-size: var(--fs-md); color: var(--soil-soft); }
+.fam-greet__date { font-family: var(--font-display); font-weight: 700; font-size: var(--fs-h2);
+  letter-spacing: -0.02em; color: var(--leaf-deep); }
+
+.fam-who { display: inline-flex; gap: var(--s2); align-items: center; }
+.fam-who button {
+  width: 32px; height: 32px; border-radius: 50%; border: 2px solid transparent;
+  background: transparent; cursor: pointer; display: grid; place-items: center;
+}
+.fam-who button .fam-dot { width: 14px; height: 14px; }
+.fam-who button[aria-pressed="true"] { border-color: currentColor; }
+.fam-who button.is-m1 { color: var(--m1); }
+.fam-who button.is-m2 { color: var(--m2); }
+
+/* ---------- unlock ---------- */
+.fam-gate { min-height: 100vh; display: grid; place-items: center; padding: var(--s5); }
+.fam-gate__card {
+  width: 100%; max-width: 22rem; text-align: center;
+  position: relative;
+  background: var(--glass-fill-raise);
+  -webkit-backdrop-filter: blur(40px) saturate(185%) brightness(1.07);
+  backdrop-filter: blur(40px) saturate(185%) brightness(1.07);
+  border-radius: var(--r-pane);
+  border: var(--glass-rim);
+  border-bottom-color: color-mix(in oklab, var(--leaf-deep) 20%, transparent);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.95) inset,
+    0 0 26px -6px rgba(255,255,255,0.55) inset,
+    0 30px 80px -20px rgba(31, 74, 51, 0.5);
+  padding: var(--s7) var(--s5) var(--s6);
+}
+.fam-gate__mark { font-family: var(--font-display); font-weight: 700; font-size: var(--fs-h1);
+  letter-spacing: -0.03em; color: var(--leaf-deep); }
+.fam-gate__sub { color: var(--soil-soft); font-size: var(--fs-sm); margin: var(--s2) 0 var(--s5); }
+.fam-gate__err { color: var(--bloom-ink); background: color-mix(in oklab, var(--bloom) 22%, transparent);
+  border-radius: var(--r-ctl); padding: var(--s2); font-size: var(--fs-sm); margin-top: var(--s3); }
+
+.fam-404 { min-height: 100vh; display: grid; place-items: center; padding: var(--s5); text-align: center; }
+.fam-empty { color: var(--soil-soft); font-size: var(--fs-sm); padding: var(--s2) 0; }
+
+/* ---------- calendar ---------- */
+.cal-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }
+.cal-title { font-family: var(--font-display); font-weight: 700; font-size: var(--fs-h2);
+  letter-spacing: -0.02em; color: var(--leaf-deep); }
+.cal-nav { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%;
+  color: var(--leaf); flex: none; }
+.cal-nav:hover { background: color-mix(in oklab, var(--leaf) 12%, transparent); }
+
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cal-grid--head { margin-bottom: var(--s2); }
+.cal-wd { text-align: center; font-size: var(--fs-xs); color: var(--soil-soft); font-weight: 600; }
+
+.cal-day {
+  aspect-ratio: 1; border-radius: 12px; padding: 4px 6px;
+  display: flex; flex-direction: column; align-items: flex-start;
+  font-variant-numeric: lining-nums tabular-nums;
+  transition: background var(--dur) var(--ease);
+}
+.cal-day:hover { background: var(--glass-fill-quiet); }
+.cal-day.is-out { opacity: .35; }
+.cal-day.is-today .cal-num {
+  color: #fff; background: var(--bloom); border-radius: 999px;
+  width: 1.6em; height: 1.6em; display: grid; place-items: center; font-weight: 700;
+}
+.cal-num { font-size: var(--fs-sm); color: var(--soil); }
+.cal-dots { display: flex; gap: 3px; margin-top: auto; align-items: center; flex-wrap: wrap; }
+.cal-dot { width: 8px; height: 8px; border-radius: 2px 2px 2px 6px; box-shadow: 0 0 0 1px rgba(255,255,255,.6); }
+.cal-dot--m1 { background: var(--m1); }
+.cal-dot--m2 { background: var(--m2); }
+.cal-more { font-size: 0.625rem; color: var(--soil-soft); }
+
+.cal-up { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s2); }
+.cal-up__row { display: flex; align-items: center; gap: var(--s2); }
+.cal-up__date { font-size: var(--fs-sm); color: var(--leaf-deep); font-weight: 700;
+  min-width: 5.5em; font-variant-numeric: lining-nums; }
+.cal-up__row .fam-chip { flex: 1; }
+.cal-up__row .fam-icon { width: 14px; height: 14px; }
+.cal-up__del button { border: 0; background: transparent; color: var(--soil-soft); cursor: pointer;
+  font-size: 1.1rem; line-height: 1; padding: 4px 6px; border-radius: 8px; }
+.cal-up__del button:hover { color: var(--bloom-ink); background: color-mix(in oklab, var(--bloom) 20%, transparent); }
+
+.cal-add > summary { list-style: none; cursor: pointer; }
+.cal-add > summary::-webkit-details-marker { display: none; }
+.cal-times { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
+.cal-repeat-extra { margin-top: var(--s2); }
+.cal-byday { display: flex; gap: var(--s1); margin: var(--s2) 0; }
+.cal-byday label { flex: 1; text-align: center; font-size: var(--fs-xs);
+  border: 1px solid var(--rule); border-radius: 10px; padding: 6px 0; cursor: pointer; }
+.cal-byday input { display: block; margin: 0 auto 2px; }
+
+/* ---------- grocery ---------- */
+.groc-add { display: flex; gap: var(--s2); align-items: stretch; }
+.groc-add .fam-input { flex: 1; }
+.groc-qty-in { max-width: 5.5rem; flex: none; }
+.groc-add .fam-btn { padding: 0 var(--s3); }
+
+.groc-list { list-style: none; margin: var(--s4) 0 0; padding: 0; display: flex; flex-direction: column; }
+.groc-row {
+  display: flex; align-items: center; gap: var(--s3);
+  padding: var(--s3) var(--s2); border-radius: var(--r-ctl);
+  border-bottom: 1px solid var(--rule);
+  animation: fam-pane-bloom 260ms var(--ease);
+}
+.groc-row:last-child { border-bottom: 0; }
+.groc-row.is-got { background: var(--glass-fill-quiet); border-bottom-color: transparent; }
+.groc-check { display: flex; }
+.groc-box {
+  width: 22px; height: 22px; border-radius: 8px; flex: none;
+  border: 1.5px solid var(--leaf);
+  background: color-mix(in oklab, var(--paper) 40%, transparent);
+  cursor: pointer; display: grid; place-items: center; color: #fff;
+  transition: transform var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.groc-row.is-got .groc-box { background: var(--bloom); border-color: var(--bloom); animation: fam-check-bloom 300ms var(--ease); }
+@keyframes fam-check-bloom { from { transform: scale(0.7); } to { transform: scale(1); } }
+.groc-box .fam-icon { width: 16px; height: 16px; }
+.groc-name { flex: 1; }
+.groc-qty { color: var(--soil-soft); font-size: var(--fs-sm); }
+.groc-row.is-got .groc-name { color: var(--soil-soft); text-decoration: line-through; }
+.groc-row .fam-dot { width: 8px; height: 8px; }
+.groc-del button { border: 0; background: transparent; color: var(--soil-soft); cursor: pointer;
+  font-size: 1.1rem; line-height: 1; padding: 4px 6px; border-radius: 8px; }
+.groc-del button:hover { color: var(--bloom-ink); background: color-mix(in oklab, var(--bloom) 20%, transparent); }
+
+.groc-actions { display: flex; gap: var(--s3); margin-top: var(--s5); flex-wrap: wrap; }
+.groc-actions form { flex: 1; min-width: 12rem; }
+.groc-actions .fam-btn { width: 100%; justify-content: center; }
+
+.groc-past { border-bottom: 1px solid var(--rule); padding: var(--s3) 0; }
+.groc-past:last-child { border-bottom: 0; }
+.groc-past > summary { display: flex; justify-content: space-between; align-items: baseline;
+  cursor: pointer; list-style: none; gap: var(--s3); }
+.groc-past > summary::-webkit-details-marker { display: none; }
+.groc-past__meta { font-size: var(--fs-xs); color: var(--soil-soft); }
+.groc-past__items { list-style: none; margin: var(--s3) 0; padding: 0; font-size: var(--fs-sm); color: var(--soil-soft); }
+.groc-past__items li { padding: 2px 0; }
+
+/* ---------- chat ---------- */
+.chat-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }
+.chat-who { display: inline-flex; align-items: center; gap: var(--s2);
+  font-family: var(--font-display); font-weight: 700; font-size: var(--fs-h2);
+  letter-spacing: -0.02em; color: var(--leaf-deep); }
+.chat-who .fam-hera { width: 26px; height: 26px; }
+.chat-picker { position: relative; display: inline-flex; align-items: center; }
+.chat-picker select {
+  appearance: none; -webkit-appearance: none;
+  padding: var(--s2) calc(var(--s5) + 4px) var(--s2) var(--s3);
+  border-radius: var(--r-pill);
+  border: 1px solid color-mix(in oklab, var(--leaf-deep) 12%, transparent);
+  background: var(--glass-fill-raise);
+  -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px);
+  color: var(--leaf-deep); font-weight: 600;
+}
+.chat-picker .fam-icon { position: absolute; right: var(--s2); width: 18px; height: 18px;
+  color: var(--leaf); pointer-events: none; }
+
+.chat-thread { display: flex; flex-direction: column; gap: var(--s3); padding: var(--s4) 0;
+  overflow-y: auto; min-height: 40vh; }
+.chat-msg { display: flex; gap: var(--s2); max-width: 86%; }
+.chat-msg--user { align-self: flex-end; }
+.chat-msg--assistant { align-self: flex-start; }
+.chat-h { flex: none; width: 22px; height: 22px; color: var(--leaf); margin-top: 4px; }
+.chat-h svg, .chat-h .fam-hera { width: 22px; height: 22px; }
+.chat-bubble {
+  position: relative; border-radius: 18px; padding: var(--s3) var(--s4);
+  line-height: 1.5; word-wrap: break-word;
+  background: var(--glass-fill);
+  border: var(--glass-rim);
+  border-bottom-color: color-mix(in oklab, var(--leaf-deep) 16%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(200%); backdrop-filter: blur(24px) saturate(200%);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset,
+              0 12px 30px -14px rgba(31, 74, 51, 0.35);
+}
+.chat-msg--user .chat-bubble { background: color-mix(in oklab, var(--leaf) 14%, var(--glass-fill)); }
+.chat-bubble pre { background: color-mix(in oklab, var(--soil) 8%, transparent); border-radius: 10px;
+  padding: var(--s2); overflow-x: auto; font-size: var(--fs-sm); }
+.chat-bubble code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.9em; }
+.chat-bubble a { text-decoration: underline; }
+
+.chat-dots { display: inline-flex; gap: 4px; }
+.chat-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--leaf);
+  animation: chat-pulse 1s var(--ease) infinite; }
+.chat-dots i:nth-child(2) { animation-delay: .15s; }
+.chat-dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes chat-pulse { 0%,100% { opacity: .3; transform: translateY(0); }
+                        50% { opacity: 1; transform: translateY(-3px); } }
+
+.chat-composer {
+  position: fixed; left: var(--s4); right: var(--s4);
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + var(--s5));
+  display: flex; gap: var(--s2); align-items: flex-end;
+  padding: var(--s2);
+  border-radius: var(--r-pane);
+  background: var(--glass-fill-raise);
+  -webkit-backdrop-filter: blur(40px) saturate(185%); backdrop-filter: blur(40px) saturate(185%);
+  box-shadow: 0 1px 0 rgba(255,255,255,.85) inset,
+              0 18px 50px -16px rgba(31, 74, 51, 0.34),
+              0 0 0 1px color-mix(in oklab, var(--leaf-deep) 12%, transparent);
+  max-width: 32rem; margin: 0 auto;
+}
+.chat-composer textarea {
+  flex: 1; resize: none; border-radius: 18px; padding: var(--s3);
+  border: 1px solid var(--rule); background: var(--glass-fill-quiet);
+  color: var(--soil); font-size: var(--fs-base); line-height: 1.4; max-height: 140px;
+}
+.chat-composer textarea:focus { outline: 2px solid var(--leaf-bright); outline-offset: 1px; }
+#chat-send {
+  flex: none; width: 44px; height: 44px; border-radius: 50%; border: 0;
+  background: var(--leaf); color: #fff; cursor: pointer; display: grid; place-items: center;
+  transition: background var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+#chat-send:disabled { opacity: .5; }
+#chat-send:active { transform: scale(0.94); }
+body.family .fam-main:has(#chat-form) {
+  padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 92px);
+}
+
+/* ---------- motion off ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
