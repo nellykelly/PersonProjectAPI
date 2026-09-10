@@ -1,5 +1,6 @@
 {% extends "family/_layout.html" %}
 {% block title %}Calendar · Family{% endblock %}
+{% block extra_head %}<meta name="csrf-token" content="{{ csrf_token() }}">{% endblock %}
 
 {% block content %}
 <div class="cal-head">
@@ -17,7 +18,9 @@
   <div class="cal-grid">
     {% for day in week %}
     {% set evs = by_day.get(day, []) %}
-    <div class="cal-day{{ ' is-out' if day.month != month_first.month }}{{ ' is-today' if day == today }}">
+    <a class="cal-day{{ ' is-out' if day.month != month_first.month }}{{ ' is-today' if day == today }}{{ ' is-selected' if day == selected_day and day_in_query }}"
+       href="{{ url_for('family.calendar', day=day.isoformat()) }}"
+       data-day="{{ day.isoformat() }}">
       <span class="cal-num">{{ day.day }}</span>
       {% if evs %}
       <div class="cal-dots">
@@ -25,75 +28,81 @@
         {% if evs|length > 3 %}<span class="cal-more">+{{ evs|length - 3 }}</span>{% endif %}
       </div>
       {% endif %}
-    </div>
+    </a>
     {% endfor %}
   </div>
   {% endfor %}
 </section>
 
-<section class="fam-tile">
-  <h2 class="fam-h">Coming up</h2>
-  <div class="fam-rule">{{ icon.node() }}</div>
-  {% if upcoming %}
-    <ul class="cal-up">
-      {% for d, ev in upcoming %}
+<dialog id="cal-dialog" class="cal-modal"{% if day_in_query %} open{% endif %}>
+  <div class="cal-modal__card fam-tile">
+    <div class="cal-modal__head">
+      <h2 class="fam-h" id="cal-dialog-title">{{ selected_day.strftime('%A, %b') }} {{ selected_day.day }}</h2>
+      <a class="cal-modal__x" href="{{ url_for('family.calendar', month=month_first.strftime('%Y-%m')) }}"
+         data-close aria-label="Close">&times;</a>
+    </div>
+    <div class="fam-rule">{{ icon.node() }}</div>
+
+    <ul class="cal-up" id="cal-dialog-list">
+      {% for ev in selected_events %}
       <li class="cal-up__row">
-        <span class="cal-up__date">{{ d.strftime('%a %b') }} {{ d.day }}</span>
+        <span class="cal-up__date">{% if ev.all_day or not ev.starts_at %}All day{% else %}{{ ev.starts_at.strftime('%H:%M') }}{% if ev.ends_at %}&ndash;{{ ev.ends_at.strftime('%H:%M') }}{% endif %}{% endif %}</span>
         <span class="fam-chip"><span class="fam-dot fam-dot--m{{ 1 if ev.created_by and ev.created_by.slug == 'm1' else 2 }}"></span>
-          {% if ev.starts_at %}{{ ev.starts_at.strftime('%H:%M') }} · {% endif %}{{ ev.title }}
+          {{ ev.title }}
           {% if ev.recurrence %}{{ icon.recur() }}{% endif %}
         </span>
         <form method="post" action="{{ url_for('family.calendar_delete', event_id=ev.id) }}" class="cal-up__del">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" aria-label="Delete event" title="Delete">×</button>
+          <input type="hidden" name="day" value="{{ selected_day.isoformat() }}">
+          <button type="submit" aria-label="Delete event" title="Delete">&times;</button>
         </form>
       </li>
       {% endfor %}
     </ul>
-  {% else %}
-    <p class="fam-empty">Nothing scheduled yet.</p>
-  {% endif %}
-</section>
+    <p class="fam-empty" id="cal-dialog-empty"{% if selected_events %} hidden{% endif %}>Nothing on this day.</p>
 
-<details class="fam-tile cal-add">
-  <summary class="fam-h">Add an event</summary>
-  <div class="fam-rule">{{ icon.node() }}</div>
-  <form method="post" action="{{ url_for('family.calendar_add') }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="month" value="{{ month_first.strftime('%Y-%m') }}">
-    <label class="fam-label" for="cal-title">What</label>
-    <input class="fam-input" id="cal-title" name="title" required>
-    <label class="fam-label" for="cal-date">When</label>
-    <input class="fam-input" id="cal-date" name="starts_on" type="date"
-           value="{{ today.isoformat() }}" required>
-    <label class="fam-label" style="display:flex; align-items:center; gap:var(--s2); margin-top:var(--s3)">
-      <input type="checkbox" name="all_day" checked> All day
-    </label>
-    <div class="cal-times">
-      <div><label class="fam-label" for="cal-start">Start</label>
-        <input class="fam-input" id="cal-start" name="starts_at" type="time"></div>
-      <div><label class="fam-label" for="cal-end">End</label>
-        <input class="fam-input" id="cal-end" name="ends_at" type="time"></div>
-    </div>
-    <label class="fam-label" for="cal-note">Note</label>
-    <textarea class="fam-textarea" id="cal-note" name="note" rows="2"></textarea>
+    <details class="cal-add"{% if not selected_events %} open{% endif %}>
+      <summary class="fam-btn fam-btn--ghost fam-btn--block cal-add__toggle">{{ icon.plus() }} Add event on this day</summary>
+      <form method="post" action="{{ url_for('family.calendar_add') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="fam-label" for="cal-title">What</label>
+        <input class="fam-input" id="cal-title" name="title" required>
+        <label class="fam-label" for="cal-date">When</label>
+        <input class="fam-input" id="cal-date" name="starts_on" type="date"
+               value="{{ selected_day.isoformat() }}" required>
+        <label class="fam-label" style="display:flex; align-items:center; gap:var(--s2); margin-top:var(--s3)">
+          <input type="checkbox" name="all_day" checked> All day
+        </label>
+        <div class="cal-times">
+          <div><label class="fam-label" for="cal-start">Start</label>
+            <input class="fam-input" id="cal-start" name="starts_at" type="time"></div>
+          <div><label class="fam-label" for="cal-end">End</label>
+            <input class="fam-input" id="cal-end" name="ends_at" type="time"></div>
+        </div>
+        <label class="fam-label" for="cal-note">Note</label>
+        <textarea class="fam-textarea" id="cal-note" name="note" rows="2"></textarea>
 
-    <label class="fam-label" for="cal-repeat" style="margin-top:var(--s3)">Repeat</label>
-    <select class="fam-select" id="cal-repeat" name="repeat">
-      <option value="none">Doesn't repeat</option>
-      <option value="weekly">Weekly</option>
-      <option value="monthly">Monthly</option>
-    </select>
-    <div class="cal-repeat-extra">
-      <div class="cal-byday">
-        {% for code, label in [('MO','M'),('TU','T'),('WE','W'),('TH','T'),('FR','F'),('SA','S'),('SU','S')] %}
-        <label><input type="checkbox" name="byday" value="{{ code }}">{{ label }}</label>
-        {% endfor %}
-      </div>
-      <label class="fam-label" for="cal-until">Until</label>
-      <input class="fam-input" id="cal-until" name="repeat_until" type="date">
-    </div>
-    <button class="fam-btn fam-btn--block" type="submit" style="margin-top:var(--s4)">Add</button>
-  </form>
-</details>
+        <label class="fam-label" for="cal-repeat" style="margin-top:var(--s3)">Repeat</label>
+        <select class="fam-select" id="cal-repeat" name="repeat">
+          <option value="none">Doesn't repeat</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly">Monthly</option>
+        </select>
+        <div class="cal-repeat-extra">
+          <div class="cal-byday">
+            {% for code, label in [('MO','M'),('TU','T'),('WE','W'),('TH','T'),('FR','F'),('SA','S'),('SU','S')] %}
+            <label><input type="checkbox" name="byday" value="{{ code }}">{{ label }}</label>
+            {% endfor %}
+          </div>
+          <label class="fam-label" for="cal-until">Until</label>
+          <input class="fam-input" id="cal-until" name="repeat_until" type="date">
+        </div>
+        <button class="fam-btn fam-btn--block" type="submit" style="margin-top:var(--s4)">Add</button>
+      </form>
+    </details>
+  </div>
+</dialog>
+
+<template id="cal-recur-tpl">{{ icon.recur() }}</template>
+<script type="application/json" id="cal-data">{{ day_events_json|safe }}</script>
 {% endblock %}

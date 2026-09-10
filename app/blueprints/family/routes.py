@@ -15,6 +15,7 @@ calendar / grocery / chat views are thin here; T7 / T8 / T10 fill in the
 services and form handlers.
 """
 import calendar as _cal
+import json
 from datetime import date, datetime, timedelta
 
 from flask import (
@@ -195,9 +196,44 @@ def _month_weeks(first_of_month: date):
     return weeks
 
 
+def _parse_day(raw: str | None) -> date | None:
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw.strip())
+    except (ValueError, TypeError):
+        return None
+
+
+def _event_brief(ev) -> dict:
+    """The shape the calendar day-popup's JS renders a row from."""
+    if ev.all_day or not ev.starts_at:
+        when = "All day"
+    else:
+        when = ev.starts_at.strftime("%H:%M")
+        if ev.ends_at:
+            when += "–" + ev.ends_at.strftime("%H:%M")
+    return {
+        "id": ev.id,
+        "time": when,
+        "title": ev.title,
+        "m": 1 if (ev.created_by and ev.created_by.slug == "m1") else 2,
+        "recur": bool(ev.recurrence),
+    }
+
+
 @bp.route("/calendar", methods=["GET"])
 def calendar():
-    first = _parse_month(request.args.get("month"))
+    # A selected `day` drives the view (its month is the month shown); with
+    # no day, show the requested month and select today when it falls in it.
+    selected = _parse_day(request.args.get("day"))
+    if selected is not None:
+        first = date(selected.year, selected.month, 1)
+    else:
+        first = _parse_month(request.args.get("month"))
+        today = date.today()
+        selected = today if (today.year, today.month) == (first.year, first.month) else first
+
     y, m = first.year, first.month
     days_in = _cal.monthrange(y, m)[1]
     grid_events = cal_svc.events_in_range(first, date(y, m, days_in))
@@ -206,6 +242,12 @@ def calendar():
         by_day.setdefault(d, []).append(ev)
     prev_m = (first - timedelta(days=1)).replace(day=1)
     next_m = (date(y, m, days_in) + timedelta(days=1))
+    # Whole month, keyed by ISO date -- lets the day popup fill itself with no
+    # round-trip. `</` is broken up so a title can't close the <script> early.
+    day_events = {
+        d.isoformat(): [_event_brief(ev) for ev in evs] for d, evs in by_day.items()
+    }
+    day_events_json = json.dumps(day_events, separators=(",", ":")).replace("</", "<\\/")
     return render_template(
         "family/calendar.html",
         tab="calendar",
@@ -214,9 +256,12 @@ def calendar():
         weeks=_month_weeks(first),
         by_day=by_day,
         today=date.today(),
+        selected_day=selected,
+        selected_events=by_day.get(selected, []),
+        day_in_query=bool(request.args.get("day")),
+        day_events_json=day_events_json,
         prev_month=prev_m.strftime("%Y-%m"),
         next_month=next_m.strftime("%Y-%m"),
-        upcoming=cal_svc.upcoming(10),
         weekday_initials=["M", "T", "W", "T", "F", "S", "S"],
     )
 
@@ -244,7 +289,8 @@ def calendar_add():
         cal_svc.create_event(data, member=_active_member())
     except FamilyError as exc:
         abort(400, str(exc))
-    return redirect(url_for("family.calendar", month=f.get("month") or None))
+    # Land back on the day the event was added to.
+    return redirect(url_for("family.calendar", day=f.get("starts_on") or None))
 
 
 @bp.route("/calendar/events/<int:event_id>/delete", methods=["POST"])
@@ -253,7 +299,7 @@ def calendar_delete(event_id):
         cal_svc.delete_event(event_id)
     except FamilyError:
         abort(404)
-    return redirect(url_for("family.calendar"))
+    return redirect(url_for("family.calendar", day=request.form.get("day") or None))
 
 
 @bp.route("/grocery", methods=["GET"])

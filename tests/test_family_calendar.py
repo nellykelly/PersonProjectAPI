@@ -127,5 +127,7 @@ def test_calendar_route_renders_and_adds(app, client):
     assert b"cal-grid" in client.get("/family/calendar").data
     r = client.post("/family/calendar/events", data={"title": "T", "starts_on": "2026-09-20", "all_day": "on"})
     assert r.status_code == 302
-    assert b"T" in client.get("/family/calendar").data
+    # the event shows on its own day's panel (no more always-on "Coming up" list)
+    assert r.headers["Location"].endswith("day=2026-09-20")
+    assert b"T" in client.get("/family/calendar?day=2026-09-20").data
     app.config["FAMILY_PASSWORD_HASH"] = None
