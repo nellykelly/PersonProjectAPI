@@ -204,30 +204,66 @@ def test_assistant_tool_loop_unchanged():
 # ---------- no copyrighted corpus / secret in the repo ----------
 
 def test_no_corpus_or_secret_in_tracked_files():
-    tracked = subprocess.run(
-        ["git", "ls-files"], capture_output=True, text=True
-    ).stdout.split()
-    # "hera-lines" is a fixed marker name, safe to write literally. The real
-    # Groq key is NOT -- it must never appear as a literal in this file's own
-    # source, or this test becomes exactly the leak it exists to catch the
-    # moment it's committed. Read it from the environment at run time instead
-    # (same place app/config.py sources it); if it isn't set in this
-    # process, that one check is simply skipped rather than failing closed.
-    import os
+    """Two real things must never enter a tracked file: the extracted
+    copyrighted dialogue corpus (`hera-lines.md`, staging root) and the
+    runtime Groq key.
 
-    banned = ["hera-lines"]
-    real_key = os.environ.get("FAMILY_GROQ_API_KEY")
-    if real_key:
-        banned.append(real_key)
+    The corpus is guarded two ways -- neither of which is the literal
+    string "hera-lines", because that appears legitimately as prose in the
+    README, the build spec, and this test's own source (all describing the
+    guard). Checking for it there would make the test flag the
+    documentation of itself. Instead:
+      1. no file *named* like the corpus is tracked;
+      2. if the real corpus is readable from the staging root, a
+         distinctive verbatim phrase from it appears in no tracked file --
+         this is what catches someone pasting dialogue into persona.py.
+         Skipped (not failed) when the staging-root file isn't reachable,
+         same as the key check below.
+
+    The key is read from the environment at run time (same source as
+    app/config.py); writing it as a literal here would make this test the
+    leak it exists to catch.
+    """
+    import os
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[1]
+    tracked = subprocess.run(
+        ["git", "ls-files"], capture_output=True, text=True, cwd=repo_root
+    ).stdout.split()
+
+    CORPUS_BASENAMES = {"hera-lines.md", "personality_hera_canon.md"}
+    corpus_tracked = [p for p in tracked if Path(p).name in CORPUS_BASENAMES]
+    assert not corpus_tracked, f"corpus file(s) are tracked: {corpus_tracked}"
+
+    banned: list[str] = []
+    key = os.environ.get("FAMILY_GROQ_API_KEY")
+    if key:
+        banned.append(key)
+
+    # A verbatim phrase from the real corpus, if it's on disk outside the
+    # repo. Take a long-ish line so an incidental collision is implausible.
+    corpus_path = repo_root.parent / "hera-lines.md"
+    if corpus_path.is_file():
+        for line in corpus_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+            phrase = line.strip()
+            if len(phrase) >= 60:
+                banned.append(phrase)
+                break
+
+    if not banned:
+        pytest.skip("neither the Groq key nor the staging-root corpus is available to check against")
+
     hits = []
     for path in tracked:
-        if path.endswith((".png", ".jpg", ".ico", ".pdf", ".woff2")):
+        if path.endswith((".png", ".jpg", ".ico", ".pdf", ".woff2", ".svg")):
             continue
         try:
-            text = open(path, encoding="utf-8", errors="ignore").read()
+            text = (repo_root / path).read_text(encoding="utf-8", errors="ignore")
         except OSError:
             continue
         for needle in banned:
             if needle in text:
-                hits.append(f"{path}: {needle}")
+                label = "GROQ KEY" if needle == key else "corpus phrase"
+                hits.append(f"{path}: {label}")
     assert not hits, hits
