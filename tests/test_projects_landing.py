@@ -26,12 +26,12 @@ def test_projects_landing_links_resolve(client):
         assert path.encode() in resp.data
 
 
-def test_landing_page_links_the_trading_simulator(client):
+def test_landing_page_links_pipeline_world(client):
     """The home page's featured grid is built from the same filtered list
     as /projects, so a listed project shows up on both."""
     resp = client.get("/")
-    assert b"/projects/trading-simulator" in resp.data
-    assert b"Trading Simulator" in resp.data
+    assert b"/projects/pipeline-world" in resp.data
+    assert b"Pipeline World" in resp.data
 
 
 def test_project_counts_on_the_landing_page_match_what_is_listed(client):

@@ -11,6 +11,7 @@ PROJECTS = [
         "endpoint": "trading.index",
         "tags": ["Flask", "yfinance", "SQLite", "Black-Scholes"],
         "icon": "assets/img/icons/trading.svg",
+        "wip": True,
     },
     {
         "slug": "qr-quant-scraper",
@@ -76,6 +77,7 @@ PROJECTS = [
         "endpoint": "tiny_jvm.index",
         "tags": ["Java", "Embedded / C", "WebAssembly", "Compilers"],
         "icon": "assets/img/icons/tiny-jvm.svg",
+        "wip": True,
     },
     {
         "slug": "market-warehouse",
@@ -111,6 +113,7 @@ PROJECTS = [
         "endpoint": "assistant.index",
         "tags": ["RAG", "pgvector", "Embeddings", "Groq"],
         "icon": "assets/img/icons/assistant.svg",
+        "wip": True,
     },
 ]
 

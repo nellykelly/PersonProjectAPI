@@ -59,7 +59,7 @@ def create_app(config_name: str | None = None) -> Flask:
         app,
         async_mode="threading",
         message_queue=app.config.get("REDIS_URL") or None,
-        cors_allowed_origins="*",
+        cors_allowed_origins=app.config["SOCKETIO_CORS_ALLOWED_ORIGINS"],
     )
 
     from app.services import queue as pipeline_queue

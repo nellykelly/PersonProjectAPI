@@ -22,6 +22,15 @@ def _list(name: str, default: list[str]) -> list[str]:
     return [item.strip().upper() for item in val.split(",") if item.strip()]
 
 
+def _origin_list(name: str, default: list[str]) -> list[str]:
+    # Like _list, but for URL origins -- case matters (scheme/host), so
+    # this doesn't uppercase entries the way the ticker-symbol helper does.
+    val = os.environ.get(name)
+    if not val:
+        return default
+    return [item.strip() for item in val.split(",") if item.strip()]
+
+
 # Curated whitelist of liquid large-cap tickers/ETFs. Used by both the
 # trading simulator (position tickers) and the Company Scorer (scorable /
 # backtestable tickers) so that user input never reaches yfinance/SEC
@@ -87,6 +96,18 @@ class Config:
     )
 
     TICKER_WHITELIST = _list("TICKER_WHITELIST", DEFAULT_TICKER_WHITELIST)
+
+    # Flask-SocketIO's own CORS setting (separate from the plain HTTP
+    # routes, which send no CORS headers at all and so are already
+    # same-origin-only by default). Permissive here so a bare `flask run`
+    # on any host/port -- or someone testing from a different local port --
+    # just works with no setup; ProductionConfig below locks this to the
+    # real site origin(s), since a live-updating public WebSocket feed
+    # (Pipeline World's town/tracker) is otherwise embeddable from any
+    # third-party page. Comma-separated list of origins, or "*".
+    SOCKETIO_CORS_ALLOWED_ORIGINS = _origin_list(
+        "SOCKETIO_CORS_ALLOWED_ORIGINS", ["*"]
+    )
 
     QR_WEIGHTS = {
         "valuation": float(os.environ.get("QR_WEIGHT_VALUATION", DEFAULT_QR_WEIGHTS["valuation"])),
@@ -321,6 +342,14 @@ class ProductionConfig(Config):
     REMEMBER_COOKIE_SECURE = True
     REMEMBER_COOKIE_HTTPONLY = True
     REMEMBER_COOKIE_SAMESITE = "Lax"
+
+    # Locked to the real site origins by default, unlike the wide-open
+    # base default above -- override via the env var if the domain ever
+    # changes, but production should never silently fall back to "*".
+    SOCKETIO_CORS_ALLOWED_ORIGINS = _origin_list(
+        "SOCKETIO_CORS_ALLOWED_ORIGINS",
+        ["https://nelsonkoskela.dev", "https://www.nelsonkoskela.dev"],
+    )
 
 
 class TestingConfig(Config):

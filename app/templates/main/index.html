@@ -133,7 +133,7 @@
     <div class="card-grid">
         {% for project in featured_projects %}
         <div class="reveal-up card">
-            <div class="card-mockup" aria-hidden="true">
+            <div class="card-mockup{% if project.wip %} is-wip{% endif %}" aria-hidden="true">
                 <div class="card-mockup-frame">
                     <div class="card-mockup-chrome"><span></span><span></span><span></span></div>
                     <div class="card-mockup-body">
@@ -151,7 +151,7 @@
                 <span class="tag">{{ tag }}</span>
                 {% endfor %}
             </div>
-            <a class="button small" href="{{ url_for(project.endpoint) }}">Open</a>
+            <a class="button small" href="{{ url_for(project.endpoint) }}">{{ "Work in Progress" if project.wip else "Open" }}</a>
         </div>
         {% endfor %}
     </div>

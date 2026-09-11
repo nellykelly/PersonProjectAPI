@@ -661,6 +661,12 @@ html.js-reveal .reveal-up.is-visible {
   background: linear-gradient(160deg, var(--accent) -30%, var(--accent-violet) 60%, var(--surface) 130%);
   perspective: 900px;
 }
+/* Work-in-progress projects get a yellow/pink treatment instead of the
+   usual blue/violet, so an unfinished build reads as "still cooking"
+   rather than as broken or abandoned. */
+.card-mockup.is-wip {
+  background: linear-gradient(160deg, #fbbf24 -30%, #f472b6 60%, var(--surface) 130%);
+}
 .card-mockup-frame {
   width: 78%;
   aspect-ratio: 4 / 2.6;
