@@ -30,7 +30,7 @@ class TraderGranularModel(RiskModel):
     good_for = "Live risk on a screen, hedging decisions, anything that needs an answer immediately."
     limitations = (
         "Every Greek is a local derivative around today's spot, so it only describes small moves. "
-        "It cannot tell you what a 20% gap does to this position. Use Full Revalue for that."
+        "It can't tell you what a 20% gap does to this position. Use Full Revalue for that."
     )
 
     def _value_at(self, ctx: PricingContext, spot: float) -> float:

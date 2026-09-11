@@ -85,7 +85,7 @@ def register():
         login_user(user)
         user.last_login_at = datetime.now(timezone.utc)
         db.session.commit()
-        flash("Account created -- your board is ready.", "success")
+        flash("Account created. Your board is ready.", "success")
         return redirect(url_for("leetcode.index"))
 
     return render_template("auth/register.html", form=form)

@@ -212,7 +212,7 @@ def _event_brief(ev) -> dict:
     else:
         when = ev.starts_at.strftime("%H:%M")
         if ev.ends_at:
-            when += "–" + ev.ends_at.strftime("%H:%M")
+            when += "-" + ev.ends_at.strftime("%H:%M")
     return {
         "id": ev.id,
         "time": when,

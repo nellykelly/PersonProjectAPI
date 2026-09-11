@@ -21,7 +21,7 @@
       <input type="text" name="role_title" value="{{ form.role_title }}" required>
     </label>
     <label class="jt-wide">Job posting URL
-      <input type="url" name="job_posting_url" value="{{ form.job_posting_url }}" placeholder="https://…">
+      <input type="url" name="job_posting_url" value="{{ form.job_posting_url }}" placeholder="https://...">
     </label>
     <label>Date applied
       <input type="date" name="date_applied" value="{{ form.date_applied }}">
@@ -34,14 +34,14 @@
       </select>
     </label>
     <label>Source
-      <input type="text" name="source" value="{{ form.source }}" list="jt-sources" placeholder="LinkedIn, Referral, …">
+      <input type="text" name="source" value="{{ form.source }}" list="jt-sources" placeholder="LinkedIn, Referral, ...">
       <datalist id="jt-sources">
         <option>Otta</option><option>LinkedIn</option><option>Referral</option>
         <option>Company site</option><option>Other</option>
       </datalist>
     </label>
     <label>Resume version
-      <input type="text" name="resume_version" value="{{ form.resume_version }}" placeholder="SRE, Master, …">
+      <input type="text" name="resume_version" value="{{ form.resume_version }}" placeholder="SRE, Master, ...">
     </label>
     <label class="jt-check">
       <input type="checkbox" name="cover_letter_used" {{ 'checked' if form.cover_letter_used }}>
@@ -52,7 +52,7 @@
       <input type="text" name="company_industry" value="{{ form.company_industry }}">
     </label>
     <label>Company size / stage
-      <input type="text" name="company_size_stage" value="{{ form.company_size_stage }}" placeholder="Seed, Series B, Public, …">
+      <input type="text" name="company_size_stage" value="{{ form.company_size_stage }}" placeholder="Seed, Series B, Public, ...">
     </label>
     <label>Location / remote policy
       <input type="text" name="location_remote_policy" value="{{ form.location_remote_policy }}">
@@ -63,7 +63,7 @@
     <label>Salary range
       <input type="text" name="salary_range" value="{{ form.salary_range }}">
     </label>
-    <label>Match grade <span class="jt-hint">0–100</span>
+    <label>Match grade <span class="jt-hint">0 to 100</span>
       <input type="number" name="match_grade" min="0" max="100" value="{{ form.match_grade }}">
     </label>
     <label class="jt-wide">Match notes

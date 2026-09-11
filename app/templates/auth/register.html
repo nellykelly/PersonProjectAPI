@@ -11,7 +11,7 @@
         <p class="muted auth-alt"><a href="{{ url_for('auth.login') }}">Log in</a> if you already have an account.</p>
         {% else %}
         <h1 class="major">Create account</h1>
-        <p class="muted">Pick a username and password. No email needed &mdash; but there's no
+        <p class="muted">Pick a username and password. No email needed, but there's no
             password reset either, so keep it safe.</p>
 
         <form method="post" action="{{ url_for('auth.register') }}">
@@ -19,7 +19,7 @@
 
             <label for="username">Username</label>
             {{ form.username(id="username", autocomplete="username", autofocus=true) }}
-            <p class="field-hint">3&ndash;32 characters. Letters, numbers, dashes, underscores.</p>
+            <p class="field-hint">3 to 32 characters. Letters, numbers, dashes, underscores.</p>
             {% for e in form.username.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
 
             <label for="password">Password</label>

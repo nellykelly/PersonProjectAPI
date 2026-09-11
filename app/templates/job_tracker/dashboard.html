@@ -52,7 +52,7 @@
         {% else %}{{ a.role_title }}{% endif %}
         {% if a.location_remote_policy %}<span class="jt-sub">{{ a.location_remote_policy }}</span>{% endif %}
       </td>
-      <td class="jt-nowrap">{{ a.date_applied.isoformat() if a.date_applied else "—" }}</td>
+      <td class="jt-nowrap">{{ a.date_applied.isoformat() if a.date_applied else "-" }}</td>
       <td>
         <form method="post" action="{{ url_for('job_tracker.change_status', app_id=a.id) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -66,11 +66,11 @@
           <noscript><button type="submit">Set</button></noscript>
         </form>
       </td>
-      <td class="jt-nowrap">{{ a.resume_version or "—" }}</td>
+      <td class="jt-nowrap">{{ a.resume_version or "-" }}</td>
       <td class="jt-nowrap">
         {% if a.match_grade is not none %}
           <span class="jt-grade" title="{{ match_label(a.match_grade) }}">{{ a.match_grade }}</span>
-        {% else %}—{% endif %}
+        {% else %}-{% endif %}
       </td>
       <td class="jt-nowrap">
         <a class="jt-link" href="{{ url_for('job_tracker.edit_application', app_id=a.id) }}">Edit</a>

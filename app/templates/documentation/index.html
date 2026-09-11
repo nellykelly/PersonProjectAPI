@@ -31,7 +31,7 @@
   <header class="masthead">
     <p class="kicker">Engineering Reference &middot; nelsonkoskela.dev</p>
     <h1>Portfolio Site Engineering Reference</h1>
-    <p class="standfirst">A complete walkthrough of the Flask application behind nelsonkoskela.dev &mdash; every subsystem, the data model, the request paths, the maths, and the deployment &mdash; followed by an interview question bank drawn from it.</p>
+    <p class="standfirst">A complete walkthrough of the Flask application behind nelsonkoskela.dev: every subsystem, the data model, the request paths, the maths, and the deployment. Followed by an interview question bank drawn from it.</p>
     <div class="meta-strip">
       <div><span>Stack</span><b>Flask 3 &middot; Postgres &middot; Redis &middot; RQ &middot; Socket.IO</b></div>
       <div><span>Runtime</span><b>5 containers, 1 VPS, Caddy TLS</b></div>
@@ -120,7 +120,7 @@
 
   <p class="lede">One Flask application serving a personal site plus six self-contained projects. Every project is a blueprint with its own routes, service layer, templates and tests; they share one database, one Redis instance, one worker pool and one deployment.</p>
 
-  <p>The important structural idea: <b>routes are thin, services hold the logic, and models hold the state.</b> A route parses the request, calls one service function, and renders. Nothing in <code>app/blueprints/*/routes.py</code> does maths, network I/O, or multi-step orchestration &mdash; that all lives in <code>app/services/</code>, which is why the service layer is unit-testable without a Flask request at all.</p>
+  <p>The important structural idea: <b>routes are thin, services hold the logic, and models hold the state.</b> A route parses the request, calls one service function, and renders. Nothing in <code>app/blueprints/*/routes.py</code> does maths, network I/O, or multi-step orchestration. That all lives in <code>app/services/</code>, which is why the service layer is unit-testable without a Flask request at all.</p>
 
   <div class="tw">
     <table>
@@ -229,7 +229,7 @@ flowchart TB
 
   <div class="note">
     <b class="tag">Constraint worth knowing</b>
-    <p>Gunicorn runs <b>one process with eight threads</b>, not multiple processes. Flask-SocketIO's <code>threading</code> async mode keeps each client's Engine.IO session in the memory of whichever process created it. With two or more worker processes, consecutive polling requests for the same session get round-robined to a process that has never heard of it and return <code>400 unknown session</code>, silently breaking Pipeline World's live updates. All concurrency therefore comes from threads, and that eight-slot pool is a real, finite budget &mdash; which is why SSE connections are capped (&sect;26) and static files bypass the app entirely (&sect;30).</p>
+    <p>Gunicorn runs <b>one process with eight threads</b>, not multiple processes. Flask-SocketIO's <code>threading</code> async mode keeps each client's Engine.IO session in the memory of whichever process created it. With two or more worker processes, consecutive polling requests for the same session get round-robined to a process that has never heard of it and return <code>400 unknown session</code>, silently breaking Pipeline World's live updates. All concurrency therefore comes from threads, and that eight-slot pool is a real, finite budget, which is why SSE connections are capped (&sect;26) and static files bypass the app entirely (&sect;30).</p>
   </div>
 </section>
 
@@ -306,11 +306,11 @@ sequenceDiagram
   <div class="note warn">
     <b class="tag">Two deliberate asymmetries</b>
     <p><b>Startup fails loudly on a default secret.</b> If <code>config_name == "production"</code> and <code>SECRET_KEY</code> is still <code>dev-insecure-secret-change-me</code>, the factory raises. That value is in the repo's <code>.env.example</code>, so shipping with it would let anyone forge a session cookie. Making it a startup crash means it cannot be forgotten silently.</p>
-    <p><b><code>db.create_all()</code> only runs outside production.</b> <code>create_all</code> adds missing tables but never alters an existing one, so it silently masks schema drift &mdash; a column whose type changed in the model looks fine and then fails on write. Production goes through <code>flask db upgrade</code> (Alembic) exclusively; dev and test keep the convenience because a throwaway or in-memory database has no history to preserve.</p>
+    <p><b><code>db.create_all()</code> only runs outside production.</b> <code>create_all</code> adds missing tables but never alters an existing one, so it silently masks schema drift: a column whose type changed in the model looks fine and then fails on write. Production goes through <code>flask db upgrade</code> (Alembic) exclusively; dev and test keep the convenience because a throwaway or in-memory database has no history to preserve.</p>
   </div>
 
   <h4>Why extensions live in their own module</h4>
-  <p><code>app/extensions.py</code> holds bare, unconfigured instances of <code>SQLAlchemy</code>, <code>Limiter</code>, <code>SocketIO</code> and <code>Migrate</code>. Blueprints and services import <code>db</code> from there rather than from <code>app/__init__.py</code>. Without that split, any module needing <code>db</code> would import the package that imports the blueprints that import that module &mdash; a circular import.</p>
+  <p><code>app/extensions.py</code> holds bare, unconfigured instances of <code>SQLAlchemy</code>, <code>Limiter</code>, <code>SocketIO</code> and <code>Migrate</code>. Blueprints and services import <code>db</code> from there rather than from <code>app/__init__.py</code>. Without that split, any module needing <code>db</code> would import the package that imports the blueprints that import that module, a circular import.</p>
 </section>
 
 <section class="chunk" id="s5">
@@ -354,7 +354,7 @@ sequenceDiagram
 <section class="chunk" id="s6">
   <h3><i>6</i><span>Schema overview</span></h3>
 
-  <p>Nine tables in three independent clusters. They share a database but no foreign keys cross between clusters &mdash; trading, Pipeline World and the game are genuinely separate domains.</p>
+  <p>Nine tables in three independent clusters. They share a database but no foreign keys cross between clusters. Trading, Pipeline World and the game are genuinely separate domains.</p>
 
   <figure>
     <figcaption>Class diagram &mdash; all persisted entities</figcaption>
@@ -506,7 +506,7 @@ classDiagram
   <p>It is stored rather than computed on read so it can be indexed and searched: the instrument catalogue at <code>/instruments</code> is a real lookup by code, not a normalisation detail.</p>
 
   <h4>Strategy and Leg &mdash; the booking model</h4>
-  <p>A <code>Strategy</code> is a container; a <code>Leg</code> is one booked transaction inside it. Today's UI only ever creates one leg per strategy (named <code>"Single Leg"</code>), but the schema does not assume that &mdash; a straddle would be one <code>Strategy</code> with two <code>Leg</code>s and needs no structural change.</p>
+  <p>A <code>Strategy</code> is a container; a <code>Leg</code> is one booked transaction inside it. Today's UI only ever creates one leg per strategy (named <code>"Single Leg"</code>), but the schema does not assume that: a straddle would be one <code>Strategy</code> with two <code>Leg</code>s and needs no structural change.</p>
 
   <p><code>Leg</code> exposes <b>passthrough properties</b> so routes and templates that used to read a flat <code>position.ticker</code> keep working after the data moved to a separate row:</p>
 
@@ -548,7 +548,7 @@ def signed_quantity(self):
   </div>
 
   <h4>Character and PipelineRun</h4>
-  <p><code>Character</code> holds the submission and its current status; <code>PipelineRun</code> is one row per stage attempt, and is the durable evidence the analytics page queries. The name and icebreaker columns are deliberately wider than the validators allow &mdash; see &sect;25 for why that headroom is load-bearing.</p>
+  <p><code>Character</code> holds the submission and its current status; <code>PipelineRun</code> is one row per stage attempt, and is the durable evidence the analytics page queries. The name and icebreaker columns are deliberately wider than the validators allow. See &sect;25 for why that headroom is load-bearing.</p>
 
 <pre><code>PIPELINE_STAGES = ("sanitize", "security_scan", "test_uniqueness",
                    "test_profanity", "build", "deploy", "verify")
@@ -557,7 +557,7 @@ CHARACTER_STATUSES = ("pending", "sanitizing", "scanning",
                       "testing_uniqueness", "testing_profanity",
                       "building", "deploying", "live", "failed")</code></pre>
 
-  <p>There is no <code>"verifying"</code> status. Deploy's own action <i>is</i> writing <code>status="live"</code> &mdash; that is what deploying means &mdash; and Verify runs afterwards as a read-after-write confirmation without the character passing through another transient state.</p>
+  <p>There is no <code>"verifying"</code> status. Deploy's own action <i>is</i> writing <code>status="live"</code> (that is what deploying means), and Verify runs afterwards as a read-after-write confirmation without the character passing through another transient state.</p>
 </section>
 
 <div class="part">
@@ -586,7 +586,7 @@ CHARACTER_STATUSES = ("pending", "sanitizing", "scanning",
 
   <div class="note">
     <b class="tag">Why entry IV is held constant</b>
-    <p>yfinance exposes an option chain &mdash; strikes, bid, ask, open interest, implied volatility &mdash; but <b>no Greeks</b>. There is also no live volatility surface available. So positions are repriced with a local Black-Scholes calculation fed by the IV captured at entry and the <i>current</i> underlying price. A real desk reprices off a fresh surface; this is a documented simplification, and it is the honest answer to "where do your Greeks come from".</p>
+    <p>yfinance exposes an option chain (strikes, bid, ask, open interest, implied volatility) but <b>no Greeks</b>. There is also no live volatility surface available. So positions are repriced with a local Black-Scholes calculation fed by the IV captured at entry and the <i>current</i> underlying price. A real desk reprices off a fresh surface; this is a documented simplification, and it is the honest answer to "where do your Greeks come from".</p>
   </div>
 
   <h4>Rate limiting on this endpoint</h4>
@@ -596,7 +596,7 @@ CHARACTER_STATUSES = ("pending", "sanitizing", "scanning",
 <section class="chunk" id="s9">
   <h3><i>9</i><span>Pricing and Greeks</span></h3>
 
-  <p><code>app/services/pricing.py</code> is pure maths &mdash; no Flask, no I/O, no database &mdash; which makes it directly unit-testable. It is the module most worth being able to talk through line by line.</p>
+  <p><code>app/services/pricing.py</code> is pure maths: no Flask, no I/O, no database. That is what makes it directly unit-testable. It is the module most worth being able to talk through line by line.</p>
 
   <h4>Black-Scholes price</h4>
 <pre><code>d1 = [ ln(S/K) + (r + sigma^2/2) * T ] / (sigma * sqrt(T))
@@ -605,7 +605,7 @@ d2 = d1 - sigma * sqrt(T)
 call = S * N(d1) - K * e^(-rT) * N(d2)
 put  = K * e^(-rT) * N(-d2) - S * N(-d1)</code></pre>
 
-  <p><code>N()</code> is the standard normal CDF, implemented as <code>0.5 * (1 + erf(x / sqrt(2)))</code> using <code>math.erf</code> &mdash; no SciPy dependency for one function. The rate is a flat <code>RISK_FREE_RATE = 0.045</code>, an assumed constant rather than a live curve.</p>
+  <p><code>N()</code> is the standard normal CDF, implemented as <code>0.5 * (1 + erf(x / sqrt(2)))</code> using <code>math.erf</code>, so there is no SciPy dependency for one function. The rate is a flat <code>RISK_FREE_RATE = 0.045</code>, an assumed constant rather than a live curve.</p>
 
   <p><b>Boundary case:</b> when <code>T &lt;= 0</code> or <code>sigma &lt;= 0</code>, <code>d1</code> and <code>d2</code> are undefined (division by zero), so the function returns intrinsic value: <code>max(S-K, 0)</code> for a call, <code>max(K-S, 0)</code> for a put. An expired option is worth exactly its payoff.</p>
 
@@ -633,10 +633,10 @@ vega  = S * pdf(d1) * sqrt(T) / 100
 call:  delta = N(d1)
 put:   delta = N(d1) - 1</code></pre>
 
-  <p>At the boundary (expired or zero vol) delta collapses to 0 or 1 for a call, 0 or -1 for a put, and every second-order Greek is 0 &mdash; there is no optionality left to be sensitive to anything.</p>
+  <p>At the boundary (expired or zero vol) delta collapses to 0 or 1 for a call, 0 or -1 for a put, and every second-order Greek is 0, since there is no optionality left to be sensitive to anything.</p>
 
   <h4>From per-share to position level</h4>
-  <p><code>position_greeks()</code> scales the per-share figures by <code>signed_quantity &times; multiplier</code> (100 for options, 1 for stock). Stock is special-cased entirely: delta 1.0, every other Greek 0 &mdash; holding shares has nothing convex, time-decaying or vol-sensitive about it.</p>
+  <p><code>position_greeks()</code> scales the per-share figures by <code>signed_quantity &times; multiplier</code> (100 for options, 1 for stock). Stock is special-cased entirely: delta 1.0, every other Greek 0. Holding shares has nothing convex, time-decaying or vol-sensitive about it.</p>
 
   <h5>Worked example</h5>
 <pre><code>Position: 2 AAPL 230 calls, expiring in 30 days, entry IV 25%
@@ -676,7 +676,7 @@ That integral has a closed form:
 ir_vega is then a central finite difference: bump sigma_r up and down,
 reprice both, divide by 2*bump.</code></pre>
 
-  <p>Both parameters (<code>a = 0.03</code> mean reversion, <code>sigma_r = 0.01</code> rate vol) are assumed illustrative constants, not calibrated &mdash; yfinance has no cap or swaption vol surface to calibrate against. Everything else on the same row still comes from the ordinary flat-rate maths.</p>
+  <p>Both parameters (<code>a = 0.03</code> mean reversion, <code>sigma_r = 0.01</code> rate vol) are assumed illustrative constants, not calibrated, since yfinance has no cap or swaption vol surface to calibrate against. Everything else on the same row still comes from the ordinary flat-rate maths.</p>
 </section>
 
 <section class="chunk" id="s10">
@@ -754,13 +754,13 @@ sequenceDiagram
   <p><code>session.get()</code> can be served out of this session's identity map without touching the database at all, so it would keep re-reading the stale <code>'pending'</code> this process already cached and the loop would never terminate. Timeout is 20 s, a ceiling for a dead worker rather than a tuned latency.</p>
 
   <h4>Keyword-only arguments</h4>
-  <p><code>submit_risk_request</code> takes <b>only</b> keyword arguments. It previously took a leg id positionally; adding <code>strategy_id</code> meant a stale <code>submit_risk_request(42)</code> would silently be reinterpreted as "price <i>position</i> 42" &mdash; a wrong answer with no error. Keyword-only turns exactly that mistake into an immediate <code>TypeError</code>. When the change landed, 11 old call sites in the test suite failed loudly instead of quietly pricing the wrong thing.</p>
+  <p><code>submit_risk_request</code> takes <b>only</b> keyword arguments. It previously took a leg id positionally; adding <code>strategy_id</code> meant a stale <code>submit_risk_request(42)</code> would silently be reinterpreted as "price <i>position</i> 42": a wrong answer with no error. Keyword-only turns exactly that mistake into an immediate <code>TypeError</code>. When the change landed, 11 old call sites in the test suite failed loudly instead of quietly pricing the wrong thing.</p>
 </section>
 
 <section class="chunk" id="s11">
   <h3><i>11</i><span>Model registry</span></h3>
 
-  <p>A textbook Strategy pattern. A request names which model runs; the report records which one answered. Adding a model means writing a class and registering it &mdash; nothing in the engine, routes or templates hardcodes a model's identity.</p>
+  <p>A textbook Strategy pattern. A request names which model runs; the report records which one answered. Adding a model means writing a class and registering it. Nothing in the engine, routes or templates hardcodes a model's identity.</p>
 
   <figure>
     <figcaption>Class diagram &mdash; risk model plug-in structure</figcaption>
@@ -841,7 +841,7 @@ classDiagram
   </div>
 
   <h4>The separation that makes this work</h4>
-  <p>The engine owns everything with a side effect &mdash; the market fetch, the scenario shock, the database writes. The model owns only the maths and receives a frozen <code>PricingContext</code>. Two consequences:</p>
+  <p>The engine owns everything with a side effect: the market fetch, the scenario shock, the database writes. The model owns only the maths and receives a frozen <code>PricingContext</code>. Two consequences:</p>
   <ul>
     <li>Two models answering the same request see <b>byte-identical inputs</b>, so a disagreement between them is a real signal about the models, not about the data.</li>
     <li>A model can be tested with no network and no database &mdash; construct a context, call <code>run</code>, assert on the output.</li>
@@ -899,10 +899,10 @@ flowchart TD
 
   <div class="note gotcha">
     <b class="tag">NaN is not valid JSON</b>
-    <p>Illiquid option contracts routinely have no bid, and pandas represents that as <code>NaN</code>. Python's own <code>json</code> module accepts a bare <code>NaN</code> token as a non-standard extension &mdash; so testing the endpoint with <code>curl | python -m json.tool</code> looked completely fine. A browser's <code>JSON.parse</code> follows the actual spec, where <code>NaN</code> is a syntax error, and rejected the entire response; one missing bid took out the whole option chain in the UI.</p>
+    <p>Illiquid option contracts routinely have no bid, and pandas represents that as <code>NaN</code>. Python's own <code>json</code> module accepts a bare <code>NaN</code> token as a non-standard extension, so testing the endpoint with <code>curl | python -m json.tool</code> looked completely fine. A browser's <code>JSON.parse</code> follows the actual spec, where <code>NaN</code> is a syntax error, and rejected the entire response; one missing bid took out the whole option chain in the UI.</p>
     <p>The fix converts every NaN to <code>None</code> before serialising:</p>
 <pre><code>df[cols].astype(object).where(df[cols].notna(), None).to_dict("records")</code></pre>
-    <p>The regression test uses a <b>strict</b> JSON parser (<code>parse_constant</code> raising on <code>NaN</code>/<code>Infinity</code>), plus a second test proving that strict parser would itself reject NaN &mdash; otherwise the guard could quietly stop testing anything.</p>
+    <p>The regression test uses a <b>strict</b> JSON parser (<code>parse_constant</code> raising on <code>NaN</code>/<code>Infinity</code>), plus a second test proving that strict parser would itself reject NaN. Otherwise the guard could quietly stop testing anything.</p>
   </div>
 </section>
 
@@ -965,7 +965,7 @@ sequenceDiagram
 
   <div class="note warn">
     <b class="tag">The <code>current_app</code> trap in a generator</b>
-    <p>Flask pops the request context as soon as a view function <i>returns</i>. An SSE view returns <code>Response(generator(), ...)</code> immediately, and the generator body only executes later when the WSGI server iterates it &mdash; by which point the context is gone, and any <code>current_app</code> access inside raises <code>RuntimeError: Working outside of application context</code>.</p>
+    <p>Flask pops the request context as soon as a view function <i>returns</i>. An SSE view returns <code>Response(generator(), ...)</code> immediately, and the generator body only executes later when the WSGI server iterates it. By that point the context is gone, and any <code>current_app</code> access inside raises <code>RuntimeError: Working outside of application context</code>.</p>
     <p>The fix is always the same: capture the real object with <code>current_app._get_current_object()</code> <i>before</i> defining the generator, and pass it in. The background poller thread needs the same treatment, since it has no request context of its own to resolve the proxy through.</p>
   </div>
 </section>
@@ -978,7 +978,7 @@ sequenceDiagram
 <section class="chunk" id="s14">
   <h3><i>14</i><span>EDGAR and XBRL</span></h3>
 
-  <p class="lede">Scores a company 0&ndash;100 across four factor categories, combining SEC filing fundamentals with market data, then validates the score against realised forward returns.</p>
+  <p class="lede">Scores a company 0 to 100 across four factor categories, combining SEC filing fundamentals with market data, then validates the score against realised forward returns.</p>
 
   <h4>Data sources</h4>
   <ul>
@@ -1053,7 +1053,7 @@ if direction == "lower_better":
     frac = 1 - frac
 score = round(frac * 100, 1)</code></pre>
 
-  <p>Bounds are deliberately broad heuristics, not sector-tuned &mdash; a documented v1 choice. Example: P/E has <code>lo=5, hi=40</code> and is <code>lower_better</code>, so a P/E of 12 gives <code>frac = (12-5)/35 = 0.2</code>, inverted to 0.8, scoring <b>80</b>.</p>
+  <p>Bounds are deliberately broad heuristics, not sector-tuned: a documented v1 choice. Example: P/E has <code>lo=5, hi=40</code> and is <code>lower_better</code>, so a P/E of 12 gives <code>frac = (12-5)/35 = 0.2</code>, inverted to 0.8, scoring <b>80</b>.</p>
 
   <h4>Renormalising weights &mdash; the part worth explaining</h4>
   <p>Missing XBRL tags are common in practice. Three possible responses, only one of which is defensible:</p>
@@ -1075,7 +1075,7 @@ score = round(frac * 100, 1)</code></pre>
 
   <p>With equal 0.25 weights and growth unavailable, the remaining three each become 0.333. The response returns both <code>weights_configured</code> and <code>weights_used</code>, so the page can show that the composite was computed over three categories rather than four.</p>
 
-  <p>Weights themselves come from <code>app.config["QR_WEIGHTS"]</code>, overridable per-category by environment variable &mdash; configuration, not hardcoded logic.</p>
+  <p>Weights themselves come from <code>app.config["QR_WEIGHTS"]</code>, overridable per-category by environment variable. That is configuration, not hardcoded logic.</p>
 </section>
 
 <section class="chunk" id="s16">
@@ -1085,11 +1085,11 @@ score = round(frac * 100, 1)</code></pre>
 
 <pre><code>r = sum((x - mean_x)(y - mean_y)) / sqrt( sum((x - mean_x)^2) * sum((y - mean_y)^2) )</code></pre>
 
-  <p>Hand-rolled rather than importing numpy for one function &mdash; the same call made for the traffic board's percentile function. Returns <code>None</code> for fewer than two points or zero variance, rather than dividing by zero.</p>
+  <p>Hand-rolled rather than importing numpy for one function, the same call made for the traffic board's percentile function. Returns <code>None</code> for fewer than two points or zero variance, rather than dividing by zero.</p>
 
   <p>The basket is deliberately smaller than the full trading whitelist (12 tickers) because each one costs two EDGAR calls plus two yfinance calls, and both are rate-limited on unauthenticated use. The endpoint is capped at 5 requests/hour and results are cached for an hour.</p>
 
-  <p>This is presented as demo-scale validation &mdash; a handful of tickers, one lookback window &mdash; not a rigorous research backtest.</p>
+  <p>This is presented as demo-scale validation (a handful of tickers, one lookback window), not a rigorous research backtest.</p>
 </section>
 
 <div class="part">
@@ -1100,7 +1100,7 @@ score = round(frac * 100, 1)</code></pre>
 <section class="chunk" id="s17">
   <h3><i>17</i><span>The seven stages</span></h3>
 
-  <p class="lede">A visitor submits a character &mdash; a name, a pick from fixed appearance lists, and answers to four fixed icebreaker questions. No code is ever submitted or executed. That submission runs through a real queued seven-stage pipeline, streamed live to every connected viewer, and only reaches the world if every stage passes.</p>
+  <p class="lede">A visitor submits a character: a name, a pick from fixed appearance lists, and answers to four fixed icebreaker questions. No code is ever submitted or executed. That submission runs through a real queued seven-stage pipeline, streamed live to every connected viewer, and only reaches the world if every stage passes.</p>
 
   <figure>
     <figcaption>State machine &mdash; character status through the pipeline</figcaption>
@@ -1159,7 +1159,7 @@ STAGE_COMMANDS["deploy"] = [
   "UPDATE characters SET status='live', world_x=:x, world_y=:y WHERE id=:id"
 ]</code></pre>
 
-  <p>The check functions are the <b>same functions</b> covered by <code>tests/test_validators.py</code> &mdash; not a parallel "pretend" implementation. The spec asked the test stage to run "an actual small test suite"; invoking <code>pytest.main()</code> per character inside a worker loop is slow, fragile, and awkward to feed data into, so the choice made instead was to reuse genuinely tested code. That is a documented trade-off, not a free lunch.</p>
+  <p>The check functions are the <b>same functions</b> covered by <code>tests/test_validators.py</code>, not a parallel "pretend" implementation. The spec asked the test stage to run "an actual small test suite"; invoking <code>pytest.main()</code> per character inside a worker loop is slow, fragile, and awkward to feed data into, so the choice made instead was to reuse genuinely tested code. That is a documented trade-off, not a free lunch.</p>
 
   <h4>Failure stops the run</h4>
 <pre><code>if not _run_stage(character, "sanitize", "scanning", _sanitize, "...", fast_mode):
@@ -1168,16 +1168,16 @@ if not _run_stage(character, "security_scan", ...):
     return
 ...</code></pre>
 
-  <p>Because a failed stage returns early, no later <code>PipelineRun</code> row is ever written. The tracker table renders those cells as "not reached" &mdash; a PASS can never appear to the right of a FAIL. <code>_fail()</code> sets <code>status='failed'</code>, records the reason, invalidates the world cache (defensively, in case Deploy had already gone live) and emits the fail event.</p>
+  <p>Because a failed stage returns early, no later <code>PipelineRun</code> row is ever written. The tracker table renders those cells as "not reached": a PASS can never appear to the right of a FAIL. <code>_fail()</code> sets <code>status='failed'</code>, records the reason, invalidates the world cache (defensively, in case Deploy had already gone live) and emits the fail event.</p>
 
   <div class="note gotcha">
     <b class="tag">Why the catch-all except exists</b>
-    <p><code>_run_stage</code> originally caught only <code>ValidationError</code>, on the assumption that was the only way a check could fail. In production a stage crashed for an unrelated reason &mdash; most likely the worker container being killed mid-job by a redeploy. That bypassed the handler entirely: no <code>PipelineRun</code> row, no fail event, and because Verify runs <i>after</i> Deploy already committed <code>status='live'</code>, a character was left stranded live with a blank gap in its own history. Not failed, not passed &mdash; missing, which the UI had no way to render as an error because nothing had raised one it was watching for.</p>
+    <p><code>_run_stage</code> originally caught only <code>ValidationError</code>, on the assumption that was the only way a check could fail. In production a stage crashed for an unrelated reason, most likely the worker container being killed mid-job by a redeploy. That bypassed the handler entirely: no <code>PipelineRun</code> row, no fail event, and because Verify runs <i>after</i> Deploy already committed <code>status='live'</code>, a character was left stranded live with a blank gap in its own history. Not failed, not passed. Missing. The UI had no way to render that as an error, because nothing had raised one it was watching for.</p>
     <p>Now any exception ends the stage the same way, with a generic visitor-facing message and the real traceback sent to the app logger. The lesson: a <code>try/except</code> scoped to the errors you expect is a statement about the happy path, not a safety net.</p>
   </div>
 
   <h4>Fast mode</h4>
-  <p>Normally each stage sleeps a fresh random 1&ndash;10 s so the run is watchable. A Redis-backed flag toggles that off at runtime, and the page shows real per-stage benchmarks computed only from <code>fast_mode=True</code> runs &mdash; slow-mode durations include the artificial sleep and would make the numbers meaningless.</p>
+  <p>Normally each stage sleeps a fresh random 1 to 10 s so the run is watchable. A Redis-backed flag toggles that off at runtime, and the page shows real per-stage benchmarks computed only from <code>fast_mode=True</code> runs, since slow-mode durations include the artificial sleep and would make the numbers meaningless.</p>
 </section>
 
 <section class="chunk" id="s18">
@@ -1236,27 +1236,27 @@ sequenceDiagram
   <h4>Nothing is validated before enqueueing</h4>
   <div class="note">
     <b class="tag">A deliberate design correction</b>
-    <p>The first version validated at the route: charset, injection and profanity checks ran upfront so an obviously-bad submission never became a job. It looked sensible and it broke the product. A visitor who typed a blocked word got a red message under the form and <b>no pipeline run at all</b> &mdash; so the single most interesting thing the project does was the one thing nobody could ever watch happen.</p>
+    <p>The first version validated at the route: charset, injection and profanity checks ran upfront so an obviously-bad submission never became a job. It looked sensible and it broke the product. A visitor who typed a blocked word got a red message under the form and <b>no pipeline run at all</b>. So the single most interesting thing the project does was the one thing nobody could ever watch happen.</p>
     <p>Now <code>prepare_join_submission()</code> only strips whitespace and truncates each field to its column width. Every rule lives in exactly one place: the stage that owns it. The form carries no <code>required</code> attributes and no client-side checks for the same reason.</p>
     <p>The generalisable point: <b>"fail fast" and "fail visibly" are different goals</b>, and validating early can delete the observability that was the point of building the thing.</p>
   </div>
 
   <h4>The one exception: last-name collision</h4>
-  <p>Still resolved at the route, because it is not a rejection. It is a warn-and-continue prompt ("A Koskela already exists &mdash; continue anyway?") that needs a human yes/no before there is anything to enqueue. Answering yes proceeds normally. It has no pass/fail stage precisely because it is not a pass/fail question.</p>
+  <p>Still resolved at the route, because it is not a rejection. It is a warn-and-continue prompt ("A Koskela already exists, continue anyway?") that needs a human yes/no before there is anything to enqueue. Answering yes proceeds normally. It has no pass/fail stage precisely because it is not a pass/fail question.</p>
 
   <h4>Uniqueness is checked only in its stage</h4>
   <p>Two visitors submitting the same name back-to-back are both accepted and genuinely race through the pipeline; whichever loses fails visibly at Test: Uniqueness. Checking upfront would have turned that race into a silent rejection at the form.</p>
 
   <div class="note warn">
     <b class="tag">Self-collision</b>
-    <p><code>check_full_name_collision</code> takes an <code>exclude_character_id</code> parameter. By the time the pipeline's own stage runs, the character <i>is already the row in the database being checked against</i> &mdash; without the exclusion every single run failed at that stage, 100% of the time. The same function is called from two places with different correctness requirements: pre-insert at the form, post-insert inside the pipeline.</p>
+    <p><code>check_full_name_collision</code> takes an <code>exclude_character_id</code> parameter. By the time the pipeline's own stage runs, the character <i>is already the row in the database being checked against</i>. Without the exclusion, every single run failed at that stage, 100% of the time. The same function is called from two places with different correctness requirements: pre-insert at the form, post-insert inside the pipeline.</p>
   </div>
 </section>
 
 <section class="chunk" id="s19">
   <h3><i>19</i><span>Cache-aside</span></h3>
 
-  <p>The live world state &mdash; which characters exist and where &mdash; is cached in Redis using the cache-aside pattern with <b>both</b> a TTL and explicit invalidation.</p>
+  <p>The live world state (which characters exist and where) is cached in Redis using the cache-aside pattern with <b>both</b> a TTL and explicit invalidation.</p>
 
   <figure>
     <figcaption>Flow &mdash; read path and invalidation</figcaption>
@@ -1282,7 +1282,7 @@ flowchart TD
     </div>
   </figure>
 
-  <p>TTL alone would mean a newly-deployed character might not appear for up to 30 seconds. That is fine for many caches and wrong here, where "does this feel live" is the actual product requirement. Explicit invalidation handles the common case; the TTL is the safety net if an invalidation is ever missed. <b>Both mechanisms together are the pattern</b> &mdash; either alone is a weaker version of it.</p>
+  <p>TTL alone would mean a newly-deployed character might not appear for up to 30 seconds. That is fine for many caches and wrong here, where "does this feel live" is the actual product requirement. Explicit invalidation handles the common case; the TTL is the safety net if an invalidation is ever missed. <b>Both mechanisms together are the pattern</b>; either alone is a weaker version of it.</p>
 
   <p>Hit and miss counters are plain Redis <code>INCR</code>s, surfaced on the SRE Infra dashboard as a live hit-rate.</p>
 </section>
@@ -1325,7 +1325,7 @@ ORDER BY day</code></pre>
 
   <div class="note">
     <b class="tag">Why Postgres specifically</b>
-    <p><code>DATE_TRUNC</code>, <code>FILTER</code> and the window-frame syntax are Postgres dialect. Rewriting them in a database-agnostic subset would mean either dropping the window functions or faking them with Python loops &mdash; which would undercut the exact thing the page exists to demonstrate. <code>run_metric()</code> checks <code>db.engine.dialect.name</code> and raises a clear <code>AnalyticsUnavailable</code> explaining how to point <code>DATABASE_URL</code> at Postgres, rather than failing obscurely on SQLite. <code>run_all_metrics()</code> isolates each query so one failure does not take down the others.</p>
+    <p><code>DATE_TRUNC</code>, <code>FILTER</code> and the window-frame syntax are Postgres dialect. Rewriting them in a database-agnostic subset would mean either dropping the window functions or faking them with Python loops, which would undercut the exact thing the page exists to demonstrate. <code>run_metric()</code> checks <code>db.engine.dialect.name</code> and raises a clear <code>AnalyticsUnavailable</code> explaining how to point <code>DATABASE_URL</code> at Postgres, rather than failing obscurely on SQLite. <code>run_all_metrics()</code> isolates each query so one failure does not take down the others.</p>
   </div>
 </section>
 
@@ -1341,14 +1341,14 @@ ORDER BY day</code></pre>
     <li><b>Direct steering with wall-bounce</b> (<code>steerToward</code> + <code>applyMovement</code>) &mdash; used for ordinary wandering and for seeking a nearby character. Cheap, runs every frame, no pathfinding.</li>
   </ul>
 
-  <p><code>applyMovement</code> is axis-separated collision: it tests each axis independently so a character sliding along a boundary keeps moving on the other axis instead of stopping dead &mdash; standard 2D tile collision.</p>
+  <p><code>applyMovement</code> is axis-separated collision: it tests each axis independently so a character sliding along a boundary keeps moving on the other axis instead of stopping dead. That is standard 2D tile collision.</p>
 
   <h4>Conversations</h4>
-  <p>Because every visitor answers the <b>same four fixed questions</b>, two characters who wander close enough can match on a topic and hold a scripted back-and-forth built from both of their answers. That only works because the question set is fixed and shared rather than picked per visitor &mdash; there would be nothing to match on otherwise. Cooldowns and a busy-set prevent a character being in two conversations at once.</p>
+  <p>Because every visitor answers the <b>same four fixed questions</b>, two characters who wander close enough can match on a topic and hold a scripted back-and-forth built from both of their answers. That only works because the question set is fixed and shared rather than picked per visitor; there would be nothing to match on otherwise. Cooldowns and a busy-set prevent a character being in two conversations at once.</p>
 
   <div class="note warn">
     <b class="tag">An environment bug that looked like an AI bug</b>
-    <p>The reported symptom was "none of the characters are ever talking". The seek logic, notice radius and conversation trigger distance were all correct. The cause was the <i>map</i>: it was a 4&times;3 grid of city blocks with buildings, and direct steering with wall-bounce has no way to route around an obstacle &mdash; two characters who had genuinely noticed each other would bounce against the wall between them indefinitely.</p>
+    <p>The reported symptom was "none of the characters are ever talking". The seek logic, notice radius and conversation trigger distance were all correct. The cause was the <i>map</i>: it was a 4&times;3 grid of city blocks with buildings, and direct steering with wall-bounce has no way to route around an obstacle. Two characters who had genuinely noticed each other would bounce against the wall between them indefinitely.</p>
     <p>The fix was not a smarter algorithm. It was replacing the block grid with one large open field, keeping a thin row of landmark buildings along one edge as backdrop. A "two agents cannot find each other" bug can look like a search problem when it is an environment-design problem.</p>
   </div>
 </section>
@@ -1377,7 +1377,7 @@ ORDER BY day</code></pre>
 
   <div class="note">
     <b class="tag">The point of the middle row</b>
-    <p>The interesting claim is not "I used fakeredis as a mock". It is that the fallback <b>preserves the property under test</b>. A shortcut would run the pipeline inline when Redis is absent &mdash; that demos fine and lies about the architecture. Running a real worker in a background thread means the request still returns immediately and stages still progress over real wall-clock time. Verified during development by enqueueing, confirming the character was still <code>pending</code> right after the HTTP response returned, then watching the status advance over ~6 real seconds.</p>
+    <p>The interesting claim is not "I used fakeredis as a mock". It is that the fallback <b>preserves the property under test</b>. A shortcut would run the pipeline inline when Redis is absent; that demos fine and lies about the architecture. Running a real worker in a background thread means the request still returns immediately and stages still progress over real wall-clock time. Verified during development by enqueueing, confirming the character was still <code>pending</code> right after the HTTP response returned, then watching the status advance over ~6 real seconds.</p>
   </div>
 
   <h4>Two Windows-specific findings</h4>
@@ -1411,10 +1411,10 @@ ORDER BY day</code></pre>
 
   <div class="note gotcha">
     <b class="tag">The pseudo-URL host-grouping bug</b>
-    <p>yfinance manages its own HTTP client, so there is no real URL to log &mdash; calls are recorded as <code>yfinance://AAPL/info</code>. The "group outbound calls by host" logic did a naive <code>target.split("/")[2]</code>, correct for <code>https://host/path</code> but reading the <b>ticker</b> as the host for the synthetic scheme. The dashboard grouped by ticker symbol instead of by service. Fixed by branching on whether the target is a real <code>http(s)://</code> URL (extract hostname) or anything else (use the scheme name).</p>
+    <p>yfinance manages its own HTTP client, so there is no real URL to log: calls are recorded as <code>yfinance://AAPL/info</code>. The "group outbound calls by host" logic did a naive <code>target.split("/")[2]</code>, correct for <code>https://host/path</code> but reading the <b>ticker</b> as the host for the synthetic scheme. The dashboard grouped by ticker symbol instead of by service. Fixed by branching on whether the target is a real <code>http(s)://</code> URL (extract hostname) or anything else (use the scheme name).</p>
   </div>
 
-  <p>The page polls <code>/api/analytics</code> every 5 s rather than holding an SSE connection &mdash; an aggregate rollup does not need a push per entry, and 5 s staleness is unnoticeable for a board of averages. That removed a whole SSE category and its concurrency cap.</p>
+  <p>The page polls <code>/api/analytics</code> every 5 s rather than holding an SSE connection. An aggregate rollup does not need a push per entry, and 5 s staleness is unnoticeable for a board of averages. That removed a whole SSE category and its concurrency cap.</p>
 </section>
 
 <section class="chunk" id="s24">
@@ -1423,10 +1423,10 @@ ORDER BY day</code></pre>
   <p>A turn-based survival game on a 10&times;10 grid, recreated in HTML5 Canvas and vanilla JS. Originally built in Processing and Pygame.</p>
 
   <h4>The core rule</h4>
-  <p>Strictly turn-based, not real-time. One key press moves the player one cell; the instant that resolves, every obstacle takes its own move; then it is the player's turn again. A move into a wall is a no-op &mdash; nothing advances, because nothing actually moved.</p>
+  <p>Strictly turn-based, not real-time. One key press moves the player one cell; the instant that resolves, every obstacle takes its own move; then it is the player's turn again. A move into a wall is a no-op: nothing advances, because nothing actually moved.</p>
 
   <h4>Telegraphing</h4>
-  <p>Every obstacle shows what it is about to do <i>before</i> doing it, with an arrow rotated to the exact <code>{dx, dy}</code> it will execute. This is the design constraint, not decoration: the game is meant to be dodgeable by reading the board rather than memorising it, so the arrow must point at the real upcoming move. <code>nextMove</code> is decided once at spawn (so the first render already shows an arrow) and re-decided immediately after each execution &mdash; never both in the same step, which is what keeps "shown, then resolved next turn" true turn over turn.</p>
+  <p>Every obstacle shows what it is about to do <i>before</i> doing it, with an arrow rotated to the exact <code>{dx, dy}</code> it will execute. This is the design constraint, not decoration: the game is meant to be dodgeable by reading the board rather than memorising it, so the arrow must point at the real upcoming move. <code>nextMove</code> is decided once at spawn (so the first render already shows an arrow) and re-decided immediately after each execution, never both in the same step. That is what keeps "shown, then resolved next turn" true turn over turn.</p>
 
   <div class="tw">
     <table>
@@ -1445,9 +1445,9 @@ ORDER BY day</code></pre>
   </div>
 
   <h4>The leaderboard's deliberate asymmetry</h4>
-  <p><code>sanitize_arcade_name</code> allows digits (<code>"P1AYER"</code>) and, on anything invalid, <b>falls back to <code>"ANON"</code> rather than rejecting the submission</b>. The reasoning: the score was already earned by actually playing, and a malformed name should not cost the player that &mdash; the way a malformed field should block a <i>form</i> before anything of value has happened.</p>
+  <p><code>sanitize_arcade_name</code> allows digits (<code>"P1AYER"</code>) and, on anything invalid, <b>falls back to <code>"ANON"</code> rather than rejecting the submission</b>. The reasoning: the score was already earned by actually playing, and a malformed name should not cost the player that, the way a malformed field should block a <i>form</i> before anything of value has happened.</p>
 
-  <p><b>No server-side replay validation.</b> <code>POST /api/scores</code> only checks the submitted turn count is a plausible non-negative integer under a ceiling. A determined visitor could POST a fabricated score. Accepted as a documented simplification at this scope &mdash; the same "simulation only" spirit as the trading book having no real money, applied to a leaderboard number.</p>
+  <p><b>No server-side replay validation.</b> <code>POST /api/scores</code> only checks the submitted turn count is a plausible non-negative integer under a ceiling. A determined visitor could POST a fabricated score. Accepted as a documented simplification at this scope: the same "simulation only" spirit as the trading book having no real money, applied to a leaderboard number.</p>
 </section>
 
 <div class="part">
@@ -1461,7 +1461,7 @@ ORDER BY day</code></pre>
   <h4>The layering, stated precisely</h4>
   <div class="note">
     <b class="tag">If asked "how do you prevent SQL injection"</b>
-    <p>The honest answer is <b>parametrised queries</b> &mdash; every query in the app uses SQLAlchemy bound parameters, including the raw SQL in <code>analytics.py</code>, which takes no user input at all. The input whitelists are defence-in-depth <i>on top of</i> that, not the mechanism. Claiming the whitelist is what stops injection would be the wrong answer even though the whitelist is real and does reject those characters.</p>
+    <p>The honest answer is <b>parametrised queries</b>: every query in the app uses SQLAlchemy bound parameters, including the raw SQL in <code>analytics.py</code>, which takes no user input at all. The input whitelists are defence-in-depth <i>on top of</i> that, not the mechanism. Claiming the whitelist is what stops injection would be the wrong answer even though the whitelist is real and does reject those characters.</p>
   </div>
 
   <h4>Character sets</h4>
@@ -1492,10 +1492,10 @@ ORDER BY day</code></pre>
     </table>
   </div>
 
-  <p>If the cap equalled the limit, a 500-character name would be truncated to exactly 30 and <b>pass</b> Sanitize &mdash; the stage would approve a value the visitor never submitted. The headroom is what keeps an over-long entry still visibly over-long when the stage measures it. <code>truncate_for_storage()</code> never raises and turns <code>None</code> into <code>""</code>, so a missing field reaches Sanitize as an empty value it can fail on rather than as a NOT NULL error before any run exists.</p>
+  <p>If the cap equalled the limit, a 500-character name would be truncated to exactly 30 and <b>pass</b> Sanitize. The stage would approve a value the visitor never submitted. The headroom is what keeps an over-long entry still visibly over-long when the stage measures it. <code>truncate_for_storage()</code> never raises and turns <code>None</code> into <code>""</code>, so a missing field reaches Sanitize as an empty value it can fail on rather than as a NOT NULL error before any run exists.</p>
 
   <h4>Stage ordering has an observable consequence</h4>
-  <p>Sanitize runs before Security Scan, so most obvious attack strings never reach the scan &mdash; <code>&lt;script&gt;</code> in a name fails the charset whitelist first. Security Scan is reachable only by input that is <i>pure letters and spaces</i> yet still matches an injection pattern:</p>
+  <p>Sanitize runs before Security Scan, so most obvious attack strings never reach the scan: <code>&lt;script&gt;</code> in a name fails the charset whitelist first. Security Scan is reachable only by input that is <i>pure letters and spaces</i> yet still matches an injection pattern:</p>
 
   <div class="tw">
     <table>
@@ -1511,15 +1511,15 @@ ORDER BY day</code></pre>
     </table>
   </div>
 
-  <p>This is exactly why the scan exists as an independent layer: by the time input reaches it, the whitelist has removed most attack shapes &mdash; but the whitelist has no objection to the word "Script", and the scan does.</p>
+  <p>This is exactly why the scan exists as an independent layer: by the time input reaches it, the whitelist has removed most attack shapes. But the whitelist has no objection to the word "Script", and the scan does.</p>
 
   <h4>Hashed profanity blocklist</h4>
   <p>The blocklist stores SHA-256 hashes and hashes each candidate token the same way, so the literal words are not sitting in plaintext in a public repository's history. The mechanism is real.</p>
 
   <div class="note gotcha">
     <b class="tag">A mechanism test is not an effectiveness test</b>
-    <p>That blocklist shipped to production seeded with three deliberately-mild placeholder words. A visitor named a character with real profanity, it passed Test: Profanity, and went live. The hashing, the stage wiring and the never-reach-the-world path all worked exactly as designed and tested &mdash; the <b>data</b> backing the check was a demo. No passing test could have caught that, because the tests only ever asserted the mechanism worked against whatever list was configured.</p>
-    <p>Remediation had two halves: replace the list, and fix the row that was already wrong &mdash; set <code>status='failed'</code>, write a real <code>PipelineRun</code> recording <i>why</i>, invalidate the cache. Production data that is already wrong needs correcting directly, not just the code fixed for next time.</p>
+    <p>That blocklist shipped to production seeded with three deliberately-mild placeholder words. A visitor named a character with real profanity, it passed Test: Profanity, and went live. The hashing, the stage wiring and the never-reach-the-world path all worked exactly as designed and tested. The <b>data</b> backing the check was a demo. No passing test could have caught that, because the tests only ever asserted the mechanism worked against whatever list was configured.</p>
+    <p>Remediation had two halves: replace the list, and fix the row that was already wrong: set <code>status='failed'</code>, write a real <code>PipelineRun</code> recording <i>why</i>, invalidate the cache. Production data that is already wrong needs correcting directly, not just the code fixed for next time.</p>
   </div>
 
   <h4>Other posture</h4>
@@ -1559,12 +1559,12 @@ ORDER BY day</code></pre>
 CATEGORY_SSE_CAP   = 3   # one feed cannot eat the whole global budget
 PER_CLIENT_SSE_CAP = 2   # one visitor cannot exhaust either of the above</code></pre>
 
-  <p>All three are checked on every connection attempt. Counters are Redis <code>INCR</code>/<code>DECR</code> pairs released in the generator's <code>finally</code> block, so a normal disconnect always cleans up. As a safety net against a worker crashing and skipping that <code>finally</code>, each counter gets a TTL the <b>first</b> time it is created &mdash; deliberately not refreshed on later connections, or continued traffic would push the expiry out forever and a leaked count would never self-heal.</p>
+  <p>All three are checked on every connection attempt. Counters are Redis <code>INCR</code>/<code>DECR</code> pairs released in the generator's <code>finally</code> block, so a normal disconnect always cleans up. As a safety net against a worker crashing and skipping that <code>finally</code>, each counter gets a TTL the <b>first</b> time it is created. That is deliberately not refreshed on later connections, or continued traffic would push the expiry out forever and a leaked count would never self-heal.</p>
 
   <p>Redis rather than an in-process semaphore, because an in-memory counter would only cap this one process's share and would not hold if the app ever scaled to multiple replicas.</p>
 
   <h4>3. Per-session caps</h4>
-  <p>Ten open strategies per session. Bounds how much one visitor can clutter a shared public book &mdash; a persistent limit, which a rolling rate-limit window cannot express.</p>
+  <p>Ten open strategies per session. Bounds how much one visitor can clutter a shared public book: a persistent limit, which a rolling rate-limit window cannot express.</p>
 </section>
 
 <section class="chunk" id="s27">
@@ -1573,13 +1573,13 @@ PER_CLIENT_SSE_CAP = 2   # one visitor cannot exhaust either of the above</code>
   <p>Four recurring patterns, each with a specific reason.</p>
 
   <h4>Graceful degradation at every integration point</h4>
-  <p>Both external clients wrap their network calls broadly and re-raise one clean domain exception &mdash; <code>MarketDataError</code>, <code>EdgarError</code> &mdash; so routes can render an "unavailable" state rather than a 500. The lesson that produced this: <code>market_data.py</code> already did it, <code>edgar.py</code> did not, and a <code>requests</code> timeout sailed straight past the route's <code>except (MarketDataError, EdgarError)</code> handler. <b>A graceful-degradation pattern has to be applied at every integration point individually</b> &mdash; copying it to one call site does not protect the others.</p>
+  <p>Both external clients wrap their network calls broadly and re-raise one clean domain exception (<code>MarketDataError</code>, <code>EdgarError</code>), so routes can render an "unavailable" state rather than a 500. The lesson that produced this: <code>market_data.py</code> already did it, <code>edgar.py</code> did not, and a <code>requests</code> timeout sailed straight past the route's <code>except (MarketDataError, EdgarError)</code> handler. <b>A graceful-degradation pattern has to be applied at every integration point individually.</b> Copying it to one call site does not protect the others.</p>
 
   <h4>Catch-all at orchestration boundaries</h4>
   <p><code>_run_stage</code> catches <code>ValidationError</code> for expected failures <i>and</i> a bare <code>Exception</code> for everything else, logging the real traceback while showing the visitor a generic message. Every stage must end in a real pass or fail; there is no third state.</p>
 
   <h4>Failures stay queryable</h4>
-  <p>A failed <code>RiskRequest</code> is persisted with <code>status='failed'</code> and its reason, not deleted. A failed character keeps its <code>PipelineRun</code> history and <code>failure_reason</code>. A failed attempt is a fact worth keeping &mdash; the same way a real risk run failing does not erase that it was attempted.</p>
+  <p>A failed <code>RiskRequest</code> is persisted with <code>status='failed'</code> and its reason, not deleted. A failed character keeps its <code>PipelineRun</code> history and <code>failure_reason</code>. A failed attempt is a fact worth keeping, the same way a real risk run failing does not erase that it was attempted.</p>
 
   <h4>Never leak internals to the visitor</h4>
   <p>Stage crashes surface as <code>"internal error -- this stage did not complete"</code>. The traceback goes to <code>current_app.logger.exception</code>. Validation failures, by contrast, <i>are</i> shown verbatim because they are actionable and contain nothing internal.</p>
@@ -1612,10 +1612,10 @@ PER_CLIENT_SSE_CAP = 2   # one visitor cannot exhaust either of the above</code>
   <p><code>tests/test_models_column_widths.py</code> checks the declared width of <b>every</b> string column against the widest value the code can put in it, reading from the actual constants and registries rather than copies. It touches no database, so it catches the problem under SQLite just as well as Postgres. It has since caught a bug it was not written for: adding <code>Instrument.code</code> at <code>String(24)</code> tripped it immediately, because the real worst case is 25 characters. A coverage-style guard beating a bug-specific one is the whole argument for writing it that way.</p>
 
   <h5>No PASS to the right of a FAIL</h5>
-  <p>A test submits a submission that fails at stage 4 and asserts every stage after it is <code>None</code> in the tracker payload &mdash; encoding the invariant "a failed pipeline stops" as something the suite enforces, not just something the code happens to do.</p>
+  <p>A test submits a submission that fails at stage 4 and asserts every stage after it is <code>None</code> in the tracker payload. That encodes the invariant "a failed pipeline stops" as something the suite enforces, not just something the code happens to do.</p>
 
   <h4>Migrations</h4>
-  <p>Alembic through Flask-Migrate. The recurring trap, hit four times: <b>adding a <code>nullable=False</code> column to a populated table</b> generates SQL that fails immediately, because Postgres backfills existing rows with NULL before checking the constraint. The fix is always the same shape &mdash; add nullable, backfill with a real value in the same migration, then tighten to NOT NULL. Two flavours of backfill: a single constant works via <code>server_default</code>; a value that varies per row (each instrument's own OCC code) needs an actual loop.</p>
+  <p>Alembic through Flask-Migrate. The recurring trap, hit four times: <b>adding a <code>nullable=False</code> column to a populated table</b> generates SQL that fails immediately, because Postgres backfills existing rows with NULL before checking the constraint. The fix is always the same shape: add nullable, backfill with a real value in the same migration, then tighten to NOT NULL. Two flavours of backfill: a single constant works via <code>server_default</code>; a value that varies per row (each instrument's own OCC code) needs an actual loop.</p>
 </section>
 
 <section class="chunk" id="s29">
@@ -1674,7 +1674,7 @@ CMD ["gunicorn", "-w", "1", "--worker-class", "gthread", "--threads", "8", \
 
   <div class="note">
     <b class="tag">What the start period actually does</b>
-    <p><code>--start-period=10s</code> is not a delay before checking. It is a grace window in which a <i>failing</i> check does not count against <code>--retries</code>. Without it, a slow first boot &mdash; waiting on Postgres, importing the app &mdash; burns all three retries and marks a healthy container unhealthy. That status is exactly what <code>depends_on</code> reads below.</p>
+    <p><code>--start-period=10s</code> is not a delay before checking. It is a grace window in which a <i>failing</i> check does not count against <code>--retries</code>. Without it, a slow first boot (waiting on Postgres, importing the app) burns all three retries and marks a healthy container unhealthy. That status is exactly what <code>depends_on</code> reads below.</p>
   </div>
 
   <h4>docker-compose.yml</h4>
@@ -1712,7 +1712,7 @@ flowchart TB
   </figure>
 
   <h5>One image, two roles</h5>
-  <p><code>web</code> and <code>worker</code> both declare <code>build: .</code> and <code>image: personal-site:latest</code>. The image builds once and is reused; <code>worker</code> overrides <code>command</code> to run <code>worker.py</code> instead of gunicorn. There is no second Dockerfile to drift, and the worker is guaranteed to be running byte-identical code to the web process &mdash; which matters, because the two share the service layer and a mismatch would show up as jobs behaving differently from the routes that enqueued them.</p>
+  <p><code>web</code> and <code>worker</code> both declare <code>build: .</code> and <code>image: personal-site:latest</code>. The image builds once and is reused; <code>worker</code> overrides <code>command</code> to run <code>worker.py</code> instead of gunicorn. There is no second Dockerfile to drift, and the worker is guaranteed to be running byte-identical code to the web process. That matters because the two share the service layer, and a mismatch would show up as jobs behaving differently from the routes that enqueued them.</p>
 
   <h5>depends_on, with a condition</h5>
 <pre><code>depends_on:
@@ -1721,7 +1721,7 @@ flowchart TB
   redis:
     condition: service_healthy</code></pre>
 
-  <p>Plain <code>depends_on</code> orders <i>startup</i> only, and a started Postgres is not a Postgres accepting connections &mdash; the app would race it and die on the first query. <code>condition: service_healthy</code> waits on the dependency's own healthcheck (<code>pg_isready</code>, <code>redis-cli ping</code>), so web and worker do not start until their dependencies genuinely answer.</p>
+  <p>Plain <code>depends_on</code> orders <i>startup</i> only, and a started Postgres is not a Postgres accepting connections. The app would race it and die on the first query. <code>condition: service_healthy</code> waits on the dependency's own healthcheck (<code>pg_isready</code>, <code>redis-cli ping</code>), so web and worker do not start until their dependencies genuinely answer.</p>
 
   <h5>env_file versus environment</h5>
 <pre><code>env_file:
@@ -1732,7 +1732,7 @@ environment:
   REDIS_URL: redis://redis:6379/0
   RATELIMIT_STORAGE_URI: redis://redis:6379/1</code></pre>
 
-  <p>Values in <code>environment</code> take precedence over <code>env_file</code>, deliberately: the connection strings are <i>derived</i> from the <code>POSTGRES_*</code> credentials plus the compose service names, so they are correct by construction instead of being a fourth value in <code>.env</code> that can disagree with the other three. Note the hostnames &mdash; <code>postgres</code> and <code>redis</code> are service names resolved on the internal network, never <code>localhost</code>.</p>
+  <p>Values in <code>environment</code> take precedence over <code>env_file</code>, deliberately: the connection strings are <i>derived</i> from the <code>POSTGRES_*</code> credentials plus the compose service names, so they are correct by construction instead of being a fourth value in <code>.env</code> that can disagree with the other three. Note the hostnames: <code>postgres</code> and <code>redis</code> are service names resolved on the internal network, never <code>localhost</code>.</p>
 
   <h5>Volumes, and which one actually matters</h5>
   <div class="tw">
@@ -1756,8 +1756,8 @@ environment:
 
   <div class="note gotcha">
     <b class="tag">Compose interpolates <code>$</code> in .env</b>
-    <p>Adding a password hash to <code>.env</code> broke the very feature it was for. Werkzeug hashes look like <code>scrypt:32768:8:1$salt$digest</code>, and Compose read <code>$salt</code> and <code>$digest</code> as variable references, substituting empty strings for both. The container received <code>scrypt:32768:8:1</code> &mdash; 16 characters of a 162-character value.</p>
-    <p>It failed in the worst available way: not with an error, but by looking correctly configured and rejecting every password, because a truncated string is still truthy. The fix is Compose's own escape, <code>$$</code> for a literal <code>$</code>. Worth auditing any secret that is not plain hex &mdash; here <code>SECRET_KEY</code> and <code>POSTGRES_PASSWORD</code> are hex, so neither was ever affected.</p>
+    <p>Adding a password hash to <code>.env</code> broke the very feature it was for. Werkzeug hashes look like <code>scrypt:32768:8:1$salt$digest</code>, and Compose read <code>$salt</code> and <code>$digest</code> as variable references, substituting empty strings for both. The container received <code>scrypt:32768:8:1</code>, 16 characters of a 162-character value.</p>
+    <p>It failed in the worst available way: not with an error, but by looking correctly configured and rejecting every password, because a truncated string is still truthy. The fix is Compose's own escape, <code>$$</code> for a literal <code>$</code>. Worth auditing any secret that is not plain hex. Here <code>SECRET_KEY</code> and <code>POSTGRES_PASSWORD</code> are hex, so neither was ever affected.</p>
   </div>
 
   <h5>Working with the stack</h5>
@@ -1767,7 +1767,7 @@ docker compose logs -f worker                 # follow one service
 docker compose exec -T web flask db upgrade   # run a migration inside the app image
 docker compose ps                             # health status per service</code></pre>
 
-  <p><code>--force-recreate</code> matters more than it looks. Editing <code>.env</code> changes no image layer, so a plain <code>up -d</code> can reasonably conclude nothing needs recreating and leave the previous environment in place &mdash; the change appears to have been applied and has not been.</p>
+  <p><code>--force-recreate</code> matters more than it looks. Editing <code>.env</code> changes no image layer, so a plain <code>up -d</code> can reasonably conclude nothing needs recreating and leave the previous environment in place: the change appears to have been applied and has not been.</p>
 </section>
 
 <section class="chunk" id="s30">
@@ -1792,17 +1792,17 @@ verify live via the real domain</code></pre>
     reverse_proxy web:8000
 }</code></pre>
 
-  <p>Automatic Let's Encrypt certificates with no certbot or cron. <code>app/static</code> is bind-mounted read-only into the Caddy container so <code>file_server</code> answers asset requests directly. The asset filenames carry no content hash, so the header is <code>no-cache</code> &mdash; store but revalidate &mdash; rather than <code>max-age</code>, which once served a stale script for an hour during a debugging session. The full reasoning, and how Caddy fits the stack, is in &sect;33.</p>
+  <p>Automatic Let's Encrypt certificates with no certbot or cron. <code>app/static</code> is bind-mounted read-only into the Caddy container so <code>file_server</code> answers asset requests directly. The asset filenames carry no content hash, so the header is <code>no-cache</code> (store but revalidate) rather than <code>max-age</code>, which once served a stale script for an hour during a debugging session. The full reasoning, and how Caddy fits the stack, is in &sect;33.</p>
 
   <div class="note gotcha">
     <b class="tag">The static-asset bottleneck</b>
-    <p>Reported symptom: the landing page held for about four seconds before it could be scrolled, on <b>every</b> load, not just a cold cache. Cause: Caddy was proxying everything &mdash; including the ~15&ndash;20 CSS/JS/font/icon requests one page load fires &mdash; into the same eight-thread pool, competing with any other visitor's already-open SSE stream permanently occupying a thread.</p>
+    <p>Reported symptom: the landing page held for about four seconds before it could be scrolled, on <b>every</b> load, not just a cold cache. Cause: Caddy was proxying everything, including the ~15 to 20 CSS/JS/font/icon requests one page load fires, into the same eight-thread pool, competing with any other visitor's already-open SSE stream permanently occupying a thread.</p>
     <p>The thread limit was <i>correct</i> for the reason it exists (Socket.IO session affinity). It was still a bug everywhere else that pool got used for unrelated traffic. The fix is not "raise the limit", it is "stop routing traffic through it that never needed to be there".</p>
   </div>
 
   <div class="note gotcha">
     <b class="tag">The coupled-certificate trap</b>
-    <p>Requesting one certificate covering both the apex and <code>www</code> in a single site block meant <code>www</code>'s DNS not being ready failed that domain's ACME validation and dragged the <b>entire order</b> down to Let's Encrypt's untrusted staging CA. The apex, whose DNS was correct, therefore also served an untrusted certificate &mdash; which presents as "HTTPS is just broken" rather than "one of two domains is not ready".</p>
+    <p>Requesting one certificate covering both the apex and <code>www</code> in a single site block meant <code>www</code>'s DNS not being ready failed that domain's ACME validation and dragged the <b>entire order</b> down to Let's Encrypt's untrusted staging CA. The apex, whose DNS was correct, therefore also served an untrusted certificate. That presents as "HTTPS is just broken" rather than "one of two domains is not ready".</p>
     <p>Diagnosed by checking the actual issuer rather than trusting the padlock:</p>
 <pre><code>openssl s_client -connect nelsonkoskela.dev:443 | openssl x509 -noout -issuer
 # looking for  O=Let's Encrypt  vs a "Fake LE" staging root</code></pre>
@@ -1810,7 +1810,7 @@ verify live via the real domain</code></pre>
   </div>
 
   <h4>Firewall</h4>
-  <p>Two layers: Hetzner's cloud firewall in front of the host, and <code>ufw</code> on it. Only 22, 80 and 443 are open. Port 8000 is still published in <code>docker-compose.yml</code> for local development &mdash; production exposure is controlled by the firewall, so one compose file serves both.</p>
+  <p>Two layers: Hetzner's cloud firewall in front of the host, and <code>ufw</code> on it. Only 22, 80 and 443 are open. Port 8000 is still published in <code>docker-compose.yml</code> for local development. Production exposure is controlled by the firewall, so one compose file serves both.</p>
 </section>
 
 <div class="part">
@@ -1821,7 +1821,7 @@ verify live via the real domain</code></pre>
 <section class="chunk" id="s31">
   <h3><i>31</i><span>How Docker works</span></h3>
 
-  <p class="lede">Three concepts carry everything else &mdash; image, container, layer &mdash; and the one thing worth being clear on: a container is a process, not a virtual machine. This section is the tool; &sect;29&ndash;30 are this project's actual Dockerfile and Compose file.</p>
+  <p class="lede">Three concepts carry everything else: image, container, layer. And the one thing worth being clear on: a container is a process, not a virtual machine. This section is the tool; &sect;29 and &sect;30 are this project's actual Dockerfile and Compose file.</p>
 
   <h4>The problem it solves</h4>
   <p>"It works on my machine" is a statement about environment: OS version, system libraries, interpreter version, environment variables, paths. Docker's answer is to package the application <i>with</i> its whole environment into one artefact that runs identically on a laptop, a CI runner and the production VPS. Nothing about the host is assumed.</p>
@@ -1858,18 +1858,18 @@ verify live via the real domain</code></pre>
   </div>
 
   <h4>Networking and service discovery</h4>
-  <p><code>docker compose up</code> creates a private network for the project. Every service joins it and is reachable <b>by its service name as a hostname</b> &mdash; Compose runs an internal DNS resolver that maps <code>postgres</code> and <code>redis</code> to whichever container currently holds that name. That is why the connection strings read <code>@postgres:5432</code> and <code>redis://redis:6379</code>, never <code>localhost</code> and never a hard-coded IP: a recreated container gets a new IP, and the name still resolves.</p>
-  <p>Inside that network every container can reach every other container's ports. The outside world cannot &mdash; unless a port is <i>published</i>:</p>
+  <p><code>docker compose up</code> creates a private network for the project. Every service joins it and is reachable <b>by its service name as a hostname</b>. Compose runs an internal DNS resolver that maps <code>postgres</code> and <code>redis</code> to whichever container currently holds that name. That is why the connection strings read <code>@postgres:5432</code> and <code>redis://redis:6379</code>, never <code>localhost</code> and never a hard-coded IP: a recreated container gets a new IP, and the name still resolves.</p>
+  <p>Inside that network every container can reach every other container's ports. The outside world cannot, unless a port is <i>published</i>:</p>
 <pre><code>caddy             "80:80", "443:443"   reachable from the internet
 web               "8000:8000"          published for local dev; closed at the firewall in prod
 postgres, redis   (no ports:)          internal only, never published</code></pre>
-  <p>So Postgres and Redis have no door facing the internet at all &mdash; not firewalled shut, simply never published.</p>
+  <p>So Postgres and Redis have no door facing the internet at all: not firewalled shut, simply never published.</p>
 
   <h4>Compose</h4>
-  <p>A single container is rarely a whole system. <code>docker-compose.yml</code> describes all five services declaratively &mdash; images, environment, volumes, dependencies, restart policy &mdash; and <code>docker compose up</code> starts the set in the right order. The mechanics specific to this file (one image / two roles, <code>condition: service_healthy</code>, <code>env_file</code> vs <code>environment</code>, which volume actually matters) are in &sect;29.</p>
+  <p>A single container is rarely a whole system. <code>docker-compose.yml</code> describes all five services declaratively (images, environment, volumes, dependencies, restart policy), and <code>docker compose up</code> starts the set in the right order. The mechanics specific to this file (one image / two roles, <code>condition: service_healthy</code>, <code>env_file</code> vs <code>environment</code>, which volume actually matters) are in &sect;29.</p>
 
   <h4>Where a deploy actually changes things</h4>
-  <p><code>COPY app ./app</code> copies the code and static files <i>into the image at build time</i>. A running container holds a frozen copy. Editing a file on the host &mdash; a template, a stylesheet, <code>base.js</code> &mdash; changes nothing until the image is rebuilt and the container recreated, which is why the deploy loop is <code>git pull &amp;&amp; docker compose up -d --build</code> and not just <code>git pull</code>. The exception is a bind mount: <code>./instance</code> and <code>./Caddyfile</code> are mounted from the host, so edits there are live without a rebuild.</p>
+  <p><code>COPY app ./app</code> copies the code and static files <i>into the image at build time</i>. A running container holds a frozen copy. Editing a file on the host (a template, a stylesheet, <code>base.js</code>) changes nothing until the image is rebuilt and the container recreated, which is why the deploy loop is <code>git pull &amp;&amp; docker compose up -d --build</code> and not just <code>git pull</code>. The exception is a bind mount: <code>./instance</code> and <code>./Caddyfile</code> are mounted from the host, so edits there are live without a rebuild.</p>
 </section>
 
 <section class="chunk" id="s32">
@@ -1903,10 +1903,10 @@ postgres, redis   (no ports:)          internal only, never published</code></pr
 
   <h4>Persistence &mdash; and why this instance has none</h4>
   <p>"In-memory" need not mean "lost on restart". Redis offers two mechanisms: <b>RDB</b> takes periodic binary snapshots of the whole dataset (fast restart, lose whatever changed since the last snapshot), and <b>AOF</b> appends every write command to a log and replays it on restart (much smaller loss window, larger and slower on disk).</p>
-  <p><b>This deployment's <code>redis</code> service declares no volume</b>, so its keyspace is purely ephemeral: a restart starts empty. That is deliberate and acceptable for what it holds &mdash; the cache repopulates on the next miss, a reset rate-limit window is harmless, and the hit/miss counters are only a rollup. The one real casualty is an RQ job sitting in the queue during a restart. If a dropped pipeline job ever mattered, the fix is a volume plus AOF; today it does not.</p>
+  <p><b>This deployment's <code>redis</code> service declares no volume</b>, so its keyspace is purely ephemeral: a restart starts empty. That is deliberate and acceptable for what it holds: the cache repopulates on the next miss, a reset rate-limit window is harmless, and the hit/miss counters are only a rollup. The one real casualty is an RQ job sitting in the queue during a restart. If a dropped pipeline job ever mattered, the fix is a volume plus AOF; today it does not.</p>
 
   <h4>Logical databases</h4>
-  <p>One Redis instance carries sixteen numbered keyspaces (0&ndash;15), selected by the trailing number in the URL. They share the process, memory and config but are separate namespaces. This project uses two:</p>
+  <p>One Redis instance carries sixteen numbered keyspaces (0 to 15), selected by the trailing number in the URL. They share the process, memory and config but are separate namespaces. This project uses two:</p>
 <pre><code>REDIS_URL              redis://redis:6379/0    RQ job queues, world cache
 RATELIMIT_STORAGE_URI  redis://redis:6379/1    Flask-Limiter counters</code></pre>
   <p>So a flood of rate-limit keys in DB&nbsp;1 cannot collide with a queue key in DB&nbsp;0, and either can be flushed without touching the other. It is namespacing between key names, not isolation between processes or memory.</p>
@@ -1926,7 +1926,7 @@ RATELIMIT_STORAGE_URI  redis://redis:6379/1    Flask-Limiter counters</code></pr
 
   <div class="note gotcha">
     <b class="tag">TTL is set once, not on every hit</b>
-    <p>The rate-limit and SSE-cap counters set their expiry only on <i>first</i> creation. Refreshing it on each increment would push the expiry out forever under sustained traffic, and a leaked count would then never self-heal. Stated already in &sect;26 &mdash; repeated because it is the detail that turns "we use Redis for rate limiting" into a real answer.</p>
+    <p>The rate-limit and SSE-cap counters set their expiry only on <i>first</i> creation. Refreshing it on each increment would push the expiry out forever under sustained traffic, and a leaked count would then never self-heal. Stated already in &sect;26; repeated because it is the detail that turns "we use Redis for rate limiting" into a real answer.</p>
   </div>
 </section>
 
@@ -1936,7 +1936,7 @@ RATELIMIT_STORAGE_URI  redis://redis:6379/1    Flask-Limiter counters</code></pr
   <p class="lede">The single process the internet talks to. It terminates TLS, proxies everything dynamic to the app, and serves static files off disk itself. This project's actual Caddyfile and its deployment war stories are in &sect;30.</p>
 
   <h4>The single front door</h4>
-  <p>Every request &mdash; HTML, JSON, static asset, WebSocket &mdash; enters through Caddy before anything else in the stack sees it. <code>web</code>, <code>worker</code>, <code>postgres</code> and <code>redis</code> all speak plain HTTP or TCP on the internal network; TLS exists only on the Caddy&harr;internet hop.</p>
+  <p>Every request (HTML, JSON, static asset, WebSocket) enters through Caddy before anything else in the stack sees it. <code>web</code>, <code>worker</code>, <code>postgres</code> and <code>redis</code> all speak plain HTTP or TCP on the internal network; TLS exists only on the Caddy&harr;internet hop.</p>
 <pre><code>internet --443--&gt; caddy --&gt; web:8000 (gunicorn) --&gt; postgres / redis
                     \--&gt; /static/* answered straight off disk, never touches web</code></pre>
 
@@ -1945,13 +1945,13 @@ RATELIMIT_STORAGE_URI  redis://redis:6379/1    Flask-Limiter counters</code></pr
 <pre><code>nelsonkoskela.dev, www.nelsonkoskela.dev {
     reverse_proxy web:8000
 }</code></pre>
-  <p>On startup Caddy contacts Let's Encrypt, proves control of those names over an ACME challenge, installs the certificate, serves HTTPS, redirects HTTP&rarr;HTTPS, and renews about thirty days before expiry &mdash; no certbot, no cron. The certificate and ACME account key live in the <code>caddy_data</code> volume so a restart does not trigger re-issuance, which counts against Let's Encrypt's rate limits (&sect;29's volume table; &sect;30 for the time a coupled <code>www</code> record dragged the whole order onto the staging CA).</p>
+  <p>On startup Caddy contacts Let's Encrypt, proves control of those names over an ACME challenge, installs the certificate, serves HTTPS, redirects HTTP&rarr;HTTPS, and renews about thirty days before expiry, with no certbot and no cron. The certificate and ACME account key live in the <code>caddy_data</code> volume so a restart does not trigger re-issuance, which counts against Let's Encrypt's rate limits (&sect;29's volume table; &sect;30 for the time a coupled <code>www</code> record dragged the whole order onto the staging CA).</p>
 
   <h4>Reverse proxy</h4>
   <p>Anything Caddy does not answer itself it forwards to <code>web:8000</code> over the internal network, adding <code>X-Forwarded-For</code> and <code>X-Forwarded-Proto: https</code> so Flask still sees the real client IP and knows the original request was HTTPS even though it reached gunicorn as plain HTTP. WebSocket and SSE upgrades pass through transparently, which is why the live views work with no extra proxy config.</p>
 
   <h4>Static files off disk</h4>
-  <p><code>docker-compose.yml</code> bind-mounts <code>./app/static</code> read-only into the Caddy container at <code>/srv/static</code>. A request for <code>/static/js/base.js</code> is answered by Caddy directly from disk and never reaches <code>web</code>. The reason is the eight-thread budget (&sect;2, &sect;26): those threads are shared across every dynamic route and every open SSE stream, and would otherwise also serve the ~15&ndash;20 static requests each page load fires. Caddy's <code>file_server</code> has no such limit and does its own conditional-GET handling. &sect;30 has the incident this fixed.</p>
+  <p><code>docker-compose.yml</code> bind-mounts <code>./app/static</code> read-only into the Caddy container at <code>/srv/static</code>. A request for <code>/static/js/base.js</code> is answered by Caddy directly from disk and never reaches <code>web</code>. The reason is the eight-thread budget (&sect;2, &sect;26): those threads are shared across every dynamic route and every open SSE stream, and would otherwise also serve the ~15 to 20 static requests each page load fires. Caddy's <code>file_server</code> has no such limit and does its own conditional-GET handling. &sect;30 has the incident this fixed.</p>
 
   <h4>Cache-Control on assets</h4>
   <p>The static filenames carry no content hash, so nothing about a deploy tells a browser its cached copy is stale. The header is therefore <code>no-cache</code>, not <code>max-age</code>:</p>
@@ -1960,10 +1960,10 @@ RATELIMIT_STORAGE_URI  redis://redis:6379/1    Flask-Limiter counters</code></pr
     file_server
     header Cache-Control "no-cache"
 }</code></pre>
-  <p><code>no-cache</code> does not mean "do not store" &mdash; the browser keeps the file and revalidates with <code>If-None-Match</code>. Caddy answers <code>304</code> from the ETag it already sends, so an unchanged asset costs one small conditional request, and a <i>changed</i> asset &mdash; a redeployed <code>base.js</code> &mdash; is picked up on the very next load. An earlier <code>max-age=3600</code> was caught serving a stale script for an hour while a fix was being debugged against it.</p>
+  <p><code>no-cache</code> does not mean "do not store." The browser keeps the file and revalidates with <code>If-None-Match</code>. Caddy answers <code>304</code> from the ETag it already sends, so an unchanged asset costs one small conditional request, and a <i>changed</i> asset (a redeployed <code>base.js</code>) is picked up on the very next load. An earlier <code>max-age=3600</code> was caught serving a stale script for an hour while a fix was being debugged against it.</p>
 
   <h4>Why a separate container</h4>
-  <p>Certificate management, HTTP parsing and static serving are solved problems that do not belong in the Python process. Caddy is a single ~40&nbsp;MB Go binary; it restarts independently, and its proxy or TLS behaviour changes by editing the bind-mounted <code>Caddyfile</code> and reloading &mdash; no image rebuild, no app restart. It is also what lets <code>postgres</code> and <code>redis</code> stay entirely unpublished: the only thing facing the internet is one purpose-built proxy.</p>
+  <p>Certificate management, HTTP parsing and static serving are solved problems that do not belong in the Python process. Caddy is a single ~40&nbsp;MB Go binary; it restarts independently, and its proxy or TLS behaviour changes by editing the bind-mounted <code>Caddyfile</code> and reloading: no image rebuild, no app restart. It is also what lets <code>postgres</code> and <code>redis</code> stay entirely unpublished: the only thing facing the internet is one purpose-built proxy.</p>
 </section>
 
 <div class="part">
@@ -1974,7 +1974,7 @@ RATELIMIT_STORAGE_URI  redis://redis:6379/1    Flask-Limiter counters</code></pr
 <section class="chunk" id="s34">
   <h3><i>34</i><span>Not looking (or getting sued for looking) AI-built</span></h3>
 
-  <p class="lede">Two audits, run against public checklists of "tells" that a site was pasted out of an AI and shipped without review, and of the statutes an AI-built app most often trips. Most items were already handled by the choices elsewhere in this reference &mdash; server-rendered Flask, a real domain, one <code>&lt;h1&gt;</code> per page &mdash; but the audit closed real gaps: structured data, a canonical tag, a sitemap, an <code>llms.txt</code>, a <code>/legal</code> page, and a proxy fix that was making every external URL wrong.</p>
+  <p class="lede">Two audits, run against public checklists of "tells" that a site was pasted out of an AI and shipped without review, and of the statutes an AI-built app most often trips. Most items were already handled by the choices elsewhere in this reference (server-rendered Flask, a real domain, one <code>&lt;h1&gt;</code> per page), but the audit closed real gaps: structured data, a canonical tag, a sitemap, an <code>llms.txt</code>, a <code>/legal</code> page, and a proxy fix that was making every external URL wrong.</p>
 
   <h4>Craft tells &mdash; and what was done</h4>
   <table>
@@ -2028,9 +2028,9 @@ RATELIMIT_STORAGE_URI  redis://redis:6379/1    Flask-Limiter counters</code></pr
 <section class="chunk">
   <div class="note">
     <b class="tag">Private section</b>
-    <p>The interview question bank &mdash; questions grouped by what an interviewer is
+    <p>The interview question bank groups questions by what an interviewer is
     probing, each with the shape of a strong answer, plus a candid list of what this
-    system does not do well &mdash; lives behind a password.</p>
+    system does not do well. It lives behind a password.</p>
     <p style="margin-top:.9rem;"><a class="gate-link" href="{{ url_for('documentation.interview') }}">Unlock the interview section &rarr;</a></p>
   </div>
 </section>

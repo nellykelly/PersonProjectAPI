@@ -474,7 +474,7 @@ def test_stats_page_renders(indexed_client, app):
     resp = indexed_client.get("/assistant/stats")
     assert resp.status_code == 200
     assert b"Assistant stats" in resp.data
-    assert b"no model runs to build this page" in resp.data
+    assert b"No model runs to build this page" in resp.data
 
 
 def test_chat_endpoint_records_classification(indexed_client, app):

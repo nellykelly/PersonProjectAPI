@@ -30,14 +30,15 @@ class FullRevalueModel(RiskModel):
     summary = "Reprices the position across a ladder of spot shocks. Measures risk instead of differentiating it."
     method = (
         "Reprices each instrument at each rung of a spot ladder from -20% to +20% and reports the P&L "
-        "actually observed at each one. Convexity is measured by central difference from a "
-        "+/-1% repricing rather than read from a formula."
+        "actually observed at each one. Convexity comes from a central difference on a +/-1% "
+        "repricing, not a formula."
     )
     good_for = "Stress and scenario work, tail risk, and sanity-checking the analytic Greeks."
     limitations = (
-        "One pricing call per rung, so it is far slower than Trader Granular and unsuitable for a "
-        "continuously refreshing blotter. The ladder is spot-only: it holds implied vol fixed at "
-        "the level this run used, so it does not capture a vol surface reacting to the spot move."
+        "One pricing call per rung, so it's far slower than Trader Granular and not something you'd "
+        "want on a continuously refreshing blotter. The ladder is spot-only, too: it holds implied "
+        "vol fixed at the level this run used, so it won't capture a vol surface reacting to the "
+        "spot move."
     )
 
     def _value_at(self, ctx: PricingContext, spot: float) -> float:

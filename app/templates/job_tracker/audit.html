@@ -23,9 +23,9 @@
       <td>{{ e.action }}</td>
       <td>
         {% if e.application %}
-          <a class="jt-link" href="{{ url_for('job_tracker.edit_application', app_id=e.application_id) }}">{{ e.application.company_name }} — {{ e.application.role_title }}</a>
+          <a class="jt-link" href="{{ url_for('job_tracker.edit_application', app_id=e.application_id) }}">{{ e.application.company_name }} - {{ e.application.role_title }}</a>
         {% else %}
-          <span class="jt-sub">#{{ e.application_id or "—" }}</span>
+          <span class="jt-sub">#{{ e.application_id or "-" }}</span>
         {% endif %}
       </td>
       <td>

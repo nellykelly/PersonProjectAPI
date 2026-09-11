@@ -24,10 +24,10 @@
 
   <p class="muted">
     Last {{ stats.days }} days. Every number here comes from stored request logs and a
-    handful of keyword and regex rules &mdash; <strong>no model runs to build this page,
-    and it costs no tokens</strong>. A question only appears under &ldquo;most asked&rdquo;
-    once it's been asked more than once, and anything that tripped the profanity filter is
-    left out. Generated {{ stats.generated_at }}.
+    handful of keyword and regex rules. <strong>No model runs to build this page,
+    and it costs no tokens.</strong> A question only shows up under "most asked"
+    once it's been asked more than once. Anything that tripped the profanity filter
+    is left out. Generated {{ stats.generated_at }}.
   </p>
 
   {% if not stats.total_messages %}
@@ -42,7 +42,7 @@
     <div class="stx-tile"><span class="stx-n stx-warn">{{ stats.frustrated_pct }}%</span><span class="stx-l">Frustrated</span></div>
     <div class="stx-tile"><span class="stx-n stx-bad">{{ stats.cursing_pct }}%</span><span class="stx-l">Contained cursing</span></div>
     <div class="stx-tile"><span class="stx-n">{{ stats.error_rate }}%</span><span class="stx-l">Errored</span></div>
-    <div class="stx-tile"><span class="stx-n">{{ stats.latency.p50 if stats.latency.p50 is not none else "—" }}<small>ms</small></span><span class="stx-l">Median response</span></div>
+    <div class="stx-tile"><span class="stx-n">{{ stats.latency.p50 if stats.latency.p50 is not none else "-" }}<small>ms</small></span><span class="stx-l">Median response</span></div>
   </div>
 
   <p class="muted stx-sub">
@@ -117,10 +117,10 @@
   </div>
 
   <p class="muted stx-note">
-    &ldquo;Frustrated&rdquo; and &ldquo;cursing&rdquo; are best-effort keyword heuristics,
-    not judgements &mdash; a sarcastic &ldquo;great, thanks&rdquo; will read as positive,
-    and a calm sentence with a swear in it counts as cursing. They're here to show the
-    shape of the traffic, not to grade anyone.
+    "Frustrated" and "cursing" are best-effort keyword heuristics, not judgements.
+    A sarcastic "great, thanks" will read as positive, and a calm sentence with a
+    swear in it counts as cursing. They're here to show the shape of the traffic,
+    not to grade anyone.
   </p>
   {% endif %}
 </section>

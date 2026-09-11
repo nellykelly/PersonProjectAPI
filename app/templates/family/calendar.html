@@ -46,7 +46,7 @@
     <ul class="cal-up" id="cal-dialog-list">
       {% for ev in selected_events %}
       <li class="cal-up__row">
-        <span class="cal-up__date">{% if ev.all_day or not ev.starts_at %}All day{% else %}{{ ev.starts_at.strftime('%H:%M') }}{% if ev.ends_at %}&ndash;{{ ev.ends_at.strftime('%H:%M') }}{% endif %}{% endif %}</span>
+        <span class="cal-up__date">{% if ev.all_day or not ev.starts_at %}All day{% else %}{{ ev.starts_at.strftime('%H:%M') }}{% if ev.ends_at %}-{{ ev.ends_at.strftime('%H:%M') }}{% endif %}{% endif %}</span>
         <span class="fam-chip"><span class="fam-dot fam-dot--m{{ 1 if ev.created_by and ev.created_by.slug == 'm1' else 2 }}"></span>
           {{ ev.title }}
           {% if ev.recurrence %}{{ icon.recur() }}{% endif %}
