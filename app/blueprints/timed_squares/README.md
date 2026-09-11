@@ -115,6 +115,7 @@ and it lands on the shared leaderboard immediately for every visitor to see.
 
 ## Key files
 
+- `app/services/timed_squares.py: list_leaderboard` -- the shared leaderboard query, used by both routes below and by the Hera assistant's `get_leaderboard` tool (`app/services/assistant/timedsquares_tools.py`, public and read-only, no auth gate)
 - `app/blueprints/timed_squares/routes.py` -- page, `GET /api/leaderboard`, `POST /api/scores`
 - `app/static/js/timed_squares.js` -- the whole game engine + page wiring, no dependencies
 - `app/templates/timed_squares/index.html`

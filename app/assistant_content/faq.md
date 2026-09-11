@@ -26,6 +26,12 @@ from the free `yfinance` feed and are delayed by roughly fifteen minutes. The Co
 Scorer is an educational demo built from public filings. Nothing on the site is
 financial advice.
 
+# Can I get your resume / a copy of Nelson's resume?
+
+Yes. It's public and linked right from the About page (/about) -- both "View Resume"
+and "Download Resume" buttons point at the same PDF. If you're reading this in the
+chat, just ask and the assistant will point you there directly.
+
 # Can I see the code?
 
 Yes. The source is on GitHub at https://github.com/nellykelly, and the site has a

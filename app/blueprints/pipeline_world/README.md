@@ -162,6 +162,10 @@ frame syntax are Postgres dialect) -- see `app/services/analytics.py`'s module d
 for why Postgres was chosen here specifically, unlike the rest of this site's SQLite
 default.
 
+Hera (the site assistant) can also join a character and check status on a visitor's behalf --
+see `app/services/assistant/pipeline_tools.py`, which deliberately only reveals a character's
+name/icebreaker text via `check_character_status` once `status == "live"` (see `Character.to_dict`).
+
 ## Key files
 
 - `app/blueprints/pipeline_world/routes.py`

@@ -281,6 +281,88 @@ def _run_stage(
     return True
 
 
+def submit_character(
+    first_name: str | None,
+    last_name: str | None,
+    appearance_id: str | None,
+    head_type_id: str | None,
+    body_type_id: str | None,
+    hand_type_id: str | None,
+    icebreaker_answers: dict,
+    session_id: str,
+    confirm_last_name_collision: bool = False,
+) -> dict:
+    """The actual "submit a join" action, factored out of `routes.py`'s
+    `join()` view so it's callable identically from that route or from
+    Hera's `join_pipeline_world` assistant tool (see
+    app/services/assistant/pipeline_tools.py) -- no Flask `request`/`session`
+    reads happen in here, `session_id` is passed in instead, so this
+    function has no dependency on request context.
+
+    Same two outcomes `join()` always had:
+    - A last-name collision, unconfirmed: not a hard failure, a
+      warn-and-confirm prompt -- returns
+      `{"ok": False, "needs_confirmation": True, "message": ...}` (the
+      *caller* asks the human "Continue anyway?" and, if yes, calls this
+      again with `confirm_last_name_collision=True`).
+    - Otherwise: persists the submission exactly as typed (see
+      `validators.prepare_join_submission`'s docstring for why nothing is
+      content-checked here), enqueues the async pipeline run, and returns
+      `{"ok": True, "character": character.to_dict(...)}`.
+
+    The returned character dict always includes the caller's own
+    just-typed name/icebreaker text (`include_unvalidated_text=True`):
+    the caller of this function *is* the submitter (the web visitor who
+    just filled out the form, or the chat visitor who just told Hera
+    these details), so echoing back text they themselves just supplied
+    is not a disclosure of anyone else's unvalidated content -- it's the
+    same "you can see your own pending submission" carve-out the web UI
+    has always had. A *different* visitor looking up this character
+    later (`check_character_status` / `api_character_status`) gets the
+    default, status-filtered `to_dict()` instead -- see `Character.to_dict`.
+    """
+    try:
+        first, last, appearance, head_type, body_type, hand_type, answers = validators.prepare_join_submission(
+            first_name,
+            last_name,
+            appearance_id,
+            head_type_id,
+            body_type_id,
+            hand_type_id,
+            icebreaker_answers,
+            confirm_last_name_collision=confirm_last_name_collision,
+        )
+    except validators.LastNameCollision as collision:
+        # Not a rejection -- a confirm prompt. The caller answering "yes"
+        # re-submits with confirm_last_name_collision=True and proceeds.
+        return {
+            "ok": False,
+            "needs_confirmation": True,
+            "message": str(collision) + " Continue anyway?",
+        }
+
+    character = Character(
+        session_id=session_id,
+        first_name=first,
+        last_name=last,
+        appearance_id=appearance,
+        head_type_id=head_type,
+        body_type_id=body_type,
+        hand_type_id=hand_type,
+        status="pending",
+        **{
+            question["field_name"]: answers[question["id"]]
+            for question in validators.FIXED_ICEBREAKER_QUESTIONS
+        },
+    )
+    db.session.add(character)
+    db.session.commit()
+
+    queue_service.enqueue_character_join(character.id)
+
+    return {"ok": True, "character": character.to_dict(include_unvalidated_text=True)}
+
+
 def run_pipeline(character_id: int) -> None:
     character = db.session.get(Character, character_id)
     if character is None:

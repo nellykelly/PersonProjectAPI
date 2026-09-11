@@ -1,8 +1,8 @@
-from flask import current_app, render_template, request
+from flask import current_app, jsonify, render_template, request
 
 from app.blueprints.qr import bp
-from app.extensions import limiter
 from app.services import backtest, edgar, market_data, quant_score
+from app.services.assistant import rate_limit
 
 
 def _build_categories(report: dict) -> list[dict]:
@@ -33,8 +33,10 @@ def _build_categories(report: dict) -> list[dict]:
 
 
 @bp.route("")
-@limiter.limit(lambda: current_app.config["QR_SCORE_RATE_LIMIT"])
 def index():
+    if not rate_limit.consume("qr_score", current_app.config["QR_SCORE_RATE_LIMIT"]):
+        return jsonify(error="rate limited"), 429
+
     ticker = (request.args.get("ticker") or "").strip().upper()
     report = None
     categories = None
@@ -62,8 +64,10 @@ def index():
 
 
 @bp.route("/backtest")
-@limiter.limit(lambda: current_app.config["QR_BACKTEST_RATE_LIMIT"])
 def backtest_view():
+    if not rate_limit.consume("qr_backtest", current_app.config["QR_BACKTEST_RATE_LIMIT"]):
+        return jsonify(error="rate limited"), 429
+
     years_ago = request.args.get("years_ago", "1")
     try:
         years_ago = int(years_ago)

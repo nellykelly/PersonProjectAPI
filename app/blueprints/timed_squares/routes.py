@@ -3,29 +3,20 @@ from flask import current_app, jsonify, render_template, request, session
 from app.blueprints.timed_squares import bp
 from app.extensions import db, limiter
 from app.models import TimedSquaresScore
-from app.services import validators
+from app.services import timed_squares, validators
 
 LEADERBOARD_SIZE = 10
 
 
 @bp.route("")
 def index():
-    top_scores = (
-        TimedSquaresScore.query.order_by(TimedSquaresScore.turns_survived.desc(), TimedSquaresScore.id.asc())
-        .limit(LEADERBOARD_SIZE)
-        .all()
-    )
+    top_scores = timed_squares.list_leaderboard(limit=LEADERBOARD_SIZE)
     return render_template("timed_squares/index.html", top_scores=top_scores)
 
 
 @bp.route("/api/leaderboard")
 def api_leaderboard():
-    top_scores = (
-        TimedSquaresScore.query.order_by(TimedSquaresScore.turns_survived.desc(), TimedSquaresScore.id.asc())
-        .limit(LEADERBOARD_SIZE)
-        .all()
-    )
-    return jsonify({"ok": True, "scores": [s.to_dict() for s in top_scores]})
+    return jsonify({"ok": True, "scores": timed_squares.list_leaderboard(limit=LEADERBOARD_SIZE)})
 
 
 @bp.route("/api/scores", methods=["POST"])

@@ -23,6 +23,9 @@ ticker and watch its PnL update against real (delayed, free-tier) market data.
   (`config.py: TICKER_WHITELIST`, ~45 liquid large-caps/ETFs) before any `yfinance` call;
   `POST /open` is rate-limited per IP (`TRADING_RATE_LIMIT`, default 10/hour) and capped
   per anonymous session (`TRADING_MAX_OPEN_POSITIONS_PER_SESSION`, default 10).
+  Hera can also open positions on request (`app/services/assistant/trading_tools.py`, backed
+  by `app/services/trading_actions.py`), gated by a preview-then-confirm token and drawing
+  from this same `TRADING_RATE_LIMIT` bucket rather than a separate, unlimited one.
 - **Booking model:** modeled on how a real desk actually separates these concerns
   (see FpML's option/strategy trade representation) rather than one flat row per trade:
   - `Instrument` (`app/models.py`) -- reference/master data for one specific contract

@@ -253,14 +253,20 @@ def test_dispatch_ghost_stale_uses_the_config_default_when_weeks_omitted(db_read
 # orchestrator loop
 # --------------------------------------------------------------------------
 
-def test_unauthorized_path_makes_exactly_one_plain_call(db_ready, app):
+def test_unauthorized_path_offers_public_tools_but_not_job_tools(db_ready, app):
+    # Public tools (trading, pipeline world, scorer, timed-squares) are
+    # always built and offered now -- there's no more "tools is None"
+    # single-call path. Only the job-tracker's six stay gated behind
+    # job_tools_authorized.
     with app.app_context():
         app.config["ASSISTANT_LLM_BACKEND"] = "scripted"
         SCRIPTED_BACKEND.push({"text": "a plain answer"})
         ans = assistant.answer("hello", [], config=app.config, job_tools_authorized=False)
         assert ans.reply == "a plain answer"
         assert len(SCRIPTED_BACKEND.calls) == 1
-        assert SCRIPTED_BACKEND.calls[0]["tools"] is None
+        names = {t["function"]["name"] for t in SCRIPTED_BACKEND.calls[0]["tools"]}
+        assert "get_quote" in names  # a public tool is offered
+        assert "add_application" not in names  # job tools remain gated
 
 
 def test_authorized_loop_writes_and_sums_tokens(db_ready, app):
@@ -307,7 +313,10 @@ def test_authorized_loop_stops_at_the_iteration_cap(db_ready, app):
 
 def test_anonymous_request_cannot_write(db_ready, app, client):
     app.config["ASSISTANT_LLM_BACKEND"] = "scripted"
-    # Even if the model *tried* to call a tool, an anon caller gets no tools.
+    # An anon caller now DOES get public tool schemas (trading, pipeline
+    # world, scorer, timed-squares) -- but never the job-tracker's, and if
+    # the model tries a job-tracker name anyway there's no dispatcher for
+    # it, so the call still can't write.
     SCRIPTED_BACKEND.push(
         {"tool_calls": [{"id": "c1", "name": "add_application",
                          "arguments": json.dumps({"company": "Sneaky", "role": "X"})}]},
@@ -323,8 +332,10 @@ def test_anonymous_request_cannot_write(db_ready, app, client):
     assert body["error"] is False
     with app.app_context():
         assert JobApplication.query.filter_by(company_name="Sneaky").first() is None
-    # the anon call never asked for tools
-    assert SCRIPTED_BACKEND.calls[0]["tools"] is None
+    # the anon call's offered tools are the public set, not the job tracker
+    names = {t["function"]["name"] for t in SCRIPTED_BACKEND.calls[0]["tools"]}
+    assert "get_quote" in names
+    assert "add_application" not in names
 
 
 def test_owner_unlocked_request_can_write(owner_unlocked_client, app):

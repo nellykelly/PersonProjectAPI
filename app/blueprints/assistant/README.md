@@ -28,8 +28,9 @@ POST /api/assistant/chat  {message, history}
    -> top-k chunks                 (pgvector `<=>` cosine on Postgres; in-process cosine on SQLite)
    -> assemble prompt              (system persona + numbered context + last N turns)
    -> generate                     (Groq, OpenAI-shaped API, free tier)
-      -> for the signed-in + unlocked owner only: a bounded tool loop (<=4
-         model<->tool round trips) over the job-tracker tools
+      -> a bounded tool loop (<=4 model<->tool round trips) over the public
+         tool sets on EVERY call, plus the job-tracker tools when the
+         caller is the signed-in, unlocked owner
    -> {reply, sources[], backend}  + one row in `assistant_queries`
 ```
 
@@ -37,7 +38,16 @@ Every step is a named function behind a small interface (`app/services/assistant
 Phase 2's tool layer was an additive change around the `backend.generate(...)` call, not
 a rewrite: `LLMReply` grew `tool_calls` / `finish_reason`, `generate()` grew an optional
 `tools=`, and `orchestrator.answer()` grew a `job_tools_authorized` flag (default off)
-that, when set, wraps the single call in `_run_tool_loop`.
+that gates only the job-tracker schemas.
+
+Phase 3 made the tool loop unconditional: `answer()` now always builds the four public
+tool sets below (trading, Pipeline World, Company Scorer, Timed-Squares -- no
+authorization flag involved, since every action they wrap is already a public,
+unauthenticated web feature) and always runs `_run_tool_loop`, whether or not the
+job-tracker tools are also offered. A `name -> dispatcher` map built fresh each call
+routes each tool call to the right domain's `dispatch_*_tool`; a call for a name with no
+entry (e.g. a job-tracker tool name when unauthorized) comes back "Unknown tool" rather
+than reaching any dispatcher.
 
 ## Job-tracker tools (owner-only)
 
@@ -77,6 +87,55 @@ anyway (defence in depth) and never raises: a bad argument, an unknown status, a
 or ambiguous record all come back as a short string. The chat endpoint itself is not
 login-gated (anon users still chat) -- the entire boundary is the `job_tools_authorized`
 flag computed in `routes.py::chat()` from `can_use_job_tools()`.
+
+## Public tools (always-on, unauthenticated)
+
+Unlike the job tracker, these four tool sets carry **no authorization gate at all** --
+`build_*_tools()` always returns the full schema list, because every action each one
+wraps is already a public, unauthenticated web feature reachable from that project's own
+form or page. They're offered to every visitor on every chat turn.
+
+| tool | maps to |
+|---|---|
+| `get_quote` | `market_data` -- current price or option chain for a whitelisted ticker |
+| `list_open_positions` | `trading_actions.list_book(...)` -- the shared demo trade book |
+| `get_risk_report` | `risk_engine.submit_risk_request(...)` -- PV/PnL/Greeks for a leg, position, or the book |
+| `preview_open_position` | validates + quotes, mints a one-time `confirmation_token`, writes nothing |
+| `open_position` | `trading_actions.open_position(...)` -- requires that token |
+| `preview_join_pipeline_world` | validates + previews a character submission, mints a token, writes nothing |
+| `join_pipeline_world` | `pipeline.submit_character(...)` -- requires that token |
+| `check_character_status` | look up a Pipeline World character's pipeline stage |
+| `score_company` | `quant_score.score_company(...)` -- the Company Scorer's live 0-100 score |
+| `run_backtest` | `backtest.run_backtest(...)` -- score-vs-forward-return backtest |
+| `get_leaderboard` | `timed_squares.list_leaderboard(...)` -- public, read-only, no cap of its own |
+
+Two things keep "always-on, no login" from meaning "the model can do anything a script
+could do, just faster":
+
+- **Shared rate-limit buckets.** Every write/compute tool (`open_position`,
+  `join_pipeline_world`, `check_character_status`, `score_company`, `run_backtest`,
+  `get_risk_report`) consumes from the exact same bucket (via
+  `app.services.assistant.rate_limit.consume(action, limit_string)`, keyed by
+  `action:IP`) that its equivalent web route already draws from -- asking the assistant
+  to do it doesn't grant a second, unlimited quota alongside the form.
+- **Preview, then confirm, then write.** `open_position` and `join_pipeline_world` are
+  never called with fresh, unconfirmed inputs: the model calls `preview_open_position` /
+  `preview_join_pipeline_world` first, shows the visitor the parsed details, waits for an
+  explicit yes, and only then calls the real tool with the one-time, session-scoped
+  `confirmation_token` the preview minted (`prompts._PUBLIC_TOOL_NOTE` spells this out;
+  the token itself can't be forged by a crafted message since it lives server-side in the
+  Flask session, not in anything the model sends).
+- **A per-turn governor**, separate from and in addition to the rate limits above:
+  `orchestrator._run_tool_loop`'s `tool_call_limits` caps `open_position`,
+  `join_pipeline_world`, `score_company`, and `run_backtest` at one dispatched call each
+  *per chat turn*. A second attempt at a capped name within the same turn is never
+  dispatched at all -- the model gets back `"One at a time -- tell me which one first."`
+  as that call's tool result and has to relay that, rather than the loop quietly running
+  the write/expensive call twice because the model asked twice.
+- `check_character_status` additionally never exposes a character's unvalidated,
+  visitor-submitted text (name, icebreaker answers) unless the character is fully
+  `"live"` -- see `pipeline_tools.py`'s own docstring for the stored prompt-injection
+  reasoning this closes.
 
 The chat page (`app/templates/assistant/index.html` + `assistant.js`) is a
 modern-LLM-host layout: centred column, avatar, suggestion chips, an auto-growing
@@ -140,11 +199,16 @@ An LLM with an endpoint on the open web is a real attack surface, so:
 - **Rate limited** per IP (`ASSISTANT_CHAT_RATE_LIMIT`, default 20/hour), hard input-
   length cap (`ASSISTANT_MAX_INPUT_CHARS`), and history is truncated **server-side** --
   the client's turn count is not trusted.
-- The system prompt states that retrieved passages and the conversation are **data, not
-  instructions**; it forbids revealing the prompt or changing the rules. The job-tracker
-  tools are the only thing to "escalate to", and they are **not built at all** unless the
-  caller is the signed-in, `/job-tracker`-unlocked owner (see the boundary above); the
-  persona rule extends data-not-instructions to tool calls explicitly.
+- The system prompt states that retrieved passages, the conversation, **and tool
+  results** are **data, not instructions** -- including tool results that relay text
+  submitted by a *different* visitor than the one currently chatting (e.g.
+  `check_character_status`); it forbids revealing the prompt or changing the rules. The
+  job-tracker tools are the only thing gated behind a login: they are **not built at all**
+  unless the caller is the signed-in, `/job-tracker`-unlocked owner (see the boundary
+  above). The four public tool domains (trading, Pipeline World, Company Scorer,
+  Timed-Squares) carry no such gate -- their own boundary is the shared rate-limit
+  buckets, the preview/confirm-token flow, and the per-turn call governor documented
+  above, not a login.
 - **Not** `csrf.exempt` -- the `fetch()` sends an `X-CSRFToken` header.
 - Replies render as **plain text**, never HTML.
 - Any dependency failure (no `GROQ_API_KEY`, provider error, rate limit, embedder
@@ -158,7 +222,8 @@ An LLM with an endpoint on the open web is a real attack surface, so:
 
 `GROQ_API_KEY` (unset -> offline panel + 503, never a crash), `GROQ_MODEL`
 (`qwen/qwen3.8-27b` by default -- Groq rotates its catalogue), `GROQ_TOOL_MODEL`
-(`llama-3.3-70b-versatile`; owner job-tracker tool path only, falls back to `GROQ_MODEL`),
+(`llama-3.3-70b-versatile`; used for every call now that the tool loop is unconditional,
+falls back to `GROQ_MODEL`),
 `ASSISTANT_LLM_BACKEND` (`groq` | `fake`; `scripted` is test-only),
 `ASSISTANT_EMBEDDER` (`fastembed` | `hash`), `ASSISTANT_RETRIEVAL_TOP_K`,
 `ASSISTANT_MAX_HISTORY_TURNS`, `ASSISTANT_MAX_INPUT_CHARS`, `ASSISTANT_MAX_OUTPUT_TOKENS`,
@@ -169,9 +234,14 @@ touches the network or downloads a model.
 
 - `app/blueprints/assistant/routes.py` -- the page and the chat endpoint
 - `app/services/assistant/` -- `content.py`, `chunking.py`, `embeddings.py`, `store.py`,
-  `retrieval.py`, `backends.py`, `prompts.py` (the Hera persona), `orchestrator.py`,
-  `reindex.py`, `analytics.py` (token-free `/assistant/stats`), `authz.py` (the
-  owner + unlock predicate), `job_tools.py` (the five job-tracker tool schemas + dispatch)
+  `retrieval.py`, `backends.py`, `prompts.py` (the Hera persona), `orchestrator.py`
+  (builds the public + job-tracker tool sets, the name->dispatcher map, and the per-turn
+  governor), `reindex.py`, `analytics.py` (token-free `/assistant/stats`), `authz.py` (the
+  owner + unlock predicate), `job_tools.py` (the six job-tracker tool schemas + dispatch,
+  owner-only), `trading_tools.py`, `pipeline_tools.py`, `scorer_tools.py`,
+  `timedsquares_tools.py` (the four public tool sets, always-on), `rate_limit.py` (the
+  `consume(action, limit_string)` bucket every public write/compute tool shares with its
+  equivalent web route)
 - `app/templates/assistant/stats.html`
 - `personality.md` (repo root) -- the full persona spec `prompts.py` implements
 - `app/models.py` -- `ContentChunk` (with the `EmbeddingVector` type decorator),
@@ -194,6 +264,21 @@ Postgres-gated test that auto-skips on SQLite.
 `tests/test_assistant_job_tools.py` -- the Phase 2 tool layer: `build_job_tools` gating,
 the `can_use_job_tools` predicate, `dispatch_job_tool` (write + `source="assistant"` audit
 row, unauthorized refusal, every `JobTrackerError` path coming back as text), the bounded
-orchestrator loop (one plain call when off, write + token-sum when on, the 4-iteration
-cap), and the HTTP boundary (anon cannot write, owner+unlocked can, response shape
-unchanged) -- driven by the `scripted` backend.
+orchestrator loop (public tools offered either way, job tools only when authorized,
+write + token-sum when on, the 4-iteration cap), and the HTTP boundary (anon cannot write
+a job-tracker row even though it now gets public tool schemas, owner+unlocked can,
+response shape unchanged) -- driven by the `scripted` backend.
+
+`tests/test_assistant_trading_tools.py`, `test_assistant_pipeline_tools.py`,
+`test_assistant_scorer_tools.py`, `test_assistant_timedsquares_tools.py` -- each public
+tool domain's own schema shape, dispatch behaviour, confirm-token flow (trading, pipeline
+world), and shared rate-limit bucket, independent of the orchestrator wiring.
+
+`tests/test_assistant_orchestrator_public.py` -- the wiring itself: that
+`job_tools_authorized=False` now still offers the full public tool set (not zero tools,
+the old behaviour) while the job-tracker six stay gated; the per-turn governor (two
+`open_position` calls in one turn -> the second is refused with "One at a time" and never
+dispatched, so only one `Strategy` row exists); an end-to-end HTTP test proving an
+anonymous visitor can actually preview-then-open a real position through
+`/api/assistant/chat` with no login; and that `build_messages` always includes
+`_PUBLIC_TOOL_NOTE` and that the data-not-instructions paragraph now covers tool results.

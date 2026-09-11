@@ -53,6 +53,10 @@ plus a Pearson correlation between score and forward return across the basket. T
 demo-scale validation (a handful of tickers, one lookback window), not a rigorous
 research backtest.
 
+Hera (the site assistant) can also score a ticker or run a backtest on request via
+`app/services/assistant/scorer_tools.py`, sharing the same `qr_score`/`qr_backtest`
+rate-limit buckets as these routes so the chat surface can't grant extra quota.
+
 ## Key files
 
 - `app/blueprints/qr/routes.py` -- routes

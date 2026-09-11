@@ -584,27 +584,65 @@ class Character(db.Model):
     def full_name(self) -> str:
         return f"{self.first_name} {self.last_name}"
 
-    def to_dict(self) -> dict:
+    def to_dict(self, include_unvalidated_text: bool = False) -> dict:
+        """`first_name`/`last_name`/`full_name` and every icebreaker answer
+        are visitor-submitted free text that is NOT content-validated until
+        the async pipeline runs (see validators.prepare_join_submission's
+        docstring: no charset/injection/profanity check happens before
+        Sanitize/Security Scan/Test:Profanity actually run). Handing that
+        raw text to an unrelated caller -- in particular Hera's
+        `check_character_status` assistant tool, which any anonymous
+        visitor can call for any character id -- would be a stored,
+        indirect prompt-injection vector: an attacker plants a payload in
+        an icebreaker answer, and a different, innocent visitor who later
+        asks the assistant about that character has the payload fed
+        straight into the model's context.
+
+        So by default (`include_unvalidated_text=False`), that text is only
+        included once `status == "live"` -- the one status that means the
+        full pipeline (including Security Scan and Test:Profanity) has
+        actually passed. Any other status (`pending`, `sanitizing`, ...,
+        `failed`) omits it, whether or not it's ever going to fail --
+        the text simply hasn't been validated *yet*, so it's not safe to
+        echo back to an arbitrary caller.
+
+        `include_unvalidated_text=True` is the one deliberate carve-out:
+        a visitor may see their *own* just-submitted, still-processing
+        character's raw text (the web join response; see
+        pipeline.submit_character). That's "you can see what you just
+        typed," not "anyone can read what anyone else typed" -- callers
+        must only pass True when the caller of `to_dict()` is known to be
+        that same submitter, never for a lookup keyed only by id/session
+        supplied by someone else (see check_character_status in
+        app/services/assistant/pipeline_tools.py, which never passes True).
+        """
         from app.services.validators import FIXED_ICEBREAKER_QUESTIONS  # local import: avoid a module-load cycle
 
+        text_is_safe_to_show = include_unvalidated_text or self.status == "live"
+
+        first_name = self.first_name if text_is_safe_to_show else None
+        last_name = self.last_name if text_is_safe_to_show else None
+        full_name = self.full_name if text_is_safe_to_show else None
+
         icebreakers = []
-        for question in FIXED_ICEBREAKER_QUESTIONS:
-            answer = getattr(self, question["field_name"], None)
-            if answer:
-                icebreakers.append(
-                    {
-                        "question_id": question["id"],
-                        "prefix": question["prefix"],
-                        "answer": answer,
-                        "text": f"{question['prefix']}: {answer}",
-                    }
-                )
+        if text_is_safe_to_show:
+            for question in FIXED_ICEBREAKER_QUESTIONS:
+                answer = getattr(self, question["field_name"], None)
+                if answer:
+                    icebreakers.append(
+                        {
+                            "question_id": question["id"],
+                            "prefix": question["prefix"],
+                            "answer": answer,
+                            "text": f"{question['prefix']}: {answer}",
+                        }
+                    )
 
         return {
             "id": self.id,
-            "first_name": self.first_name,
-            "last_name": self.last_name,
-            "full_name": self.full_name,
+            "first_name": first_name,
+            "last_name": last_name,
+            "full_name": full_name,
             "appearance_id": self.appearance_id,
             "head_type_id": self.head_type_id,
             "body_type_id": self.body_type_id,

@@ -226,6 +226,14 @@ class Config:
     PIPELINE_STAGE_DELAY_SECONDS = float(_pipeline_stage_delay_env) if _pipeline_stage_delay_env else None
     PIPELINE_JOIN_RATE_LIMIT = os.environ.get("PIPELINE_JOIN_RATE_LIMIT", "10 per hour")
     PIPELINE_FAST_MODE_RATE_LIMIT = os.environ.get("PIPELINE_FAST_MODE_RATE_LIMIT", "30 per hour")
+    # Hera's check_character_status assistant tool -- read-only, but still
+    # rate limited (its own bucket, not shared with PIPELINE_JOIN_RATE_LIMIT)
+    # so a script can't hammer it to fish for characters crossing into
+    # status="live" (the moment their free text becomes visible; see
+    # Character.to_dict).
+    ASSISTANT_CHARACTER_LOOKUP_RATE_LIMIT = os.environ.get(
+        "ASSISTANT_CHARACTER_LOOKUP_RATE_LIMIT", "30 per hour"
+    )
 
     WORLD_CACHE_TTL_SECONDS = int(os.environ.get("WORLD_CACHE_TTL_SECONDS", "30"))
 

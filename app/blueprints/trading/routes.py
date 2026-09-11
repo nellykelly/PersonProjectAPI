@@ -1,7 +1,6 @@
 import json
 import queue
 import time
-from datetime import datetime
 
 from flask import Response, abort, current_app, flash, jsonify, redirect, render_template, request, session, url_for
 
@@ -9,8 +8,10 @@ from app.blueprints.trading import bp
 from app.extensions import db, limiter
 from app.models import Leg, RiskRequest, Strategy, utcnow
 from app.services import (
-    instruments, market_data, pricing, risk_dashboard, risk_engine, risk_models, sse_limits, watchlist,
+    instruments, market_data, pricing, risk_dashboard, risk_engine, risk_models, sse_limits, trading_actions,
+    watchlist,
 )
+from app.services.assistant import rate_limit
 from app.services.market_data import MarketDataError
 
 SSE_KEEPALIVE_SECONDS = 15
@@ -135,90 +136,36 @@ def index():
 
 
 @bp.route("/open", methods=["POST"])
-@limiter.limit(lambda: current_app.config["TRADING_RATE_LIMIT"])
 def open_position():
+    # A plain call instead of @limiter.limit(...): this shares one bucket
+    # (keyed by action name "trading_open_position") with Hera's
+    # open_position tool via app.services.assistant.rate_limit.consume, so
+    # asking the assistant to open a position draws from the same quota
+    # the web form does rather than getting a second, unlimited one.
+    if not rate_limit.consume("trading_open_position", current_app.config["TRADING_RATE_LIMIT"]):
+        return jsonify({"error": "rate limited"}), 429
+
     session_id = _session_id()
     max_open = current_app.config["TRADING_MAX_OPEN_POSITIONS_PER_SESSION"]
-    if _open_strategies_count(session_id) >= max_open:
-        flash(f"You've reached the max of {max_open} open positions for this session.", "error")
-        return redirect(url_for("trading.index"))
 
     ticker = (request.form.get("ticker") or "").strip().upper()
     kind = (request.form.get("kind") or "stock").strip().lower()
-
-    if kind not in ("stock", "call", "put"):
-        flash("Invalid position type.", "error")
-        return redirect(url_for("trading.index"))
-
-    try:
-        quantity = int(request.form.get("quantity", "1"))
-        if not (0 < quantity <= 1000):
-            raise ValueError
-    except (TypeError, ValueError):
-        flash("Quantity must be a whole number between 1 and 1000.", "error")
-        return redirect(url_for("trading.index"))
-
-    if not market_data.is_valid_ticker(ticker):
-        flash(f"'{ticker}' is not on the supported ticker list for this demo.", "error")
-        return redirect(url_for("trading.index"))
+    quantity = request.form.get("quantity", "1")
+    strike = request.form.get("strike")
+    expiry = request.form.get("expiry")
 
     try:
-        underlying_price = market_data.get_last_price(ticker)
+        leg = trading_actions.open_position(
+            session_id, ticker, kind, quantity, strike=strike, expiry=expiry,
+            max_open_positions=max_open,
+        )
+    except trading_actions.TradingActionError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("trading.index"))
     except MarketDataError as exc:
         flash(str(exc), "error")
         return redirect(url_for("trading.index"))
 
-    entry_iv = None
-
-    if kind == "stock":
-        entry_price = underlying_price
-        instrument = instruments.get_or_create_instrument(ticker, "stock")
-    else:
-        expiry_str = request.form.get("expiry")
-        strike_raw = request.form.get("strike")
-        if not expiry_str or not strike_raw:
-            flash("Options require an expiry date and a strike.", "error")
-            return redirect(url_for("trading.index"))
-        try:
-            expiry = datetime.strptime(expiry_str, "%Y-%m-%d").date()
-            requested_strike = float(strike_raw)
-        except ValueError:
-            flash("Invalid expiry or strike.", "error")
-            return redirect(url_for("trading.index"))
-
-        try:
-            chain = market_data.get_option_chain(ticker, expiry_str)
-        except MarketDataError as exc:
-            flash(str(exc), "error")
-            return redirect(url_for("trading.index"))
-
-        chain_side = chain["calls"] if kind == "call" else chain["puts"]
-        match = min(chain_side, key=lambda o: abs(o["strike"] - requested_strike)) if chain_side else None
-        if match is None:
-            flash("No matching contract found for that expiry/strike.", "error")
-            return redirect(url_for("trading.index"))
-
-        strike = match["strike"]
-        entry_price = match.get("lastPrice") or 0.0
-        entry_iv = match.get("impliedVolatility")
-        instrument = instruments.get_or_create_instrument(ticker, kind, strike=strike, expiry=expiry)
-
-    # Today's UI only ever books a single-leg strategy -- a multi-leg
-    # composer would add more Legs onto an existing open Strategy instead
-    # of creating a new one, without changing this model at all.
-    strategy = Strategy(session_id=session_id, name="Single Leg")
-    leg = Leg(
-        strategy=strategy,
-        instrument=instrument,
-        side="buy",
-        quantity=quantity,
-        entry_price=entry_price,
-        entry_iv=entry_iv,
-        entry_underlying_price=underlying_price,
-    )
-    db.session.add(strategy)
-    db.session.add(leg)
-    db.session.commit()
     flash(f"Opened a {kind} position on {ticker}.", "success")
     return redirect(url_for("trading.position_detail", position_id=leg.id))
 
@@ -317,13 +264,22 @@ def api_position_history(position_id):
 
 
 @bp.route("/positions/<int:position_id>/risk-requests", methods=["POST"])
-@limiter.limit(lambda: current_app.config["TRADING_RISK_REQUEST_RATE_LIMIT"])
 def submit_risk_request_route(position_id):
     """The "risk request" step: an explicit, queryable ask for risk on
     this leg -- either as-of-now (no body) or under a what-if scenario
     (spot_shock_pct / vol_shock_pts). Returns the persisted RiskRequest
     with its RiskResult already attached; GET /api/risk-requests/<id>
-    fetches that same report again later."""
+    fetches that same report again later.
+
+    A plain call instead of @limiter.limit(...): this shares one bucket
+    (keyed by action name "trading_risk_report") with Hera's
+    get_risk_report tool via app.services.assistant.rate_limit.consume,
+    across all three risk-request scopes (leg/position/book), so asking
+    the assistant for a risk report draws from the same quota the web
+    forms do rather than getting a separate, unlimited one."""
+    if not rate_limit.consume("trading_risk_report", current_app.config["TRADING_RISK_REQUEST_RATE_LIMIT"]):
+        return jsonify({"error": "rate limited"}), 429
+
     db.get_or_404(Leg, position_id)  # 404 before bothering to build a scenario
 
     try:
@@ -353,7 +309,7 @@ def strategies_index():
     Legs are priced through one shared quote map (see _price_positions),
     so a page listing many positions on the same underlying still makes a
     single market call per distinct ticker rather than one per leg."""
-    strategies = Strategy.query.order_by(Strategy.opened_at.desc()).limit(100).all()
+    strategies = trading_actions.list_book(limit=100)
 
     # Price every leg across every position in one pass, so the per-ticker
     # quote is fetched once for the whole page.
@@ -428,11 +384,15 @@ def api_strategy(strategy_id):
 
 
 @bp.route("/strategies/<int:strategy_id>/risk-requests", methods=["POST"])
-@limiter.limit(lambda: current_app.config["TRADING_RISK_REQUEST_RATE_LIMIT"])
 def submit_position_risk_request(strategy_id):
     """Runs one risk request across every leg in the position, all priced
     off a single market snapshot, and returns the persisted request with
-    its aggregated totals."""
+    its aggregated totals. Shares the "trading_risk_report" rate-limit
+    bucket with the leg- and book-scope risk-request routes and with
+    Hera's get_risk_report tool -- see submit_risk_request_route above."""
+    if not rate_limit.consume("trading_risk_report", current_app.config["TRADING_RISK_REQUEST_RATE_LIMIT"]):
+        return jsonify({"error": "rate limited"}), 429
+
     db.get_or_404(Strategy, strategy_id)
 
     try:
@@ -458,13 +418,17 @@ def submit_position_risk_request(strategy_id):
 
 
 @bp.route("/risk-requests", methods=["POST"])
-@limiter.limit(lambda: current_app.config["TRADING_RISK_REQUEST_RATE_LIMIT"])
 def submit_book_risk_request():
     """Runs one risk request across every open leg in the whole book --
     the "run risk on this report" action from the all-positions page.
     Every instrument is priced off one shared market snapshot, exactly
     like a position-level run, just scoped to everything at once instead
-    of one Strategy."""
+    of one Strategy. Shares the "trading_risk_report" rate-limit bucket
+    with the leg- and position-scope risk-request routes and with Hera's
+    get_risk_report tool -- see submit_risk_request_route above."""
+    if not rate_limit.consume("trading_risk_report", current_app.config["TRADING_RISK_REQUEST_RATE_LIMIT"]):
+        return jsonify({"error": "rate limited"}), 429
+
     try:
         scenario = _scenario_from_form(request.form)
     except ValueError as exc:

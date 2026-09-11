@@ -4,8 +4,8 @@ from app.blueprints.pipeline_world import bp
 from app.config import PIPELINE_STAGE_INFO, PRODUCTION_TOWN_BOUNDS
 from app.extensions import db, limiter, socketio
 from app.models import PIPELINE_STAGES, Character
-from app.services import analytics, pipeline, queue, validators, world_cache
-from app.services.validators import LastNameCollision
+from app.services import analytics, pipeline, validators, world_cache
+from app.services.assistant import rate_limit
 
 RECENT_RUNS_LIMIT = 20
 
@@ -85,8 +85,16 @@ def town():
 
 
 @bp.route("/join", methods=["POST"])
-@limiter.limit(lambda: current_app.config["PIPELINE_JOIN_RATE_LIMIT"])
 def join():
+    # A plain call instead of @limiter.limit(...): this shares one bucket
+    # (keyed by action name "pipeline_join") with Hera's join_pipeline_world
+    # tool via app.services.assistant.rate_limit.consume, so asking the
+    # assistant to join a character draws from the same quota the web form
+    # does rather than getting a second, unlimited one (same technique
+    # trading/routes.py's open_position uses for "trading_open_position").
+    if not rate_limit.consume("pipeline_join", current_app.config["PIPELINE_JOIN_RATE_LIMIT"]):
+        return jsonify({"error": "rate limited"}), 429
+
     confirm = request.form.get("confirm_last_name_collision") == "1"
     icebreaker_answers = {
         question["id"]: request.form.get(f"icebreaker_answer_{question['id']}")
@@ -99,49 +107,21 @@ def join():
     # A bad name doesn't cancel the run before it starts; it produces a run
     # that visibly fails at Sanitize / Security Scan / Test:Profanity, and
     # a failed stage stops the pipeline there so the character never goes
-    # live (see pipeline.run_pipeline).
-    try:
-        first, last, appearance, head_type, body_type, hand_type, answers = validators.prepare_join_submission(
-            request.form.get("first_name"),
-            request.form.get("last_name"),
-            request.form.get("appearance_id"),
-            request.form.get("head_type_id"),
-            request.form.get("body_type_id"),
-            request.form.get("hand_type_id"),
-            icebreaker_answers,
-            confirm_last_name_collision=confirm,
-        )
-    except LastNameCollision as collision:
-        # Not a rejection -- a confirm prompt. The visitor answering "yes"
-        # re-submits with confirm_last_name_collision=1 and proceeds.
-        return jsonify(
-            {
-                "ok": False,
-                "needs_confirmation": True,
-                "message": str(collision) + " Continue anyway?",
-            }
-        )
-
-    character = Character(
+    # live (see pipeline.run_pipeline). The actual submit logic (validate,
+    # persist, enqueue) lives in pipeline.submit_character so it's callable
+    # identically from here or from Hera's join_pipeline_world tool.
+    result = pipeline.submit_character(
+        request.form.get("first_name"),
+        request.form.get("last_name"),
+        request.form.get("appearance_id"),
+        request.form.get("head_type_id"),
+        request.form.get("body_type_id"),
+        request.form.get("hand_type_id"),
+        icebreaker_answers,
         session_id=_session_id(),
-        first_name=first,
-        last_name=last,
-        appearance_id=appearance,
-        head_type_id=head_type,
-        body_type_id=body_type,
-        hand_type_id=hand_type,
-        status="pending",
-        **{
-            question["field_name"]: answers[question["id"]]
-            for question in validators.FIXED_ICEBREAKER_QUESTIONS
-        },
+        confirm_last_name_collision=confirm,
     )
-    db.session.add(character)
-    db.session.commit()
-
-    queue.enqueue_character_join(character.id)
-
-    return jsonify({"ok": True, "character": character.to_dict()})
+    return jsonify(result)
 
 
 @bp.route("/api/character/<int:character_id>")

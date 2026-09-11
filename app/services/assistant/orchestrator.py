@@ -1,12 +1,21 @@
 """The RAG loop: validate input -> retrieve -> assemble prompt -> generate.
 
 Nothing here does access control or rate limiting -- that's the route's
-job (app/blueprints/assistant/routes.py). This function trusts its caller:
-`is_admin` is recorded in the query log, and `job_tools_authorized` (the
-route's `can_use_job_tools()` result) is the only thing that turns the
-job-tracker tool loop on. When it is false the code path is exactly the
-old single-call RAG turn -- no tools are built, so there is nothing for a
-crafted message or a retrieved passage to invoke.
+job (app/blueprints/assistant/routes.py), or, for the public tool domains
+below, each tool's own call into `app.services.assistant.rate_limit`
+(sharing a bucket with its equivalent web route). This function trusts its
+caller: `is_admin` is recorded in the query log, and `job_tools_authorized`
+(the route's `can_use_job_tools()` result) is the only thing that turns
+the job-tracker tools on -- when it is false those six schemas are simply
+never built, so there is nothing for a crafted message or a retrieved
+passage to invoke there.
+
+The **public** tool domains (trading, Pipeline World, Company Scorer,
+Timed-Squares) are different: they wrap actions that are already public,
+unauthenticated web features, so their schemas are built and offered on
+every single call, regardless of `job_tools_authorized` -- there is no
+gate to check. That means the tool-calling model path (`_run_tool_loop`)
+is now always used; there is no more plain single-call fallback.
 """
 from __future__ import annotations
 
@@ -16,9 +25,13 @@ from .backends import build_backend
 from .embeddings import build_embedder
 from .errors import AssistantInputError
 from .job_tools import build_job_tools, dispatch_job_tool
+from .pipeline_tools import build_pipeline_tools, dispatch_pipeline_tool
 from .prompts import build_messages
 from .retrieval import retrieve
+from .scorer_tools import build_scorer_tools, dispatch_scorer_tool
 from .store import build_store
+from .timedsquares_tools import build_timedsquares_tools, dispatch_timedsquares_tool
+from .trading_tools import build_trading_tools, dispatch_trading_tool
 
 _ALLOWED_ROLES = {"user", "assistant"}
 _MAX_TURN_CHARS = 2000
@@ -143,6 +156,8 @@ _DEFAULT_TOOL_FALLBACK = (
     "rest of the change on the page."
 )
 
+_ONE_AT_A_TIME = "One at a time -- tell me which one first."
+
 
 def _run_tool_loop(
     backend,
@@ -153,20 +168,32 @@ def _run_tool_loop(
     dispatch,
     max_iters=_MAX_TOOL_ITERS,
     fallback=_DEFAULT_TOOL_FALLBACK,
+    tool_call_limits: dict[str, int] | None = None,
 ):
     """Drive up to `max_iters` model<->tool round trips. Returns
     `(final_text, prompt_tokens, completion_tokens, model)`.
 
     `dispatch(name, arguments) -> str` runs one tool call and must never
     raise -- it always hands back a string for the model to read. The
-    assistant passes a job-tools dispatcher; the /family chat passes its
-    own (and a higher `max_iters` for pasted-list adds). This loop knows
-    nothing about either tool set. `fallback` is returned only if the loop
-    hits `max_iters` still wanting tools and has no text to show."""
+    assistant passes a single dispatcher that routes by tool name; the
+    /family chat passes its own (and a higher `max_iters` for pasted-list
+    adds). This loop knows nothing about either tool set.
+
+    `tool_call_limits` is an optional per-turn governor: `{tool_name: max_
+    calls}`. It is a fresh local counter every call (never persisted
+    across turns or shared with any other invocation) -- once a name hits
+    its cap *within this one loop*, further calls to that name are not
+    dispatched at all; the model is handed back `_ONE_AT_A_TIME` as that
+    call's tool result instead, exactly as if the tool itself had refused,
+    so it can relay that to the user rather than the call silently
+    vanishing. Names absent from `tool_call_limits` (or when it's `None`)
+    are uncapped. `fallback` is returned only if the loop hits `max_iters`
+    still wanting tools and has no text to show."""
     convo = list(messages)
     p_tok = c_tok = None
     model = ""
     last_text = ""
+    call_counts: dict[str, int] = {}
 
     for _ in range(max_iters):
         reply = backend.generate(convo, max_tokens=max_tokens, tools=tools)
@@ -194,13 +221,35 @@ def _run_tool_loop(
             }
         )
         for tc in reply.tool_calls:
-            out = dispatch(tc["name"], tc["arguments"])
+            name = tc["name"]
+            cap = (tool_call_limits or {}).get(name)
+            if cap is not None and call_counts.get(name, 0) >= cap:
+                out = _ONE_AT_A_TIME
+            else:
+                out = dispatch(name, tc["arguments"])
+                call_counts[name] = call_counts.get(name, 0) + 1
             convo.append(
                 {"role": "tool", "tool_call_id": tc["id"], "content": out}
             )
 
     # Ran out of iterations still asking for tools.
     return (last_text or fallback), p_tok, c_tok, model
+
+
+# Per-turn cap on the writes/spends that matter most: one open_position,
+# one join_pipeline_world, one score_company, one run_backtest per chat
+# turn. Read-only/idempotent tools (get_quote, list_open_positions,
+# get_risk_report, preview_*, check_character_status, get_leaderboard) are
+# uncapped here -- they're already governed by their own rate-limit
+# buckets (or, for the job tools, by `authz`) and legitimately need
+# multiple calls in one turn (e.g. preview, then look something up, then
+# the real write).
+_TOOL_CALL_LIMITS = {
+    "open_position": 1,
+    "join_pipeline_world": 1,
+    "score_company": 1,
+    "run_backtest": 1,
+}
 
 
 def answer(
@@ -229,33 +278,60 @@ def answer(
         store=store,
     )
 
-    want_tools = bool(job_tools_authorized)
-    backend = build_backend(config, for_tools=want_tools)
+    # The public tool sets are always built and offered -- no authorization
+    # gate, unlike the job tracker. Build each domain's schemas once and
+    # remember which dispatcher handles which tool name.
+    trading_specs = build_trading_tools()
+    pipeline_specs = build_pipeline_tools()
+    scorer_specs = build_scorer_tools()
+    timedsquares_specs = build_timedsquares_tools()
+
+    dispatch_map = {}
+    for spec in trading_specs:
+        dispatch_map[spec["function"]["name"]] = dispatch_trading_tool
+    for spec in pipeline_specs:
+        dispatch_map[spec["function"]["name"]] = dispatch_pipeline_tool
+    for spec in scorer_specs:
+        dispatch_map[spec["function"]["name"]] = dispatch_scorer_tool
+    for spec in timedsquares_specs:
+        dispatch_map[spec["function"]["name"]] = dispatch_timedsquares_tool
+
+    tools = trading_specs + pipeline_specs + scorer_specs + timedsquares_specs
+
+    if job_tools_authorized:
+        job_specs = build_job_tools(True)
+        tools = tools + job_specs
+        for spec in job_specs:
+            dispatch_map[spec["function"]["name"]] = (
+                lambda n, a: dispatch_job_tool(n, a, authorized=True)
+            )
+
+    def _dispatch(name: str, arguments) -> str:
+        fn = dispatch_map.get(name)
+        if fn is None:
+            return f"Unknown tool {name!r}."
+        return fn(name, arguments)
+
+    # Public tools always exist now, so the tool-calling model path is
+    # always used -- there is no more plain single-call fallback.
+    backend = build_backend(config, for_tools=True)
     messages = build_messages(
         question=q,
         context_text=result.context_text,
         history=history,
         is_admin=is_admin,
-        job_tools=want_tools,
+        job_tools=job_tools_authorized,
     )
     max_tokens = int(config["ASSISTANT_MAX_OUTPUT_TOKENS"])
 
-    if want_tools:
-        final_text, p_tok, c_tok, model = _run_tool_loop(
-            backend,
-            messages,
-            build_job_tools(True),
-            max_tokens,
-            dispatch=lambda n, a: dispatch_job_tool(n, a, authorized=True),
-        )
-    else:
-        reply = backend.generate(messages, max_tokens=max_tokens)
-        final_text, p_tok, c_tok, model = (
-            reply.text,
-            reply.prompt_tokens,
-            reply.completion_tokens,
-            reply.model,
-        )
+    final_text, p_tok, c_tok, model = _run_tool_loop(
+        backend,
+        messages,
+        tools,
+        max_tokens,
+        dispatch=_dispatch,
+        tool_call_limits=_TOOL_CALL_LIMITS,
+    )
 
     sources = _pick_sources(result.chunks, final_text)
 
