@@ -3217,3 +3217,39 @@ a.asst-source:hover { color: var(--fg); border-color: var(--accent); }
   border-radius: 4px;
   padding: 0.05rem 0.3rem;
 }
+
+/* ---------- Market Data Warehouse: timeframe + ticker pickers ---------- */
+.mw-timeframe-picker,
+.mw-ticker-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.75rem 0 1rem;
+}
+.mw-timeframe-presets,
+.mw-ticker-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.mw-timeframe-custom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+.mw-timeframe-custom label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.mw-timeframe-custom input[type="date"] {
+  padding: 0.25rem 0.4rem;
+}
+.button.small.is-selected {
+  background: var(--accent, #3aa0ff);
+  color: #0d1117;
+  border-color: var(--accent, #3aa0ff);
+}

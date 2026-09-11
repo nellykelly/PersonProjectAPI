@@ -5,6 +5,7 @@ providers -- everything comes from the environment with a safe local
 default, so swapping Render/Fly.io/a VPS later is just an env change.
 """
 import os
+import pathlib
 
 
 def _bool(name: str, default: bool) -> bool:
@@ -239,6 +240,22 @@ class Config:
     # payload without pretending to validate that a score was legitimately
     # earned.
     TIMED_SQUARES_MAX_TURNS = int(os.environ.get("TIMED_SQUARES_MAX_TURNS", "100000"))
+
+    # Market Data Warehouse: a sibling project (market-data-warehouse/),
+    # not part of this app's own package -- yfinance -> dbt -> a
+    # DuckDB/MotherDuck/Snowflake star schema. This page reads the
+    # DuckDB file it writes, read-only, best-effort (see
+    # app/blueprints/market_warehouse). Defaults to that project's own
+    # default output path so a fresh checkout works with zero config.
+    MARKET_WAREHOUSE_DB_PATH = os.environ.get(
+        "MARKET_WAREHOUSE_DB_PATH",
+        str(
+            pathlib.Path(__file__).resolve().parent.parent
+            / "market-data-warehouse"
+            / "warehouse"
+            / "market.duckdb"
+        ),
+    )
 
     # ------------------------------------------------------------------
     # Personal AI assistant (app/services/assistant, app/blueprints/assistant)

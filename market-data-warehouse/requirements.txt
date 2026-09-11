@@ -1,0 +1,17 @@
+# Ingestion
+yfinance>=0.2.60
+pandas>=2.0
+
+# Warehouse / transforms -- install the adapter you need.
+# Pinned to the dbt 1.9 series: stable, and the classic (un-nested)
+# generic-test argument syntax used in the schema YAML is canonical there.
+dbt-core>=1.9,<1.10
+dbt-duckdb>=1.9,<1.10
+duckdb>=0.10
+
+# Uncomment for the Snowflake target:
+# dbt-snowflake>=1.9,<1.10
+# snowflake-connector-python[pandas]>=3.5
+
+# Tests
+pytest>=8.0

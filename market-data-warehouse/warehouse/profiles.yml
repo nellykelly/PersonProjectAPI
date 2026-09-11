@@ -1,0 +1,39 @@
+# dbt connection profiles. `duckdb` works out of the box against the file
+# the ingestion writes. `motherduck` is the same DuckDB engine hosted on
+# MotherDuck's free Lite tier (permanent, 10GB/10 compute-hrs-month, no
+# card) -- sign up at motherduck.com, grab a token from
+# app.motherduck.com/token, and set MOTHERDUCK_TOKEN (never put it in this
+# file). `snowflake` reads everything from the environment (see
+# ../.env.example) so no credentials live here either.
+
+market_warehouse:
+  target: duckdb
+  outputs:
+
+    duckdb:
+      type: duckdb
+      # same file ingest/load.py writes to (DUCKDB_PATH overrides both)
+      path: "{{ env_var('DUCKDB_PATH', 'market.duckdb') }}"
+      schema: main
+      threads: 4
+
+    motherduck:
+      type: duckdb
+      # MOTHERDUCK_TOKEN is read automatically by duckdb's motherduck
+      # extension from the environment when the path starts with "md:" --
+      # it is deliberately not interpolated into this string.
+      path: "md:{{ env_var('MOTHERDUCK_DATABASE', 'market') }}"
+      schema: main
+      threads: 4
+
+    snowflake:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE', '') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE') }}"
+      database: "{{ env_var('SNOWFLAKE_DATABASE', 'MARKET') }}"
+      schema: "{{ env_var('SNOWFLAKE_DBT_SCHEMA', 'ANALYTICS') }}"
+      threads: 8
+      client_session_keep_alive: false

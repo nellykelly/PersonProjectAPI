@@ -5,6 +5,8 @@ LISTED_PROJECTS = (
     ("SRE Infra Layer", "/projects/sre-infra"),
     ("Site Traffic Analytics", "/projects/network-sniffer"),
     ("Timed-Squares", "/projects/timed-squares"),
+    ("Tiny JVM", "/projects/tiny-jvm"),
+    ("Market Data Warehouse", "/projects/market-warehouse"),
     ("Top Interview 150 Tracker", "/leetcode-150"),
     ("AI Assistant", "/assistant"),
 )

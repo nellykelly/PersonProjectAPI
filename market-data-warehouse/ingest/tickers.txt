@@ -1,0 +1,14 @@
+# Default ticker universe -- kept small so a full "period=max" pull is quick.
+# One symbol per line. Edit freely; this file is config, not code.
+AAPL
+MSFT
+AMZN
+GOOGL
+NVDA
+JPM
+KO
+XOM
+# Benchmark for beta/risk metrics (fct_security_risk_daily) -- treated as
+# an ordinary security everywhere else (dim_security, fct_security_price),
+# just designated by ticker in the risk model's self-join.
+SPY

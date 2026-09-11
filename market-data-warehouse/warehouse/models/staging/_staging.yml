@@ -1,0 +1,43 @@
+version: 2
+
+models:
+  - name: stg_prices
+    description: Typed, de-duplicated daily bars. The in-progress partial bar is dropped.
+    columns:
+      - name: ticker
+        tests: [not_null]
+      - name: trade_date
+        tests: [not_null]
+      - name: close
+        tests: [not_null]
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [ticker, trade_date]
+
+  - name: stg_dividends
+    description: One positive cash dividend per ticker per ex-date.
+    columns:
+      - name: amount
+        tests:
+          - not_null
+          - dbt_utils.accepted_range: {min_value: 0, inclusive: false}
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [ticker, ex_date]
+
+  - name: stg_splits
+    description: One positive split ratio per ticker per effective date.
+    columns:
+      - name: ratio
+        tests:
+          - not_null
+          - dbt_utils.accepted_range: {min_value: 0, inclusive: false}
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [ticker, effective_date]
+
+  - name: stg_security_info
+    description: Latest metadata row per ticker.
+    columns:
+      - name: ticker
+        tests: [not_null, unique]

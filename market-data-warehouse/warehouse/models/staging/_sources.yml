@@ -1,0 +1,36 @@
+version: 2
+
+sources:
+  - name: raw
+    description: >
+      Verbatim landing zone written by `ingest/` from the yfinance
+      endpoint. One table per feed; every row carries `source` and
+      `ingested_at`. Loads are idempotent per ticker.
+    schema: "{{ env_var('RAW_SCHEMA', 'RAW') }}"
+    tables:
+      - name: price_history
+        description: Daily unadjusted OHLC + adjusted close + volume, one row per ticker per trading day.
+        columns:
+          - name: ticker
+            tests: [not_null]
+          - name: trade_date
+            tests: [not_null]
+      - name: dividends
+        description: Complete cash-dividend history, one row per ticker per ex-date.
+        columns:
+          - name: ticker
+            tests: [not_null]
+          - name: ex_date
+            tests: [not_null]
+      - name: splits
+        description: Complete stock-split history, one row per ticker per effective date.
+        columns:
+          - name: ticker
+            tests: [not_null]
+          - name: effective_date
+            tests: [not_null]
+      - name: security_info
+        description: One metadata row per ticker per ingest run (name, exchange, currency, classification).
+        columns:
+          - name: ticker
+            tests: [not_null]

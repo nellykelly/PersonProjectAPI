@@ -1,0 +1,230 @@
+version: 2
+
+models:
+  - name: dim_date
+    description: One row per calendar day, 1960-01-01 to today. Conformed date dimension for every fact.
+    columns:
+      - name: date_key
+        description: yyyymmdd integer. Primary key; carried directly on the facts.
+        tests: [unique, not_null]
+      - name: date_day
+        description: The calendar date.
+        tests: [unique, not_null]
+      - name: year_number
+        tests: [not_null]
+      - name: iso_day_of_week
+        description: 1 = Monday .. 7 = Sunday.
+        tests:
+          - not_null
+          - accepted_values:
+              values: [1, 2, 3, 4, 5, 6, 7]
+      - name: is_weekday
+        tests: [not_null]
+
+  - name: dim_exchange
+    description: Conformed exchange dimension, seed-enriched, with an UNKNOWN catch-all member.
+    columns:
+      - name: exchange_key
+        tests: [unique, not_null]
+      - name: exchange_code
+        tests: [unique, not_null]
+      - name: exchange_name
+        tests: [not_null]
+
+  - name: dim_security
+    description: One row per instrument, current attributes (SCD type 1). See the security_info snapshot for history.
+    columns:
+      - name: security_key
+        tests: [unique, not_null]
+      - name: ticker
+        tests: [unique, not_null]
+      - name: security_name
+        tests: [not_null]
+      - name: exchange_key
+        description: FK to dim_exchange (UNKNOWN member when the code is unmapped).
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_exchange')
+              field: exchange_key
+
+  - name: fct_security_price
+    description: >
+      Grain: one security x one trading day. Unadjusted OHLC, adjusted
+      close, volume, and derived daily return / prior close / gap /
+      dollar volume.
+    tests:
+      # price_key is generate_surrogate_key(ticker, trade_date), which is
+      # derived from this grain rather than stating it -- this asserts
+      # the grain itself, directly, independent of how the key is built.
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [security_key, date_key]
+    columns:
+      - name: price_key
+        tests: [unique, not_null]
+      - name: security_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_security')
+              field: security_key
+      - name: date_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+      - name: exchange_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_exchange')
+              field: exchange_key
+      - name: close
+        tests: [not_null]
+      - name: volume
+        description: Share volume for the day. Non-negative.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+      - name: trade_date
+        tests: [not_null]
+
+  - name: fct_security_technical_daily
+    description: >
+      Grain: one security x one trading day -- same grain as
+      fct_security_price, kept as a separate fact (a fact table family)
+      because these are derived technical signals with a much higher
+      rate of change than raw OHLCV. SMA(20/50/200), Bollinger(20,2),
+      rolling 52-week high/low, and a simplified (SMA-based, not
+      Wilder-smoothed) RSI(14). No EMA/MACD -- see the model's docstring
+      for why that's a deliberate omission, not an oversight.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [security_key, date_key]
+    columns:
+      - name: security_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_security')
+              field: security_key
+      - name: date_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+      - name: rsi_14_simplified
+        description: 0-100. Simplified/SMA-based, not the canonical Wilder-smoothed RSI.
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+              inclusive: true
+
+  - name: fct_security_risk_daily
+    description: >
+      Grain: one security x one trading day -- same grain as
+      fct_security_price. Rolling volatility (20/60/252d, annualized),
+      max drawdown from all-time-high (trailing 252d), Sharpe/Sortino
+      (252d, using the `risk_free_rate` var -- 0.0 by default, no real
+      T-bill data source), and beta vs. the `benchmark_ticker` var (SPY
+      by default) at 60d/252d windows.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [security_key, date_key]
+    columns:
+      - name: security_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_security')
+              field: security_key
+      - name: date_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+      - name: volatility_252d
+        description: Annualized. Non-negative by construction (a standard deviation).
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+
+  - name: fct_security_price_projection
+    description: >
+      NOT A FORECAST, NOT FINANCIAL ADVICE -- see the model's docstring.
+      Grain: one security x one future trading day x one `method` x one
+      `lookback_days` -- every entry in `projection_lookback_grid` (var,
+      default [30, 60, 90, 180]) is precomputed for all three methods
+      (`linear_trend`, `random_walk_drift`, `mean_reversion`), out
+      `projection_horizon_days` (var, default 90) trading days, with a
+      95% confidence band widening with sqrt(time) driven by recent
+      volatility -- identical banding treatment across methods, so only
+      the central-tendency assumption differs between them. Full-refresh
+      every run -- always today's projections, no history retained.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [security_key, date_key, method, lookback_days]
+    columns:
+      - name: projection_key
+        tests: [unique, not_null]
+      - name: security_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_security')
+              field: security_key
+      - name: date_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+      - name: method
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["linear_trend", "random_walk_drift", "mean_reversion"]
+      - name: lookback_days
+        tests:
+          - not_null
+          - accepted_values:
+              values: [30, 60, 90, 180]
+      - name: projected_close
+        tests: [not_null]
+      - name: trading_day_offset
+        description: 1-based count of trading days beyond the last actual price.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 1
+              inclusive: true
+
+  - name: fct_corporate_action
+    description: "Grain: one security x one corporate action (dividend or split) x effective date."
+    columns:
+      - name: corporate_action_key
+        tests: [unique, not_null]
+      - name: security_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_security')
+              field: security_key
+      - name: date_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+      - name: action_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["dividend", "split"]

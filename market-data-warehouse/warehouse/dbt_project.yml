@@ -1,0 +1,55 @@
+name: "market_warehouse"
+version: "1.0.0"
+config-version: 2
+
+profile: "market_warehouse"
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+test-paths: ["tests"]
+
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  market_warehouse:
+    staging:
+      +materialized: view
+      +schema: staging
+    marts:
+      +materialized: table
+      +schema: marts
+
+seeds:
+  market_warehouse:
+    +schema: staging
+    seed_exchange:
+      +column_types:
+        mic: varchar
+        exchange_code: varchar
+        exchange_name: varchar
+        country: varchar
+        timezone_name: varchar
+
+vars:
+  # Annualized risk-free rate assumed in fct_security_risk_daily's Sharpe/
+  # Sortino calculations. There's no real risk-free-rate data source in
+  # this project (no T-bill feed) -- 0.0 is a deliberate, documented
+  # simplification, not a real rate. Override per-run with
+  # `dbt run --vars '{risk_free_rate: 0.04}'` if you want to approximate one.
+  risk_free_rate: 0.0
+  # Ticker used as the market benchmark for beta in fct_security_risk_daily.
+  # Must be present in ingest/tickers.txt (it's ingested like any other
+  # security) and therefore in dim_security/fct_security_price.
+  benchmark_ticker: "SPY"
+  # fct_security_price_projection: every method is precomputed for every
+  # lookback window in this list -- the dashboard's timeframe picker is a
+  # filter over rows that already exist, not a live recompute.
+  projection_lookback_grid: [30, 60, 90, 180]
+  # How many future trading days every method x lookback combination
+  # projects out to. A single value (not swept) -- how far to look is a
+  # display concern the UI can slice, not a different modeling claim the
+  # way the lookback window is.
+  projection_horizon_days: 90

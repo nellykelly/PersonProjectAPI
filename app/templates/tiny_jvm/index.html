@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Tiny JVM{% endblock %}
+{% block content_class %}wide{% endblock %}
+
+{% block content %}
+<section>
+    <h1 class="major"><img class="page-icon" src="{{ url_for('static', filename='assets/img/icons/tiny-jvm.svg') }}" alt="">Tiny JVM</h1>
+    <p class="muted">
+        A compact virtual machine that runs the same program two ways: as WebAssembly in
+        this page, and as firmware on a microcontroller. The program is written in a small
+        language of its own and turned into bytecode by a toolchain written in Java.
+    </p>
+
+    <div class="disclaimer-banner">
+        The interactive demo isn't wired up yet. This page is the concept, the architecture,
+        and the instruction set the VM will run. The full build plan lives in
+        <code>docs/build-spec-tiny-jvm.md</code>.
+    </div>
+
+    <h2>The idea</h2>
+    <p>
+        "Java" and "embedded" usually sit in two different projects. This one
+        fuses them into a single artifact. A tiny stack-based interpreter (a few hundred
+        lines of portable C) executes a fixed bytecode. Because the interpreter is just C
+        with no OS calls, the exact same source compiles to two targets: a WebAssembly module
+        that runs in the browser, and a firmware image that runs on an ESP32 in the
+        <a href="https://wokwi.com/" target="_blank" rel="noopener">Wokwi</a> simulator.
+    </p>
+    <p>
+        The bytecode is produced by a small compiler written in Java: a lexer, a
+        recursive-descent parser, and a code generator. Writing that toolchain is the Java
+        half of the project; keeping the VM small enough to fit a microcontroller is the
+        embedded half.
+    </p>
+
+    <h2>How it works</h2>
+    <p>Five stages, from source text to a running program:</p>
+    <div class="stat-grid">
+        <div class="stat-tile"><div class="value">1</div><div class="label">Source: a small C/BASIC-like language</div></div>
+        <div class="stat-tile"><div class="value">2</div><div class="label">Java toolchain: lex, parse, generate</div></div>
+        <div class="stat-tile"><div class="value">3</div><div class="label">Bytecode: one flat array of bytes</div></div>
+        <div class="stat-tile"><div class="value">4</div><div class="label">C VM: fetch / decode / execute loop</div></div>
+        <div class="stat-tile"><div class="value">5</div><div class="label">Two targets: WASM in the page, firmware on Wokwi</div></div>
+    </div>
+    <p class="muted">
+        The same bytecode file is byte-for-byte identical on both targets. The over-temp-alarm
+        sample below reads a sensor and drives an output pin; run it in the browser and the
+        pin writes go to a fake console, flash it to the Wokwi board and they light a real LED
+        in the simulation.
+    </p>
+
+    <h2>Instruction set</h2>
+    <p class="muted">
+        One-byte opcodes, a value stack of 32-bit integers, up to 256 local-variable slots.
+        This table is the contract the C VM and the Java code generator both target.
+    </p>
+    <div class="table-wrapper">
+        <table class="traffic-table">
+            <thead><tr><th>Opcode</th><th>Name</th><th>Operand</th><th>Effect</th></tr></thead>
+            <tbody>
+                {% for op in opcodes %}
+                <tr>
+                    <td class="mono">{{ op.hex }}</td>
+                    <td class="mono">{{ op.name }}</td>
+                    <td class="mono">{{ op.operand }}</td>
+                    <td>{{ op.effect }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <h2>Sample programs</h2>
+    <p class="muted">
+        Written in the project's own language. The demo will let you pick one, compile it in
+        the browser, and step the VM one instruction at a time with the stack visible.
+    </p>
+    {% for prog in sample_programs %}
+    <h3>{{ prog.title }}</h3>
+    <p class="muted">Shows: {{ prog.shows }}</p>
+    <div class="table-wrapper">
+        <pre class="mono">{{ prog.source }}</pre>
+    </div>
+    {% endfor %}
+
+    <h2>What's built so far</h2>
+    <p>
+        This pass is scaffolding: the project's page, its listing, and the written
+        specification. Still to come, in build order:
+    </p>
+    <ul>
+        <li>The C VM: interpreter loop, stack, locals, calls, GPIO hooks.</li>
+        <li>The Java toolchain: lexer, parser, code generator, a small CLI.</li>
+        <li>The WebAssembly build and the interactive stepper on this page.</li>
+        <li>The Wokwi project and an embedded view of it running the same bytecode.</li>
+    </ul>
+</section>
+{% endblock %}

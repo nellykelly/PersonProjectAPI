@@ -5,7 +5,7 @@
     <meta http-equiv="x-ua-compatible" content="ie=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     {% set page_title %}{% block title %}Nelson Koskela{% endblock %}{% endset %}
-    {% set page_description %}{% block meta_description %}Nelson Koskela -- software engineer in Houston, TX. Personal portfolio site with independent trading, quant scoring, pipeline visualization, and network monitoring projects.{% endblock %}{% endset %}
+    {% set page_description %}{% block meta_description %}Nelson Koskela, a software engineer in Houston, TX. Personal portfolio with independent trading, quant scoring, pipeline visualization, and network monitoring projects.{% endblock %}{% endset %}
     <title>{{ page_title }} | Software Engineer</title>
     <meta name="description" content="{{ page_description }}">
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='assets/img/favicon.ico') }}">
@@ -172,11 +172,12 @@
 
     <footer class="site-footer">
         <div class="disclaimer">
-            Personal portfolio site. The Trading Simulator uses simulated positions against delayed real
-            market data from yfinance. No real money, and none of it is financial advice. The Company
-            Scorer's scores are a demo built from public filings and delayed market data, not investment
-            advice. The Site Traffic Analytics board logs only this app's own requests and API calls,
-            never a visitor's browsing.
+            Personal portfolio site. The Trading Simulator trades simulated positions against delayed
+            real market data from yfinance, no real money involved, and none of it is financial advice.
+            Company Scorer's scores are a demo built from public filings and delayed market data, not
+            investment advice. The Market Data Warehouse's indicators and price projection are demo
+            analytics over delayed yfinance data, not investment research or a forecast. The Site Traffic
+            Analytics board only logs this app's own requests and API calls, never a visitor's browsing.
         </div>
         <div class="footer-links">
             <a href="{{ GITHUB_URL }}" target="_blank" rel="noopener">GitHub</a>

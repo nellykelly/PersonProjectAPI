@@ -215,6 +215,8 @@ def _register_blueprints(app: Flask) -> None:
     from app.blueprints.pipeline_world import bp as pipeline_world_bp
     from app.blueprints.sre_infra import bp as sre_infra_bp
     from app.blueprints.timed_squares import bp as timed_squares_bp
+    from app.blueprints.tiny_jvm import bp as tiny_jvm_bp
+    from app.blueprints.market_warehouse import bp as market_warehouse_bp
     from app.blueprints.leetcode import bp as leetcode_bp
     from app.blueprints.auth import bp as auth_bp
     from app.blueprints.job_tracker import bp as job_tracker_bp
@@ -233,6 +235,14 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(pipeline_world_bp, url_prefix="/projects/pipeline-world")
     app.register_blueprint(sre_infra_bp, url_prefix="/projects/sre-infra")
     app.register_blueprint(timed_squares_bp, url_prefix="/projects/timed-squares")
+    # /projects/tiny-jvm -- a custom-language -> Java toolchain -> C bytecode
+    # VM, demoed in-browser via WASM. Placeholder page for now (no API,
+    # nothing to exempt); see docs/build-spec-tiny-jvm.md.
+    app.register_blueprint(tiny_jvm_bp, url_prefix="/projects/tiny-jvm")
+    # /projects/market-warehouse -- read-only live view over the
+    # market-data-warehouse sibling project's built DuckDB/MotherDuck
+    # file (yfinance -> dbt star schema). GET-only, no state of its own.
+    app.register_blueprint(market_warehouse_bp, url_prefix="/projects/market-warehouse")
     app.register_blueprint(leetcode_bp, url_prefix="/leetcode-150")
     app.register_blueprint(auth_bp, url_prefix="/auth")
     # Private job-application tracker. Password-gated (JOB_TRACKER_PASSWORD_HASH),

@@ -58,19 +58,44 @@ PROJECTS = [
     {
         "slug": "timed-squares",
         "title": "Timed-Squares",
-        "blurb": "A turn-based survival game on a 10x10 grid, playable right in the browser -- "
-        "dodge obstacles that telegraph their next move before they make it, and outlast "
+        "blurb": "A turn-based survival game on a 10x10 grid, playable right in the browser. "
+        "Dodge obstacles that telegraph their next move before they make it, and outlast "
         "an escalating spawn rate. Public leaderboard, no login.",
         "endpoint": "timed_squares.index",
         "tags": ["Canvas", "Vanilla JS", "Public leaderboard"],
         "icon": "assets/img/icons/timed-squares.svg",
     },
     {
+        "slug": "tiny-jvm",
+        "title": "Tiny JVM",
+        "blurb": "A compact stack-based virtual machine written in C that runs the same "
+        "bytecode in the browser (WebAssembly) and on a microcontroller. Programs are "
+        "written in a small custom language and compiled to that bytecode by a Java "
+        "toolchain (lexer, parser, code generator). One over-temp-alarm program even "
+        "drives a simulated GPIO pin on a Wokwi board.",
+        "endpoint": "tiny_jvm.index",
+        "tags": ["Java", "Embedded / C", "WebAssembly", "Compilers"],
+        "icon": "assets/img/icons/tiny-jvm.svg",
+    },
+    {
+        "slug": "market-warehouse",
+        "title": "Market Data Warehouse",
+        "blurb": "yfinance's full price/dividend/split history pulled through an idempotent "
+        "ingestion job into a dbt dimensional warehouse: a fact-table family (price, "
+        "technical indicators, risk metrics) sharing conformed dimensions, plus a clearly "
+        "labeled (not financial advice) trend projection. This page queries the built "
+        "warehouse live, with a timeframe picker. Same dbt code runs on DuckDB, MotherDuck's "
+        "free tier, or Snowflake.",
+        "endpoint": "market_warehouse.index",
+        "tags": ["dbt", "DuckDB", "Star Schema", "yfinance"],
+        "icon": "assets/img/icons/market-warehouse.svg",
+    },
+    {
         "slug": "leetcode-150",
         "title": "Top Interview 150 Tracker",
         "blurb": "A personal interview-prep dashboard over LeetCode's official Top Interview "
         "150. Pick a problem, run the 20-minute timer, compare to the solution, then mark it "
-        "Yes or No -- progress is saved in the browser, no login.",
+        "Yes or No. Progress is saved in the browser, no login.",
         "endpoint": "leetcode.index",
         "tags": ["Vanilla JS", "localStorage", "No backend state"],
         "icon": "assets/img/icons/leetcode.svg",
@@ -79,7 +104,7 @@ PROJECTS = [
         "slug": "assistant",
         "title": "AI Assistant",
         "blurb": "A retrieval-grounded chatbot that answers questions about this site and its "
-        "projects, using only a curated content corpus -- RAG over a pgvector store, local "
+        "projects, using only a curated content corpus: RAG over a pgvector store, local "
         "embeddings, and Groq for generation behind a rate-limited, prompt-injection-aware "
         "public endpoint. A stats page tracks tone, volume, and top questions from the logs, "
         "with no model calls.",

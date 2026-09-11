@@ -1,0 +1,11 @@
+mic,exchange_code,exchange_name,country,timezone_name
+XNAS,NMS,Nasdaq Stock Market,United States,America/New_York
+XNAS,NGM,Nasdaq Global Market,United States,America/New_York
+XNYS,NYQ,New York Stock Exchange,United States,America/New_York
+ARCX,PCX,NYSE Arca,United States,America/New_York
+BATS,BTS,Cboe BZX Exchange,United States,America/New_York
+XASE,ASE,NYSE American,United States,America/New_York
+XLON,LSE,London Stock Exchange,United Kingdom,Europe/London
+XTKS,TYO,Tokyo Stock Exchange,Japan,Asia/Tokyo
+XTSE,TOR,Toronto Stock Exchange,Canada,America/Toronto
+XFRA,FRA,Frankfurt Stock Exchange,Germany,Europe/Berlin

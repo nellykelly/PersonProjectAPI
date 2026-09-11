@@ -1,0 +1,11 @@
+version: 2
+
+seeds:
+  - name: seed_exchange
+    description: >
+      Hand-maintained reference of the exchanges these tickers trade on
+      (MIC, display name, country, timezone). Keyed by yfinance's
+      `exchange` code. Extend as the ticker universe grows.
+    columns:
+      - name: exchange_code
+        tests: [not_null]

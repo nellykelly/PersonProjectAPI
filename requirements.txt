@@ -39,3 +39,11 @@ fakeredis>=2.20,<3.0
 groq>=0.20,<1.0          # Groq LPU chat inference + function calling, free tier
 fastembed>=0.3,<0.8      # local ONNX sentence embeddings (bge-small-en-v1.5, 384-d), no torch
 pgvector>=0.3,<0.5       # SQLAlchemy vector column type + `<=>` cosine operator on Postgres
+
+# Market Data Warehouse (app/blueprints/market_warehouse, app/services/
+# market_warehouse.py). Imported lazily -- the /projects/market-warehouse
+# page just reports "not available" without it installed, same pattern as
+# the assistant deps above. Reads the sibling market-data-warehouse/
+# project's DuckDB file read-only; also works unmodified against a
+# MotherDuck ("md:...") path.
+duckdb>=1.0,<2.0
