@@ -166,6 +166,68 @@ class Config:
         os.environ.get("JOB_TRACKER_GHOST_AFTER_WEEKS", "2.5")
     )
 
+    # Job Discovery (/job-tracker/discover) -- automated search + LLM
+    # match-scoring against Nelson's resume + site projects, feeding the
+    # same private /job-tracker section (see app/services/job_discovery.py).
+    # Adzuna's free tier (250 calls/day, https://developer.adzuna.com/).
+    # Unset ADZUNA_APP_ID/KEY -> the "Search for jobs" button fails with a
+    # clean error, same fail-soft pattern as the assistant's GROQ_API_KEY,
+    # never a stack trace.
+    ADZUNA_APP_ID = os.environ.get("ADZUNA_APP_ID", "")
+    ADZUNA_APP_KEY = os.environ.get("ADZUNA_APP_KEY", "")
+    ADZUNA_COUNTRY = os.environ.get("ADZUNA_COUNTRY", "us")
+    # Adzuna's documented free-tier ceiling: https://developer.adzuna.com/.
+    # This is the actual hard limit -- app.services.job_discovery checks
+    # real, tracked usage (see the job_discovery_runs table) against this
+    # number before every run and blocks *only* a run that would cross it,
+    # rather than an earlier, guessed-conservative throttle. The
+    # /job-tracker/discover page shows today's usage against this same
+    # number, so the limit is visible, not just silently enforced.
+    ADZUNA_DAILY_CALL_LIMIT = int(os.environ.get("ADZUNA_DAILY_CALL_LIMIT", "250"))
+    # LLM scoring calls per run -- independent of how wide the search
+    # matrix is (see job_discovery._round_robin_by_keyword): this is the
+    # only thing that bounds Groq spend, since Adzuna call volume never
+    # touches Groq at all. Each call is a live sequential Groq round-trip
+    # (several seconds apiece measured), so this also bounds request
+    # latency -- 25 has run several minutes in testing; raise with that
+    # tradeoff in mind, not just for more coverage per click.
+    JOB_DISCOVERY_MAX_NEW_PER_RUN = int(os.environ.get("JOB_DISCOVERY_MAX_NEW_PER_RUN", "25"))
+    # A deliberate gap between each sequential scoring call -- observed
+    # directly that a burst of calls with no gap can trip Groq's
+    # free-tier rate limit (a call fails, then an identical one succeeds
+    # seconds later with nothing else changed). Cheaper to pace calls
+    # proactively than to rely solely on _score_listing's retry-with-
+    # backoff to recover from tripping it every run.
+    JOB_DISCOVERY_SCORE_PACING_SECONDS = float(
+        os.environ.get("JOB_DISCOVERY_SCORE_PACING_SECONDS", "1.5")
+    )
+    # Groq's free tier turned out to enforce a *tokens-per-day* cap per
+    # model, not just a request-rate limit -- discovered directly when
+    # scoring started failing mid-testing on 2026-09-13 at 198,640/200,000
+    # on qwen/qwen3.8-27b (the GROQ_TOOL_MODEL used for scoring). This is
+    # that account's real number for that model, not a guess -- if the
+    # model or account changes, or Groq changes its limits, override this.
+    GROQ_DAILY_TOKEN_LIMIT = int(os.environ.get("GROQ_DAILY_TOKEN_LIMIT", "200000"))
+    JOB_DISCOVERY_RESULTS_PER_PAGE = int(os.environ.get("JOB_DISCOVERY_RESULTS_PER_PAGE", "20"))
+    JOB_DISCOVERY_MAX_PAGES = int(os.environ.get("JOB_DISCOVERY_MAX_PAGES", "1"))
+    # A run searches every keyword against every location (plus one more
+    # nationwide "remote" sweep per keyword) -- with the default ~13
+    # titles x 3 location targets x 1 page, that's ~39 Adzuna calls in one
+    # click, tracked and pre-flight-checked against ADZUNA_DAILY_CALL_LIMIT
+    # (see job_discovery.run_discovery). This is a second, absolute floor
+    # under that check for one single run, regardless of the daily
+    # picture -- keeps a single click from ever launching an unbounded
+    # keywords x locations x pages matrix if the settings grow a lot.
+    JOB_DISCOVERY_MAX_ADZUNA_CALLS_PER_RUN = int(
+        os.environ.get("JOB_DISCOVERY_MAX_ADZUNA_CALLS_PER_RUN", "45")
+    )
+    # A basic anti-double-click guard, not a quota mechanism -- the actual
+    # quota enforcement is the precise pre-flight check against tracked
+    # daily usage described above, so this just needs to stop a runaway
+    # client (double submit, browser back-and-resubmit), not approximate
+    # the real limit.
+    JOB_DISCOVERY_RUN_RATE_LIMIT = os.environ.get("JOB_DISCOVERY_RUN_RATE_LIMIT", "30 per hour")
+
     # ------------------------------------------------------------------
     # /family -- private household suite (app/blueprints/family)
     # ------------------------------------------------------------------

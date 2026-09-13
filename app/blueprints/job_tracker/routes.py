@@ -19,6 +19,8 @@ from urllib.parse import urlparse
 from flask import (
     abort,
     current_app,
+    flash,
+    jsonify,
     redirect,
     render_template,
     request,
@@ -29,7 +31,7 @@ from werkzeug.security import check_password_hash
 
 from app.blueprints.job_tracker import bp
 from app.extensions import limiter
-from app.services import job_tracker
+from app.services import job_discovery, job_tracker
 
 SESSION_KEY = "job_tracker_unlocked"
 
@@ -134,6 +136,7 @@ def dashboard():
         status_counts=job_tracker.status_counts(),
         statuses=job_tracker.STATUSES,
         match_label=job_tracker.match_label,
+        grade_css_class=job_tracker.grade_css_class,
         active_status=status_filter,
         search=search or "",
         sort=sort,
@@ -212,6 +215,115 @@ def delete_application(app_id: int):
     except job_tracker.JobTrackerError:
         abort(404)
     return redirect(url_for("job_tracker.dashboard"))
+
+
+@bp.route("/discover", methods=["GET"])
+def discover():
+    profile = job_discovery.get_search_profile()
+    sort = request.args.get("sort") or "-match_grade"
+    min_grade = request.args.get("min_grade") or ""
+    source = request.args.get("source") or ""
+    location = request.args.get("location") or ""
+    search = request.args.get("q") or ""
+    try:
+        min_grade_int = int(min_grade) if min_grade else None
+    except ValueError:
+        min_grade_int = None
+
+    return render_template(
+        "job_tracker/discover.html",
+        profile=profile,
+        listings=job_discovery.list_discovered(
+            status="new",
+            sort=sort,
+            min_grade=min_grade_int,
+            source=source or None,
+            location=location or None,
+            search=search or None,
+        ),
+        sources=job_discovery.list_sources(status="new"),
+        match_label=job_tracker.match_label,
+        grade_css_class=job_tracker.grade_css_class,
+        quota=job_discovery.quota_status(),
+        run=job_discovery.latest_run(),
+        sort=sort,
+        min_grade=min_grade,
+        active_source=source,
+        location_filter=location,
+        search=search,
+    )
+
+
+@bp.route("/discover/status", methods=["GET"])
+def discover_status():
+    """Polled by the /discover page's JS every couple seconds while a
+    search is running -- see discover.html. Same password gate as
+    everything else on this blueprint (via _require_unlocked); returns
+    plain JSON, no template."""
+    run = job_discovery.latest_run()
+    if run is None:
+        return jsonify({"status": "idle"})
+    return jsonify(
+        {
+            "status": run.status,
+            "phase": run.phase,
+            "progress_current": run.progress_current,
+            "progress_total": run.progress_total,
+            "adzuna_calls": run.adzuna_calls,
+            "fetched": run.fetched,
+            "new_listings": run.new_listings,
+            "scored": run.scored,
+            "truncated": run.truncated,
+            "error_message": run.error_message,
+        }
+    )
+
+
+@bp.route("/discover/settings", methods=["POST"])
+def discover_settings():
+    try:
+        job_discovery.save_search_profile(request.form)
+    except job_discovery.JobDiscoveryError as exc:
+        flash(str(exc), "error")
+    else:
+        flash("Search settings saved.", "success")
+    return redirect(url_for("job_tracker.discover"))
+
+
+@bp.route("/discover/run", methods=["POST"])
+@limiter.limit(lambda: current_app.config["JOB_DISCOVERY_RUN_RATE_LIMIT"])
+def discover_run():
+    """Kicks off a search and returns immediately -- the actual fetch/
+    score work happens on a background worker (see
+    job_discovery.start_run/execute_run), not in this request. The
+    /discover page polls discover_status() and shows live progress."""
+    try:
+        job_discovery.start_run()
+    except job_discovery.JobDiscoveryError as exc:
+        flash(str(exc), "error")
+    else:
+        flash("Search started -- see progress below.", "success")
+    return redirect(url_for("job_tracker.discover"))
+
+
+@bp.route("/discover/<int:listing_id>/dismiss", methods=["POST"])
+def discover_dismiss(listing_id: int):
+    try:
+        job_discovery.dismiss_listing(listing_id)
+    except job_discovery.JobDiscoveryError as exc:
+        flash(str(exc), "error")
+    return redirect(url_for("job_tracker.discover"))
+
+
+@bp.route("/discover/<int:listing_id>/promote", methods=["POST"])
+def discover_promote(listing_id: int):
+    try:
+        application = job_discovery.promote_listing(listing_id)
+    except job_discovery.JobDiscoveryError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("job_tracker.discover"))
+    flash(f"Added {application.company_name} — {application.role_title} to the tracker.", "success")
+    return redirect(url_for("job_tracker.edit_application", app_id=application.id))
 
 
 @bp.route("/audit", methods=["GET"])

@@ -59,6 +59,10 @@ ENUMERABLE_COLUMNS = [
     (models.JobApplication, "status", list(models.JOB_APPLICATION_STATUSES)),
     (models.JobApplicationEvent, "action", ["create", "update", "delete"]),
     (models.JobApplicationEvent, "source", ["web", "assistant", "cli"]),
+    # Job Discovery. status is the tiny fixed new/dismissed/promoted set;
+    # every other string-ish column on JobListing is db.Text (unbounded).
+    (models.JobListing, "status", list(models.JOB_LISTING_STATUSES)),
+    (models.JobDiscoveryRun, "status", list(models.JOB_DISCOVERY_RUN_STATUSES)),
     # Personal AI assistant. kind is the fixed content vocabulary; backend
     # is the small set of generation backends the orchestrator can pick;
     # the rest are the token-free heuristic classification vocabularies.

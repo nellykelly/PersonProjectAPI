@@ -19,6 +19,8 @@
     <nav class="jt-nav">
       <a href="{{ url_for('job_tracker.dashboard') }}"
          class="{{ 'is-here' if request.endpoint == 'job_tracker.dashboard' }}">Board</a>
+      <a href="{{ url_for('job_tracker.discover') }}"
+         class="{{ 'is-here' if request.endpoint and request.endpoint.startswith('job_tracker.discover') }}">Discover</a>
       <a href="{{ url_for('job_tracker.new_application') }}"
          class="{{ 'is-here' if request.endpoint == 'job_tracker.new_application' }}">Add</a>
       <a href="{{ url_for('job_tracker.audit') }}"
@@ -29,6 +31,13 @@
 </header>
 
 <main class="jt-main">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="jt-flash jt-flash--{{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
   {% block content %}{% endblock %}
 </main>
 </body>

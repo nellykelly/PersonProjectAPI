@@ -60,7 +60,7 @@ body.jt {
 /* ---- stat tiles ---- */
 .jt-stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: .9rem;
   margin-bottom: 1.5rem;
 }
@@ -161,6 +161,7 @@ body.jt {
   background: var(--surface-2);
   max-width: 12rem;
 }
+.jt-status--saved                { background: var(--surface-2); color: var(--ink-3); font-style: italic; }
 .jt-status--applied              { background: var(--surface-2); color: var(--ink-2); }
 .jt-status--phone-screen         { background: var(--accent-soft); color: var(--accent-ink); border-color: var(--accent); }
 .jt-status--technical-interview  { background: var(--accent-soft); color: var(--accent-ink); border-color: var(--accent); }
@@ -205,7 +206,59 @@ body.jt {
 .jt-src--assistant { background: var(--accent-soft); color: var(--accent-ink); }
 .jt-src--web { background: var(--good-soft); color: var(--good); }
 
+/* ---- flash messages ---- */
+.jt-flash {
+  border-radius: 4px; padding: .6rem .8rem; margin-bottom: 1rem; font-size: .88rem;
+}
+.jt-flash--success { border: 1px solid var(--good); background: var(--good-soft); color: var(--good); }
+.jt-flash--error { border: 1px solid var(--crit); background: var(--crit-soft); color: var(--crit); }
+
+/* ---- discover: search settings bar ---- */
+.jt-discover-head { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end;
+  justify-content: space-between; margin-bottom: 1.25rem; }
+.jt-settings-form { display: flex; flex-wrap: wrap; gap: .75rem; align-items: flex-end; flex: 1; }
+.jt-settings-form label { display: flex; flex-direction: column; gap: .3rem; font-size: .78rem;
+  font-weight: 600; color: var(--ink-2); }
+.jt-settings-form input[type="text"] { min-width: 14rem; }
+.jt-settings-form textarea {
+  min-width: 16rem; font-family: inherit; font-size: .85rem; color: var(--ink);
+  border: 1px solid var(--rule); border-radius: 4px; padding: .4rem .5rem; resize: vertical;
+}
+.jt-settings-form .jt-check { flex-direction: row; align-items: center; gap: .4rem; font-weight: 400; }
+
+/* ---- discover: run status / progress ---- */
+.jt-run-status:empty { display: none; }
+.jt-run-status { margin-bottom: 1.25rem; }
+.jt-run-status p { margin: .4rem 0 0; font-size: .85rem; color: var(--ink-2); }
+.jt-progress {
+  width: 100%; height: .5rem; border-radius: 999px; background: var(--surface-2);
+  overflow: hidden; border: 1px solid var(--rule);
+}
+.jt-progress-bar {
+  height: 100%; width: 100%; background: var(--accent);
+  transform: scaleX(0); transform-origin: left; transition: transform .3s ease;
+}
+.jt-run-done { color: var(--good); }
+.jt-run-error { color: var(--crit); }
+.jt-run-form { flex-shrink: 0; }
+
+/* ---- discover: quota panel ---- */
+.jt-quota {
+  font-size: .8rem; color: var(--ink-2); background: var(--surface-2);
+  border: 1px solid var(--rule); border-radius: 4px; padding: .6rem .8rem; margin-bottom: 1.25rem;
+  line-height: 1.6;
+}
+.jt-quota a { color: inherit; }
+.jt-quota-warn { color: var(--crit); font-weight: 600; }
+
+/* ---- discover: match-grade buckets (mirrors job_tracker.match_label) ---- */
+.jt-grade--strong { color: var(--good); }
+.jt-grade--good { color: var(--accent-ink); }
+.jt-grade--worth { color: var(--warn); }
+.jt-grade--reach { color: var(--ink-3); }
+
 @media (max-width: 720px) {
   .jt-stats { grid-template-columns: repeat(2, 1fr); }
   .jt-grid { grid-template-columns: 1fr; }
+  .jt-discover-head { flex-direction: column; align-items: stretch; }
 }

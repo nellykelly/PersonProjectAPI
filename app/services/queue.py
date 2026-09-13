@@ -46,7 +46,8 @@ from rq import Queue, SimpleWorker
 
 QUEUE_NAME = "pipeline_world"
 RISK_QUEUE_NAME = "risk_engine"
-QUEUE_NAMES = (QUEUE_NAME, RISK_QUEUE_NAME)
+JOB_DISCOVERY_QUEUE_NAME = "job_discovery"
+QUEUE_NAMES = (QUEUE_NAME, RISK_QUEUE_NAME, JOB_DISCOVERY_QUEUE_NAME)
 
 
 class _ThreadSafeSimpleWorker(SimpleWorker):
@@ -77,6 +78,9 @@ def init_app(app: Flask) -> None:
     app.extensions["pipeline_redis"] = connection
     app.extensions["pipeline_queue"] = Queue(QUEUE_NAME, connection=connection, is_async=is_async)
     app.extensions["risk_queue"] = Queue(RISK_QUEUE_NAME, connection=connection, is_async=is_async)
+    app.extensions["job_discovery_queue"] = Queue(
+        JOB_DISCOVERY_QUEUE_NAME, connection=connection, is_async=is_async
+    )
 
     if is_async and not redis_url:
         _start_inprocess_worker(app, connection)
@@ -104,6 +108,10 @@ def get_risk_queue() -> Queue:
     return current_app.extensions["risk_queue"]
 
 
+def get_job_discovery_queue() -> Queue:
+    return current_app.extensions["job_discovery_queue"]
+
+
 def enqueue_character_join(character_id: int):
     from app.services.pipeline import run_pipeline
 
@@ -114,3 +122,9 @@ def enqueue_risk_pricing(risk_request_id: int):
     from app.services.risk_engine import run_risk_request_job
 
     return get_risk_queue().enqueue(run_risk_request_job, risk_request_id)
+
+
+def enqueue_job_discovery_run(run_id: int):
+    from app.services.job_discovery import execute_run
+
+    return get_job_discovery_queue().enqueue(execute_run, run_id, job_timeout=600)

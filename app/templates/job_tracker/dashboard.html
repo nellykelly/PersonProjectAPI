@@ -4,6 +4,7 @@
 {% block content %}
 <div class="jt-stats">
   <div class="jt-stat"><span class="jt-stat-n">{{ stats.total }}</span><span class="jt-stat-l">Applications</span></div>
+  <div class="jt-stat"><span class="jt-stat-n">{{ stats.saved }}</span><span class="jt-stat-l">Saved</span></div>
   <div class="jt-stat"><span class="jt-stat-n">{{ stats.active_interviews }}</span><span class="jt-stat-l">Active interviews</span></div>
   <div class="jt-stat"><span class="jt-stat-n">{{ stats.offers }}</span><span class="jt-stat-l">Offers</span></div>
   <div class="jt-stat"><span class="jt-stat-n">{{ stats.response_rate }}%</span><span class="jt-stat-l">Response rate</span></div>
@@ -69,7 +70,7 @@
       <td class="jt-nowrap">{{ a.resume_version or "-" }}</td>
       <td class="jt-nowrap">
         {% if a.match_grade is not none %}
-          <span class="jt-grade" title="{{ match_label(a.match_grade) }}">{{ a.match_grade }}</span>
+          <span class="jt-grade {{ grade_css_class(a.match_grade) }}" title="{{ match_label(a.match_grade) }}">{{ a.match_grade }}</span>
         {% else %}-{% endif %}
       </td>
       <td class="jt-nowrap">

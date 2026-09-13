@@ -1,0 +1,188 @@
+{% extends "job_tracker/_layout.html" %}
+{% block title %}Discover{% endblock %}
+
+{% block content %}
+<div class="jt-discover-head">
+  <form class="jt-settings-form" method="post" action="{{ url_for('job_tracker.discover_settings') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Job titles (one per line)
+      <textarea name="keywords" rows="6" required>{{ profile.keywords }}</textarea>
+    </label>
+    <label>Locations (one per line, e.g. "Houston, TX")
+      <textarea name="locations" rows="3">{{ profile.locations or '' }}</textarea>
+    </label>
+    <label class="jt-check">
+      <input type="checkbox" name="include_remote" {{ 'checked' if profile.include_remote }}>
+      Also include nationwide remote jobs (also feeds RemoteOK)
+    </label>
+    <label>Greenhouse company watchlist (one board slug per line, e.g. "stripe")
+      <textarea name="company_boards" rows="2">{{ profile.company_boards or '' }}</textarea>
+    </label>
+    <button type="submit" class="jt-btn">Save settings</button>
+  </form>
+
+  <form class="jt-run-form" method="post" action="{{ url_for('job_tracker.discover_run') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" id="jt-run-btn" class="jt-btn jt-btn-primary"
+            {{ 'disabled' if run and run.status == 'running' }}>Search for jobs</button>
+  </form>
+</div>
+
+<div id="jt-run-status" class="jt-run-status"
+     data-status-url="{{ url_for('job_tracker.discover_status') }}"
+     data-initial-status="{{ run.status if run else 'idle' }}">
+  {% if run and run.status == 'running' %}
+    <div class="jt-progress"><div class="jt-progress-bar" style="transform: scaleX({{ (run.progress_current / run.progress_total) if run.progress_total else 0 }})"></div></div>
+    <p>{{ run.phase or 'Working...' }}{% if run.progress_total %} ({{ run.progress_current }}/{{ run.progress_total }}){% endif %}</p>
+  {% elif run and run.status == 'completed' %}
+    <p class="jt-run-done">Last run: found {{ run.fetched }}, {{ run.new_listings }} new, {{ run.scored }} scored ({{ run.adzuna_calls }} Adzuna calls).{% if run.truncated %} Stopped early to stay within the per-run Adzuna call cap.{% endif %}</p>
+  {% elif run and run.status == 'failed' %}
+    <p class="jt-run-error">Last run failed: {{ run.error_message or 'unknown error' }}</p>
+  {% endif %}
+</div>
+
+<div class="jt-quota">
+  <strong>Adzuna quota (free tier):</strong>
+  {{ quota.used_today }} / {{ quota.daily_limit }} calls used today &middot;
+  next run at current settings will use ~{{ quota.next_run_estimate }} call(s) &middot;
+  {{ quota.remaining_today }} left today.
+  {% if quota.next_run_estimate > quota.remaining_today %}
+    <span class="jt-quota-warn">Not enough budget left today for another run.</span>
+  {% endif %}
+  <br>
+  <strong>Groq tokens (free tier):</strong>
+  {{ "{:,}".format(quota.groq_used_today) }} / {{ "{:,}".format(quota.groq_daily_limit) }} used today &middot;
+  {{ "{:,}".format(quota.groq_remaining_today) }} left.
+  {% if quota.groq_remaining_today < 5000 %}
+    <span class="jt-quota-warn">Very little budget left -- scoring calls will likely fail until this resets.</span>
+  {% endif %}
+  Capped at {{ quota.max_new_per_run }} scoring calls per run regardless of search width; see
+  <a href="https://console.groq.com" target="_blank" rel="noopener">console.groq.com</a> for the authoritative number
+  if this tracked figure and Groq's own dashboard ever disagree.
+</div>
+
+{% set filters_active = min_grade or active_source or location_filter or search %}
+<form class="jt-filters" method="get" action="{{ url_for('job_tracker.discover') }}">
+  <input type="search" name="q" value="{{ search }}" placeholder="Company or role" aria-label="Search company or role">
+  <select name="source" aria-label="Filter by source">
+    <option value="">All sources</option>
+    {% for s in sources %}
+      <option value="{{ s }}" {{ 'selected' if s == active_source }}>{{ s }}</option>
+    {% endfor %}
+  </select>
+  <input type="text" name="location" value="{{ location_filter }}" placeholder="Location contains..." aria-label="Filter by location">
+  <select name="min_grade" aria-label="Minimum grade">
+    <option value="">Any grade</option>
+    <option value="90" {{ 'selected' if min_grade == '90' }}>90+ (strong match)</option>
+    <option value="75" {{ 'selected' if min_grade == '75' }}>75+ (good match)</option>
+    <option value="60" {{ 'selected' if min_grade == '60' }}>60+ (worth applying)</option>
+  </select>
+  <select name="sort" aria-label="Sort by">
+    <option value="-match_grade" {{ 'selected' if sort == '-match_grade' }}>Best match</option>
+    <option value="-date_posted" {{ 'selected' if sort == '-date_posted' }}>Newest posted</option>
+    <option value="-found_at" {{ 'selected' if sort == '-found_at' }}>Recently found</option>
+    <option value="company_name" {{ 'selected' if sort == 'company_name' }}>Company A-Z</option>
+  </select>
+  <button type="submit" class="jt-btn">Filter</button>
+  {% if filters_active %}<a class="jt-link" href="{{ url_for('job_tracker.discover') }}">Clear</a>{% endif %}
+</form>
+
+{% if not listings %}
+  <p class="jt-empty">
+    {% if filters_active %}No discovered listings match these filters.
+    {% else %}No new discovered listings. Click "Search for jobs" to run a search against the settings above.{% endif %}
+  </p>
+{% else %}
+<div class="jt-table-wrap">
+<table class="jt-table">
+  <thead>
+    <tr>
+      <th>Grade</th><th>Company</th><th>Role</th><th>Location</th>
+      <th>Posted</th><th>Source</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for l in listings %}
+    <tr>
+      <td class="jt-nowrap">
+        {% if l.match_grade is not none %}
+          <span class="jt-grade {{ grade_css_class(l.match_grade) }}" title="{{ match_label(l.match_grade) }}">{{ l.match_grade }}</span>
+        {% else %}-{% endif %}
+      </td>
+      <td><span class="jt-company">{{ l.company_name }}</span></td>
+      <td>
+        <a href="{{ l.job_posting_url }}" target="_blank" rel="noopener">{{ l.role_title }}</a>
+        {% if l.match_notes %}<span class="jt-sub">{{ l.match_notes }}</span>{% endif %}
+      </td>
+      <td>{{ l.location or "-" }}</td>
+      <td class="jt-nowrap">{{ l.date_posted.isoformat() if l.date_posted else "-" }}</td>
+      <td class="jt-nowrap"><span class="jt-src">{{ l.source }}</span></td>
+      <td class="jt-nowrap">
+        <form method="post" action="{{ url_for('job_tracker.discover_promote', listing_id=l.id) }}" style="display:inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="jt-btn jt-btn-primary">Save to Tracker</button>
+        </form>
+        <form method="post" action="{{ url_for('job_tracker.discover_dismiss', listing_id=l.id) }}" style="display:inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="jt-btn">Dismiss</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+<script>
+(function () {
+  var panel = document.getElementById('jt-run-status');
+  var runBtn = document.getElementById('jt-run-btn');
+  var statusUrl = panel.dataset.statusUrl;
+  var wasRunning = panel.dataset.initialStatus === 'running';
+
+  function render(data) {
+    if (data.status === 'running') {
+      runBtn.disabled = true;
+      var frac = data.progress_total ? (data.progress_current / data.progress_total) : 0;
+      var counts = data.progress_total ? ' (' + data.progress_current + '/' + data.progress_total + ')' : '';
+      panel.innerHTML =
+        '<div class="jt-progress"><div class="jt-progress-bar" style="transform:scaleX(' + frac + ')"></div></div>' +
+        '<p>' + (data.phase || 'Working...') + counts + '</p>';
+    } else {
+      runBtn.disabled = false;
+      if (data.status === 'completed') {
+        var note = data.truncated ? ' Stopped early to stay within the per-run Adzuna call cap.' : '';
+        panel.innerHTML = '<p class="jt-run-done">Last run: found ' + data.fetched + ', ' +
+          data.new_listings + ' new, ' + data.scored + ' scored (' + data.adzuna_calls +
+          ' Adzuna calls).' + note + '</p>';
+      } else if (data.status === 'failed') {
+        panel.innerHTML = '<p class="jt-run-error">Last run failed: ' +
+          (data.error_message || 'unknown error') + '</p>';
+      } else {
+        panel.innerHTML = '';
+      }
+    }
+  }
+
+  function poll() {
+    fetch(statusUrl, { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        render(data);
+        if (data.status === 'running') {
+          wasRunning = true;
+          setTimeout(poll, 2000);
+        } else if (wasRunning) {
+          window.location.reload(); // pick up the new rows in the table below
+        }
+      })
+      .catch(function () { setTimeout(poll, 5000); });
+  }
+
+  if (wasRunning) {
+    poll();
+  }
+})();
+</script>
+{% endblock %}

@@ -823,12 +823,19 @@ class LeetCodeProgress(db.Model):
     )
 
 
-# The application funnel, in order. "Ghosted" and "Withdrawn" are terminal
-# states that aren't "Rejected" -- a silent non-response and a
-# candidate-initiated exit read very differently in the stats. Shared
-# source of truth for the model column, the service, and the dashboard's
-# status <select>. Longest value ("Technical Interview") is 20 chars.
+# The application funnel, in order. "Saved" is a pre-application stage --
+# where a Job Discovery listing lands the moment it's promoted onto the
+# board (see app.services.job_discovery.promote_listing) -- for something
+# Nelson wants to track but hasn't actually submitted an application for
+# yet; it's excluded from summary_stats()'s application/response-rate
+# counting for exactly that reason (see job_tracker.summary_stats).
+# "Ghosted" and "Withdrawn" are terminal states that aren't "Rejected" --
+# a silent non-response and a candidate-initiated exit read very
+# differently in the stats. Shared source of truth for the model column,
+# the service, and the dashboard's status <select>. Longest value
+# ("Technical Interview") is 20 chars.
 JOB_APPLICATION_STATUSES = (
+    "Saved",
     "Applied",
     "Phone Screen",
     "Technical Interview",
@@ -967,6 +974,158 @@ class JobApplicationEvent(db.Model):
 
     def __repr__(self) -> str:  # pragma: no cover - debug aid only
         return f"<JobApplicationEvent {self.action} app={self.application_id} {self.field_name}>"
+
+
+# "new" is unscored-or-scored-but-undecided; "dismissed" means Nelson looked
+# and passed (kept, so a re-run of the same search never resurfaces it);
+# "promoted" means it became a real JobApplication row (see
+# JobListing.promoted_application_id) and drops out of the discovery table.
+JOB_LISTING_STATUSES = ("new", "dismissed", "promoted")
+
+
+class JobListing(db.Model):
+    """One row per job posting found by an automated Job Discovery search
+    run (see app/services/job_discovery.py, /job-tracker/discover) --
+    candidates, not applications. Distinct from JobApplication on purpose:
+    this table holds everything a search turned up, most of which Nelson
+    will never apply to, while JobApplication stays "things I actually
+    applied to." Promoting a listing creates a JobApplication and links
+    back via promoted_application_id; it is never converted in place.
+
+    Behind the same JOB_TRACKER_PASSWORD_HASH gate as JobApplication --
+    there is no separate access control here, the blueprint's gate covers
+    both tables.
+    """
+
+    __tablename__ = "job_listings"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    company_name = db.Column(db.Text, nullable=False)
+    role_title = db.Column(db.Text, nullable=False)
+    location = db.Column(db.Text, nullable=True)
+    # The dedup key across search runs -- a run skips any result whose URL
+    # already exists here or in job_applications (see job_discovery.py's
+    # _already_seen). Not a DB-level unique constraint: a source could
+    # legitimately repost the same URL, and the app-level check already
+    # covers the real invariant ("don't show it to Nelson twice").
+    job_posting_url = db.Column(db.Text, nullable=False, index=True)
+    date_posted = db.Column(db.Date, nullable=True)
+    salary_range = db.Column(db.Text, nullable=True)
+    # Raw posting text as the source returned it, truncated -- kept only as
+    # the grounding context re-scoring would need; never rendered raw.
+    description = db.Column(db.Text, nullable=True)
+    source = db.Column(db.Text, nullable=False)  # e.g. "Adzuna"
+
+    status = db.Column(db.String(16), nullable=False, default="new")  # JOB_LISTING_STATUSES
+
+    match_grade = db.Column(db.Integer, nullable=True)  # 0-100, see job_tracker.match_label()
+    match_notes = db.Column(db.Text, nullable=True)
+
+    promoted_application_id = db.Column(
+        db.Integer,
+        db.ForeignKey("job_applications.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    found_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+
+    def __repr__(self) -> str:  # pragma: no cover - debug aid only
+        return f"<JobListing {self.company_name!r} / {self.role_title!r} [{self.status}]>"
+
+
+class JobSearchProfile(db.Model):
+    """Singleton row (id=1, enforced in app/services/job_discovery.py, not
+    here) holding the editable search criteria for Job Discovery -- what
+    Nelson is looking for, kept in the DB rather than an env var so it can
+    be changed from the /job-tracker/discover page itself with no redeploy.
+    """
+
+    __tablename__ = "job_search_profiles"
+
+    id = db.Column(db.Integer, primary_key=True)
+    # One search title per line, e.g. "Software Engineer\nAI Engineer" --
+    # newline-separated (not comma) because several of Nelson's actual
+    # titles contain a comma of their own (e.g. "Software Engineer, AI
+    # Platform"). Each line is run as a separate Adzuna `what` search.
+    keywords = db.Column(db.Text, nullable=False, default="Software Engineer")
+    # One place per line, e.g. "Houston, TX\nSan Francisco Bay Area, CA".
+    # Every line is searched in addition to (not instead of) the others,
+    # and in addition to the nationwide remote sweep when include_remote
+    # is set -- this is a set of parallel searches, not a single filter.
+    locations = db.Column(db.Text, nullable=True)  # blank/NULL = no location-scoped search
+    # Also run every keyword against Adzuna's "remote" location trick,
+    # nationwide -- additive alongside `locations`, not exclusive with it
+    # (that's the difference from the old remote_only column it replaced).
+    include_remote = db.Column(db.Boolean, nullable=False, default=False)
+    # One Greenhouse board slug per line (the path segment in
+    # boards.greenhouse.io/<slug>), e.g. "stripe\nairbnb" -- a company
+    # watchlist, since Greenhouse's public API has no cross-company
+    # search at all, only "list this one company's jobs" (see
+    # app/services/job_sources/greenhouse.py). Blank/NULL = watch nothing.
+    company_boards = db.Column(db.Text, nullable=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+
+    def __repr__(self) -> str:  # pragma: no cover - debug aid only
+        return f"<JobSearchProfile {self.keywords!r}>"
+
+
+# JobDiscoveryRun.status. A run starts "running", written the instant the
+# background job picks it up (before any Adzuna call), so the /discover
+# page's poller has something to show within moments of the click -- and
+# ends at exactly one of the other two.
+JOB_DISCOVERY_RUN_STATUSES = ("running", "completed", "failed")
+
+
+class JobDiscoveryRun(db.Model):
+    """One row per Job Discovery search run, live-updated as it
+    progresses -- this is what makes the run non-blocking: the web
+    request that handles "Search for jobs" just enqueues the background
+    job (see app.services.queue.enqueue_job_discovery_run) and returns
+    immediately, and /job-tracker/discover polls this row (via
+    app.services.job_discovery.latest_run) to show progress and, once
+    finished, the same summary that used to come back as a flash message.
+
+    Also doubles as the record real, tracked Adzuna usage is drawn from
+    (see app.services.job_discovery.quota_status) against the account's
+    actual 250-calls/day free-tier ceiling -- `adzuna_calls` is the real
+    count adzuna.search() reports back, not an estimate, updated as soon
+    as the fetch phase finishes (before scoring, which spends no Adzuna
+    calls, even starts).
+    """
+
+    __tablename__ = "job_discovery_runs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    started_at = db.Column(db.DateTime, nullable=False, default=utcnow, index=True)
+    finished_at = db.Column(db.DateTime, nullable=True)
+    status = db.Column(db.String(16), nullable=False, default="running")  # JOB_DISCOVERY_RUN_STATUSES
+    # Human-readable current step, e.g. "Searching Adzuna" or "Scoring 4/25".
+    phase = db.Column(db.Text, nullable=True)
+    progress_current = db.Column(db.Integer, nullable=False, default=0)
+    progress_total = db.Column(db.Integer, nullable=False, default=0)
+
+    adzuna_calls = db.Column(db.Integer, nullable=False, default=0)
+    fetched = db.Column(db.Integer, nullable=False, default=0)
+    new_listings = db.Column(db.Integer, nullable=False, default=0)
+    scored = db.Column(db.Integer, nullable=False, default=0)
+    truncated = db.Column(db.Boolean, nullable=False, default=False)
+    error_message = db.Column(db.Text, nullable=True)
+    # Real Groq usage for this run's scoring calls, summed from each
+    # reply's own usage.prompt_tokens/completion_tokens (see
+    # app.services.job_discovery.quota_status) -- discovered the hard way:
+    # Groq's free tier enforces a *tokens-per-day* cap per model, not just
+    # a request-rate limit, and it's what actually stopped scoring mid-
+    # testing on 2026-09-13 (200,000 TPD on qwen/qwen3.8-27b, see
+    # GROQ_DAILY_TOKEN_LIMIT in config.py). A failed/rate-limited call
+    # contributes 0 -- Groq doesn't charge tokens for a rejected request.
+    groq_prompt_tokens = db.Column(db.Integer, nullable=False, default=0)
+    groq_completion_tokens = db.Column(db.Integer, nullable=False, default=0)
+
+    def __repr__(self) -> str:  # pragma: no cover - debug aid only
+        return f"<JobDiscoveryRun {self.started_at} [{self.status}] calls={self.adzuna_calls}>"
 
 
 # Kinds of source a content chunk can come from -- display-only grouping

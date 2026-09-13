@@ -98,6 +98,19 @@ def match_label(grade: int | None) -> str | None:
     return "Reach"
 
 
+def grade_css_class(grade: int | None) -> str:
+    """The `.jt-grade--*` class for a grade, same buckets as match_label()."""
+    if grade is None:
+        return ""
+    if grade >= 90:
+        return "jt-grade--strong"
+    if grade >= 75:
+        return "jt-grade--good"
+    if grade >= 60:
+        return "jt-grade--worth"
+    return "jt-grade--reach"
+
+
 def list_applications(
     *,
     status: str | None = None,
@@ -147,17 +160,26 @@ def get_application(app_id: int) -> JobApplication:
 
 
 def summary_stats() -> dict[str, Any]:
-    """Top-of-dashboard counters: total, active interviews, offers, and an
+    """Top-of-dashboard counters: total, active interviews, offers, an
     overall response rate (share of applications that got past "Applied"
-    without being ghosted)."""
+    without being ghosted), and a separate saved count.
+
+    "Saved" rows are pre-application (see JOB_APPLICATION_STATUSES) --
+    counting them in `total`/`response_rate` would mean the more listings
+    Nelson tracks-but-hasn't-applied-to, the worse his response rate looks
+    for no real reason, so they're pulled out into their own `saved`
+    count instead."""
     rows = JobApplication.query.all()
-    total = len(rows)
-    active = sum(1 for r in rows if r.status in JOB_APPLICATION_ACTIVE_STATUSES)
-    offers = sum(1 for r in rows if r.status == "Offer")
-    responded = sum(1 for r in rows if r.status in JOB_APPLICATION_RESPONDED_STATUSES)
+    saved = sum(1 for r in rows if r.status == "Saved")
+    applications = [r for r in rows if r.status != "Saved"]
+    total = len(applications)
+    active = sum(1 for r in applications if r.status in JOB_APPLICATION_ACTIVE_STATUSES)
+    offers = sum(1 for r in applications if r.status == "Offer")
+    responded = sum(1 for r in applications if r.status in JOB_APPLICATION_RESPONDED_STATUSES)
     response_rate = round(responded / total * 100) if total else 0
     return {
         "total": total,
+        "saved": saved,
         "active_interviews": active,
         "offers": offers,
         "responded": responded,
