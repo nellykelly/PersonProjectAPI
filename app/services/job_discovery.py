@@ -14,10 +14,15 @@ to job_applications directly except through that one call, so a promoted
 listing gets the exact same audit trail as a manually-added application.
 
 Same access model as job_tracker.py: nothing here does access control: the
-/job-tracker blueprint's password gate covers this table too. Scoring uses
-whatever ASSISTANT_LLM_BACKEND the assistant is configured with (see
-app/services/assistant/backends.py) -- "fake" in tests, "groq" in real use
--- so there's no second LLM integration to configure separately.
+/job-tracker blueprint's password gate covers this table too. Scoring
+rides the same "fake" backend in tests as the assistant (see
+app/services/assistant/backends.py), but in real use talks to Groq
+through its *own* dedicated key/model when JOB_DISCOVERY_GROQ_API_KEY is
+set (see _build_scoring_backend) -- Groq's daily token cap turned out to
+be scoped to an account + model, not per feature, so sharing a key with
+the public /assistant chat meant Job Discovery silently competed with
+live site traffic for the same budget. Falls back to the assistant's own
+GROQ_API_KEY/GROQ_TOOL_MODEL when no dedicated key is configured.
 """
 from __future__ import annotations
 
@@ -32,7 +37,7 @@ from flask import current_app
 from app.extensions import db
 from app.models import JobApplication, JobDiscoveryRun, JobListing, JobSearchProfile, utcnow
 from app.services import job_tracker
-from app.services.assistant.backends import build_backend
+from app.services.assistant.backends import GroqBackend, build_backend
 from app.services.assistant.errors import AssistantUnavailable
 from app.services.job_sources import adzuna, greenhouse, remoteok
 
@@ -220,6 +225,37 @@ _SCORE_SYSTEM_PROMPT = (
 )
 
 
+_scoring_backend_cache: dict[tuple[str, str], GroqBackend] = {}
+
+
+def _build_scoring_backend():
+    """The backend scoring calls actually use. Non-groq backends
+    (fake/scripted, used in tests) go through the assistant's own
+    build_backend() unchanged -- there's nothing to isolate when nothing
+    real is being spent. In real use, prefers JOB_DISCOVERY_GROQ_API_KEY
+    (a key/model dedicated to scoring, kept out of build_backend()'s own
+    cache on purpose: that cache is keyed by model name only, and would
+    return the *assistant's* client for a request that named the same
+    model string under a different key) over the assistant's shared
+    GROQ_API_KEY/GROQ_TOOL_MODEL."""
+    config = current_app.config
+    if config["ASSISTANT_LLM_BACKEND"] != "groq":
+        return build_backend(config, for_tools=True)
+
+    api_key = config.get("JOB_DISCOVERY_GROQ_API_KEY") or config.get("GROQ_API_KEY") or ""
+    if not api_key:
+        raise AssistantUnavailable("GROQ_API_KEY is not configured")
+    model = (
+        config.get("JOB_DISCOVERY_GROQ_MODEL")
+        or config.get("GROQ_TOOL_MODEL")
+        or config["GROQ_MODEL"]
+    )
+    cache_key = (api_key, model)
+    if cache_key not in _scoring_backend_cache:
+        _scoring_backend_cache[cache_key] = GroqBackend(api_key, model)
+    return _scoring_backend_cache[cache_key]
+
+
 def _score_listing(
     profile_text: str, listing: dict[str, Any]
 ) -> tuple[int | None, str, int, int]:
@@ -238,7 +274,7 @@ def _score_listing(
         {"role": "user", "content": user_prompt},
     ]
 
-    backend = build_backend(current_app.config, for_tools=True)
+    backend = _build_scoring_backend()
     reply = None
     last_exc: AssistantUnavailable | None = None
     # A short retry-with-backoff -- cheap insurance against a genuine

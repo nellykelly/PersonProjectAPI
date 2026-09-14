@@ -208,6 +208,33 @@ class Config:
     # that account's real number for that model, not a guess -- if the
     # model or account changes, or Groq changes its limits, override this.
     GROQ_DAILY_TOKEN_LIMIT = int(os.environ.get("GROQ_DAILY_TOKEN_LIMIT", "200000"))
+    # A dedicated Groq API key for scoring only, separate from GROQ_API_KEY
+    # (the public /assistant chat) and GROQ_TOOL_MODEL (Hera's owner
+    # job-tracker tool-calls) -- Groq's daily token cap is scoped to an
+    # organization + model, not per deployment or per feature, so sharing
+    # a key meant Job Discovery competed with live site chat traffic (and,
+    # that first day, with dev-side testing) for the same 200k/day budget.
+    # See app.services.job_discovery._build_scoring_backend, which uses
+    # this key directly (bypassing the assistant's shared build_backend())
+    # whenever it's set. Empty -> falls back to GROQ_API_KEY, same
+    # fail-soft pattern as everything else here (and how this ran before
+    # a dedicated key existed).
+    JOB_DISCOVERY_GROQ_API_KEY = os.environ.get("JOB_DISCOVERY_GROQ_API_KEY", "")
+    # Deliberately NOT qwen/qwen3.8-27b: a second key on the *same* Groq
+    # account doesn't help (confirmed directly -- the 429 still names the
+    # same organization id regardless of which key made the request), but
+    # the token cap is scoped to organization + model, so a different
+    # model gets its own separate, currently-untouched daily pool on the
+    # same account. This is what actually fixes the shared-budget problem.
+    # llama-3.3-70b-versatile (this app's other documented fallback, see
+    # GROQ_TOOL_MODEL) turned out to be retired from Groq's catalog --
+    # 404s outright. openai/gpt-oss-120b is confirmed live on this account
+    # via client.models.list(), and confirmed to score well against the
+    # rubric in _SCORING_GUIDANCE (correctly dropped an 8-year-bar
+    # "Senior" posting to 32, a Product Manager posting to 35, while
+    # scoring genuine fits 92-94) -- check that list again if this 404s
+    # later, Groq's catalog moves fast.
+    JOB_DISCOVERY_GROQ_MODEL = os.environ.get("JOB_DISCOVERY_GROQ_MODEL", "openai/gpt-oss-120b")
     JOB_DISCOVERY_RESULTS_PER_PAGE = int(os.environ.get("JOB_DISCOVERY_RESULTS_PER_PAGE", "20"))
     JOB_DISCOVERY_MAX_PAGES = int(os.environ.get("JOB_DISCOVERY_MAX_PAGES", "1"))
     # A run searches every keyword against every location (plus one more
