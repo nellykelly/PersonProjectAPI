@@ -254,6 +254,28 @@ class Config:
     # client (double submit, browser back-and-resubmit), not approximate
     # the real limit.
     JOB_DISCOVERY_RUN_RATE_LIMIT = os.environ.get("JOB_DISCOVERY_RUN_RATE_LIMIT", "30 per hour")
+    # `flask job-tracker rescore` (see job_discovery.rescore_pending_listings)
+    # retries any listing still at match_grade=NULL -- almost always
+    # because Groq's daily quota was already spent when execute_run first
+    # tried to score it. Nothing runs this automatically; wire it to cron,
+    # e.g. hourly, same as JOB_TRACKER_GHOST_AFTER_WEEKS's sweep command.
+    JOB_DISCOVERY_MAX_SCORE_ATTEMPTS = int(os.environ.get("JOB_DISCOVERY_MAX_SCORE_ATTEMPTS", "5"))
+    JOB_DISCOVERY_RESCORE_BATCH_SIZE = int(os.environ.get("JOB_DISCOVERY_RESCORE_BATCH_SIZE", "20"))
+    # A listing whose cheap keyword pre-score (see job_discovery
+    # ._keyword_prescore) lands below this never reaches the LLM at all --
+    # it's stored with that heuristic score as its match_grade instead,
+    # clearly labeled (graded_by="keyword") so it's never confused with a
+    # real judgement. Lower this to send more postings to the LLM (higher
+    # quality, more quota spent); raise it to filter harder (less quota,
+    # more risk of a real fit getting keyword-filtered out).
+    JOB_DISCOVERY_KEYWORD_PRESCORE_THRESHOLD = int(
+        os.environ.get("JOB_DISCOVERY_KEYWORD_PRESCORE_THRESHOLD", "25")
+    )
+    # Remotive's own API response states this explicitly ("we advise max.
+    # 4 times a day... excessive requests will be blocked") -- a real,
+    # provider-stated ceiling, not a guess. See
+    # job_discovery._today_remotive_calls() / JobDiscoveryRun.remotive_calls.
+    REMOTIVE_DAILY_CALL_LIMIT = int(os.environ.get("REMOTIVE_DAILY_CALL_LIMIT", "4"))
 
     # ------------------------------------------------------------------
     # /family -- private household suite (app/blueprints/family)

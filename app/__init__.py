@@ -384,6 +384,58 @@ def _register_cli(app: Flask) -> None:
         for a in moved:
             click.echo(f"  - {a.company_name} - {a.role_title}")
 
+    @job_tracker_cli.command("rescore")
+    @click.option(
+        "--limit",
+        type=int,
+        default=None,
+        help="Override JOB_DISCOVERY_RESCORE_BATCH_SIZE for this run.",
+    )
+    @click.option(
+        "--dry-run", is_flag=True, help="Show what would be retried without spending any Groq quota."
+    )
+    def job_tracker_rescore(limit: int | None, dry_run: bool) -> None:
+        """Retry scoring for Job Discovery listings still at match_grade=NULL.
+
+        Almost always means Groq's daily token quota was already exhausted
+        when execute_run first tried to score them. Nothing runs this
+        automatically -- wire it to cron, e.g. hourly:
+            docker compose exec web flask job-tracker rescore
+        """
+        from app.models import JobListing
+        from app.services import job_discovery
+
+        if dry_run:
+            max_attempts = app.config["JOB_DISCOVERY_MAX_SCORE_ATTEMPTS"]
+            batch_limit = limit if limit is not None else app.config["JOB_DISCOVERY_RESCORE_BATCH_SIZE"]
+            pending = (
+                JobListing.query.filter(
+                    JobListing.match_grade.is_(None), JobListing.score_attempts < max_attempts
+                )
+                .order_by(JobListing.found_at.asc())
+                .limit(batch_limit)
+                .all()
+            )
+            if not pending:
+                click.echo("Nothing pending rescore.")
+                return
+            click.echo(f"Would retry {len(pending)} listing(s):")
+            for listing in pending:
+                click.echo(
+                    f"  - {listing.company_name} - {listing.role_title} "
+                    f"(attempt {listing.score_attempts + 1}/{max_attempts})"
+                )
+            return
+
+        run = job_discovery.rescore_pending_listings(limit=limit)
+        if run is None:
+            click.echo("Nothing to do -- either no listings are pending, or today's Groq quota is spent.")
+            return
+        click.echo(
+            f"Rescored {run.scored}/{run.progress_total} listing(s) "
+            f"({run.groq_prompt_tokens + run.groq_completion_tokens} tokens spent)."
+        )
+
     @app.cli.group("family")
     def family_cli() -> None:
         """Private /family suite maintenance."""

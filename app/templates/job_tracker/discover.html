@@ -18,6 +18,15 @@
     <label>Greenhouse company watchlist (one board slug per line, e.g. "stripe")
       <textarea name="company_boards" rows="2">{{ profile.company_boards or '' }}</textarea>
     </label>
+    <label>Lever company watchlist (one company slug per line, e.g. "palantir")
+      <textarea name="lever_boards" rows="2">{{ profile.lever_boards or '' }}</textarea>
+    </label>
+    <label>Ashby company watchlist (one job-board slug per line, e.g. "notion")
+      <textarea name="ashby_boards" rows="2">{{ profile.ashby_boards or '' }}</textarea>
+    </label>
+    <label>Workable company watchlist (one account slug per line, e.g. "acme")
+      <textarea name="workable_boards" rows="2">{{ profile.workable_boards or '' }}</textarea>
+    </label>
     <button type="submit" class="jt-btn">Save settings</button>
   </form>
 
@@ -59,6 +68,13 @@
   Capped at {{ quota.max_new_per_run }} scoring calls per run regardless of search width; see
   <a href="https://console.groq.com" target="_blank" rel="noopener">console.groq.com</a> for the authoritative number
   if this tracked figure and Groq's own dashboard ever disagree.
+  <br>
+  <strong>Remotive calls (their own stated limit):</strong>
+  {{ quota.remotive_used_today }} / {{ quota.remotive_daily_limit }} used today &middot;
+  {{ quota.remotive_remaining_today }} left.
+  {% if quota.remotive_remaining_today == 0 %}
+    <span class="jt-quota-warn">Today's Remotive budget is spent -- skipped automatically until this resets.</span>
+  {% endif %}
 </div>
 
 {% set filters_active = min_grade or active_source or location_filter or search %}

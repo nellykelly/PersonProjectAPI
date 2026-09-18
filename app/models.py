@@ -1021,6 +1021,21 @@ class JobListing(db.Model):
 
     match_grade = db.Column(db.Integer, nullable=True)  # 0-100, see job_tracker.match_label()
     match_notes = db.Column(db.Text, nullable=True)
+    # How many times this listing has been sent to the scorer -- match_grade
+    # stays NULL after a failed attempt (most often Groq's daily quota
+    # exhausted mid-run), and `flask job-tracker rescore` retries anything
+    # still NULL up to JOB_DISCOVERY_MAX_SCORE_ATTEMPTS times, so a listing
+    # eventually gets graded once quota frees up instead of sitting
+    # unscored forever. See app.services.job_discovery.rescore_pending_listings.
+    score_attempts = db.Column(db.Integer, nullable=False, default=0)
+    # 'llm' or 'keyword' once match_grade is set -- NULL while still
+    # ungraded. A keyword pre-score is a cheap, free heuristic standing in
+    # for a real LLM grade on postings that look like an obvious miss, so
+    # the same daily Groq quota covers more of a run's pool -- this column
+    # is what keeps that cheaper signal from being silently indistinguishable
+    # from a real LLM judgement anywhere match_grade is shown or queried.
+    # See app.services.job_discovery._keyword_prescore.
+    graded_by = db.Column(db.String(16), nullable=True)
 
     promoted_application_id = db.Column(
         db.Integer,
@@ -1066,6 +1081,21 @@ class JobSearchProfile(db.Model):
     # search at all, only "list this one company's jobs" (see
     # app/services/job_sources/greenhouse.py). Blank/NULL = watch nothing.
     company_boards = db.Column(db.Text, nullable=True)
+    # One Lever company slug per line (the path segment in
+    # jobs.lever.co/<slug>), e.g. "palantir" -- same watchlist idea as
+    # company_boards, for Lever's API instead of Greenhouse's (see
+    # app/services/job_sources/lever.py). Blank/NULL = watch nothing.
+    lever_boards = db.Column(db.Text, nullable=True)
+    # One Ashby job-board slug per line (the path segment in
+    # jobs.ashbyhq.com/<slug>), e.g. "notion" -- same watchlist idea, for
+    # Ashby's API (see app/services/job_sources/ashby.py). Blank/NULL =
+    # watch nothing.
+    ashby_boards = db.Column(db.Text, nullable=True)
+    # One Workable account slug per line (the path segment in
+    # apply.workable.com/<slug>) -- same watchlist idea, for Workable's
+    # API (see app/services/job_sources/workable.py). Blank/NULL = watch
+    # nothing.
+    workable_boards = db.Column(db.Text, nullable=True)
     updated_at = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)
 
     def __repr__(self) -> str:  # pragma: no cover - debug aid only
@@ -1108,6 +1138,13 @@ class JobDiscoveryRun(db.Model):
     progress_total = db.Column(db.Integer, nullable=False, default=0)
 
     adzuna_calls = db.Column(db.Integer, nullable=False, default=0)
+    # Remotive's own API response embeds a real, enforced usage limit
+    # ("we advise max. 4 times a day"), unlike every other source here --
+    # this is what job_discovery._today_remotive_calls() sums to
+    # pre-flight-check against REMOTIVE_DAILY_CALL_LIMIT before ever
+    # calling remotive.search(), same idea as adzuna_calls above but for
+    # a real, provider-stated ceiling instead of a paid-tier budget.
+    remotive_calls = db.Column(db.Integer, nullable=False, default=0)
     fetched = db.Column(db.Integer, nullable=False, default=0)
     new_listings = db.Column(db.Integer, nullable=False, default=0)
     scored = db.Column(db.Integer, nullable=False, default=0)

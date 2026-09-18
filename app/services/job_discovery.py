@@ -1,9 +1,10 @@
 """Job Discovery: automated search + LLM match-scoring behind
 /job-tracker/discover (see app/blueprints/job_tracker/routes.py).
 
-A search run pulls listings from every configured source (Adzuna,
-RemoteOK, and a Greenhouse company watchlist -- see
-app/services/job_sources/), merges them into one pool, skips anything
+A search run pulls listings from every configured source (Adzuna;
+RemoteOK/Arbeitnow/Remotive, remote-only aggregators; and Greenhouse/
+Lever/Ashby/Workable company watchlists -- see app/services/job_sources/),
+merges them into one pool, skips anything
 already seen (by job_posting_url, against both JobListing and the real
 JobApplication tracker), scores each new one against Nelson's resume *and*
 this site's own project list via an LLM, and stores the result as a
@@ -39,7 +40,7 @@ from app.models import JobApplication, JobDiscoveryRun, JobListing, JobSearchPro
 from app.services import job_tracker
 from app.services.assistant.backends import GroqBackend, build_backend
 from app.services.assistant.errors import AssistantUnavailable
-from app.services.job_sources import adzuna, greenhouse, remoteok
+from app.services.job_sources import adzuna, arbeitnow, ashby, greenhouse, lever, remoteok, remotive, workable
 
 STATUSES = ("new", "dismissed", "promoted")
 
@@ -115,6 +116,9 @@ def save_search_profile(data: dict[str, Any]) -> JobSearchProfile:
         "1", "true", "on", "yes",
     }
     profile.company_boards = "\n".join(_split_lines(data.get("company_boards"))) or None
+    profile.lever_boards = "\n".join(_split_lines(data.get("lever_boards"))) or None
+    profile.ashby_boards = "\n".join(_split_lines(data.get("ashby_boards"))) or None
+    profile.workable_boards = "\n".join(_split_lines(data.get("workable_boards"))) or None
     db.session.commit()
     return profile
 
@@ -223,6 +227,43 @@ _SCORE_SYSTEM_PROMPT = (
     'the strongest match and the biggest gap>"}. 100 = ideal match, 0 = no realistic fit.\n\n'
     + _SCORING_GUIDANCE
 )
+
+
+# A cheap, free stand-in for a real LLM grade -- catches only the extremes
+# _SCORING_GUIDANCE already describes in plain language (an obvious strong
+# fit, or an obvious hard pass), so the LLM's real judgement is reserved
+# for postings in between, which is most of them. Deliberately the same
+# personalized signal as _SCORING_GUIDANCE above, not a generic keyword
+# list -- tune these directly, same as that guidance, if the candidate's
+# real skill set or calibration changes. See _keyword_prescore.
+_STRONG_FIT_TERMS = (
+    "python", "backend", "back-end", "back end",
+    "ai engineer", "agentic", "ai automation", "ai platform",
+    "analytics engineer", "dbt", "data engineer",
+    "full stack", "full-stack", "flask", "django",
+)
+_HARD_SCOREDOWN_TERMS = (
+    "entry level", "entry-level", "new grad", "new-grad", "junior",
+    "engineering manager", "product manager",
+    "pytorch", "tensorflow", "research scientist",
+    "kubernetes", "terraform",
+    "vue", "angular",
+)
+
+
+def _keyword_prescore(title: str, description: str) -> int:
+    """0-100, no LLM call: +8 per strong-fit term found, -15 per
+    hard-score-down term found, off a neutral 50 baseline. Deliberately
+    blunt -- this exists only to triage which listings are worth spending
+    a real LLM call on, not to replace one; _score_listing's nuanced,
+    calibrated judgement (seniority band, domain fit, near-title
+    mismatches) is not something a keyword match can reproduce, which is
+    exactly why anything not clearly filtered by this still goes to the
+    LLM."""
+    text = f"{title} {description}".lower()
+    strong_hits = sum(1 for term in _STRONG_FIT_TERMS if term in text)
+    harsh_hits = sum(1 for term in _HARD_SCOREDOWN_TERMS if term in text)
+    return max(0, min(100, 50 + strong_hits * 8 - harsh_hits * 15))
 
 
 _scoring_backend_cache: dict[tuple[str, str], GroqBackend] = {}
@@ -386,6 +427,23 @@ def _today_adzuna_calls() -> int:
     return int(total or 0)
 
 
+def _today_remotive_calls() -> int:
+    """Real, tracked Remotive call count since midnight UTC. Backs the
+    pre-flight check in execute_run against REMOTIVE_DAILY_CALL_LIMIT --
+    Remotive's own API response states a real usage ceiling ("max. 4
+    times a day"), unlike every other source here, which is honored by
+    never calling remotive.search() once this is already at the limit."""
+    midnight_utc = datetime.now(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0, tzinfo=None
+    )
+    total = (
+        db.session.query(db.func.coalesce(db.func.sum(JobDiscoveryRun.remotive_calls), 0))
+        .filter(JobDiscoveryRun.started_at >= midnight_utc)
+        .scalar()
+    )
+    return int(total or 0)
+
+
 def _today_groq_tokens() -> int:
     """Real, tracked Groq token usage (prompt + completion, summed across
     every scoring call) since midnight UTC. Discovered directly on
@@ -422,6 +480,9 @@ def quota_status() -> dict[str, int]:
 
     groq_used_today = _today_groq_tokens()
     groq_limit = current_app.config.get("GROQ_DAILY_TOKEN_LIMIT", 200000)
+
+    remotive_used_today = _today_remotive_calls()
+    remotive_limit = current_app.config.get("REMOTIVE_DAILY_CALL_LIMIT", 4)
     return {
         "used_today": used_today,
         "daily_limit": limit,
@@ -431,6 +492,9 @@ def quota_status() -> dict[str, int]:
         "groq_used_today": groq_used_today,
         "groq_daily_limit": groq_limit,
         "groq_remaining_today": max(0, groq_limit - groq_used_today),
+        "remotive_used_today": remotive_used_today,
+        "remotive_daily_limit": remotive_limit,
+        "remotive_remaining_today": max(0, remotive_limit - remotive_used_today),
     }
 
 
@@ -540,13 +604,32 @@ def execute_run(run_id: int) -> None:
         run.truncated = truncated
         db.session.commit()
 
-        # RemoteOK and a Greenhouse watchlist are best-effort extras: each
+        # RemoteOK and the company watchlists are best-effort extras: each
         # module already swallows its own request failures and returns []
         # rather than raising, so one flaky extra source never fails a run
         # that Adzuna itself succeeded on.
         run.phase = "Searching RemoteOK"
         db.session.commit()
         remoteok_listings = remoteok.search(keywords=keywords, include_remote=profile.include_remote)
+
+        run.phase = "Searching Arbeitnow"
+        db.session.commit()
+        arbeitnow_listings = arbeitnow.search(keywords=keywords, include_remote=profile.include_remote)
+
+        remotive_listings: list[dict] = []
+        remotive_calls_made = 0
+        if profile.include_remote:
+            remotive_limit = current_app.config.get("REMOTIVE_DAILY_CALL_LIMIT", 4)
+            if _today_remotive_calls() < remotive_limit:
+                run.phase = "Searching Remotive"
+                db.session.commit()
+                remotive_listings = remotive.search(keywords=keywords)
+                remotive_calls_made = 1
+            # else: today's Remotive budget is already spent -- silently
+            # skip rather than fail the run; RemoteOK/Arbeitnow already
+            # cover the same "remote" ground for this run.
+        run.remotive_calls = remotive_calls_made
+        db.session.commit()
 
         company_boards = _split_lines(profile.company_boards)
         greenhouse_listings = []
@@ -555,7 +638,37 @@ def execute_run(run_id: int) -> None:
             db.session.commit()
             greenhouse_listings = greenhouse.search(board_slugs=company_boards, keywords=keywords)
 
-        raw_listings = adzuna_listings + remoteok_listings + greenhouse_listings
+        lever_boards = _split_lines(profile.lever_boards)
+        lever_listings = []
+        if lever_boards:
+            run.phase = "Searching Lever watchlist"
+            db.session.commit()
+            lever_listings = lever.search(company_slugs=lever_boards, keywords=keywords)
+
+        ashby_boards = _split_lines(profile.ashby_boards)
+        ashby_listings = []
+        if ashby_boards:
+            run.phase = "Searching Ashby watchlist"
+            db.session.commit()
+            ashby_listings = ashby.search(company_slugs=ashby_boards, keywords=keywords)
+
+        workable_boards = _split_lines(profile.workable_boards)
+        workable_listings = []
+        if workable_boards:
+            run.phase = "Searching Workable watchlist"
+            db.session.commit()
+            workable_listings = workable.search(account_slugs=workable_boards, keywords=keywords)
+
+        raw_listings = (
+            adzuna_listings
+            + remoteok_listings
+            + arbeitnow_listings
+            + remotive_listings
+            + greenhouse_listings
+            + lever_listings
+            + ashby_listings
+            + workable_listings
+        )
         run.fetched = len(raw_listings)
         db.session.commit()
 
@@ -583,6 +696,7 @@ def execute_run(run_id: int) -> None:
 
         candidate_profile = build_candidate_profile() if capped else ""
         scored_count = 0
+        prescore_threshold = current_app.config.get("JOB_DISCOVERY_KEYWORD_PRESCORE_THRESHOLD", 25)
         # One commit per listing, not one at the end: scoring is a
         # sequential LLM call per listing (the slow part, seconds each).
         # Committing as each one finishes means a crashed/killed worker
@@ -590,9 +704,28 @@ def execute_run(run_id: int) -> None:
         # whole batch's API/LLM spend -- and lets the poller see real
         # incremental progress.
         for i, listing in enumerate(capped, start=1):
-            grade, notes, prompt_tokens, completion_tokens = _score_listing(
-                candidate_profile, listing
-            )
+            prescore = _keyword_prescore(listing["role_title"], listing.get("description") or "")
+            if prescore < prescore_threshold:
+                # An obvious keyword-level miss -- never reaches the LLM at
+                # all, so it costs zero quota. score_attempts stays 0 (not
+                # "attempted and failed"), and match_grade is set (not
+                # NULL), so rescore_pending_listings correctly leaves this
+                # alone rather than spending a real LLM call re-deciding
+                # something already filtered on purpose.
+                grade, notes, prompt_tokens, completion_tokens, graded_by = (
+                    prescore,
+                    f"Keyword pre-score only ({prescore}/100) -- looks like a weak fit by "
+                    "keyword signal alone, so this wasn't sent to the LLM to save quota. "
+                    "Promote it yourself if you think this filtered wrong.",
+                    0,
+                    0,
+                    "keyword",
+                )
+            else:
+                grade, notes, prompt_tokens, completion_tokens = _score_listing(
+                    candidate_profile, listing
+                )
+                graded_by = "llm" if grade is not None else None
             if grade is not None:
                 scored_count += 1
             run.groq_prompt_tokens += prompt_tokens
@@ -610,6 +743,8 @@ def execute_run(run_id: int) -> None:
                     status="new",
                     match_grade=grade,
                     match_notes=notes,
+                    graded_by=graded_by,
+                    score_attempts=1 if graded_by != "keyword" else 0,
                     found_at=utcnow(),
                 )
             )
@@ -622,9 +757,10 @@ def execute_run(run_id: int) -> None:
             # is cheaper than tripping Groq's free-tier rate limit and
             # recovering from it on every single one. Skipped under
             # TESTING (the fake backend never rate-limits, so it would
-            # only slow the suite down for nothing).
+            # only slow the suite down for nothing). A keyword-only grade
+            # made no LLM call at all, so there's nothing to pace.
             pacing = current_app.config.get("JOB_DISCOVERY_SCORE_PACING_SECONDS", 1.5)
-            if pacing and i < len(capped) and not current_app.config.get("TESTING"):
+            if graded_by != "keyword" and pacing and i < len(capped) and not current_app.config.get("TESTING"):
                 time.sleep(pacing)
 
         run.status = "completed"
@@ -637,6 +773,99 @@ def execute_run(run_id: int) -> None:
         run.error_message = str(exc)
         run.finished_at = utcnow()
         db.session.commit()
+
+
+# --------------------------------------------------------------------------
+# rescoring listings that failed to score the first time
+# --------------------------------------------------------------------------
+
+
+def rescore_pending_listings(*, limit: int | None = None) -> JobDiscoveryRun | None:
+    """Retries scoring for every listing still sitting at match_grade=NULL
+    -- almost always because Groq's daily token quota was already
+    exhausted when execute_run tried to score it (see _score_listing's own
+    retry-with-backoff, which only covers a transient blip, not an
+    actually-exhausted daily cap). Nothing calls this automatically; wire
+    `flask job-tracker rescore` to cron (e.g. hourly) so a listing that
+    failed to score eventually does, once quota frees up, instead of
+    sitting ungraded forever.
+
+    Capped two ways: JOB_DISCOVERY_MAX_SCORE_ATTEMPTS per listing (a
+    listing whose response is systematically unparseable shouldn't burn
+    quota being retried forever) and `limit` (or
+    JOB_DISCOVERY_RESCORE_BATCH_SIZE) per call, so one cron tick can't try
+    to rescore an unbounded backlog in one go.
+
+    Returns None (does nothing, creates no run row) when today's Groq
+    budget is already known to be spent -- every attempt would just fail
+    after paying _score_listing's full retry-with-backoff delay for
+    nothing, and an empty "Rescoring" run row every time cron fires while
+    quota is exhausted would just be noise in the run history."""
+    if quota_status()["groq_remaining_today"] <= 0:
+        return None
+
+    max_attempts = current_app.config.get("JOB_DISCOVERY_MAX_SCORE_ATTEMPTS", 5)
+    batch_limit = limit if limit is not None else current_app.config.get(
+        "JOB_DISCOVERY_RESCORE_BATCH_SIZE", 20
+    )
+    pending = (
+        JobListing.query.filter(
+            JobListing.match_grade.is_(None), JobListing.score_attempts < max_attempts
+        )
+        .order_by(JobListing.found_at.asc())
+        .limit(batch_limit)
+        .all()
+    )
+    if not pending:
+        return None
+
+    run = JobDiscoveryRun(status="running", phase=f"Rescoring 0/{len(pending)}")
+    db.session.add(run)
+    run.progress_total = len(pending)
+    db.session.commit()
+
+    try:
+        candidate_profile = build_candidate_profile()
+        rescored = 0
+        for i, listing in enumerate(pending, start=1):
+            listing_dict = {
+                "company_name": listing.company_name,
+                "role_title": listing.role_title,
+                "location": listing.location,
+                "description": listing.description,
+            }
+            grade, notes, prompt_tokens, completion_tokens = _score_listing(
+                candidate_profile, listing_dict
+            )
+            listing.score_attempts += 1
+            listing.match_notes = notes
+            if grade is not None:
+                listing.match_grade = grade
+                listing.graded_by = "llm"
+                rescored += 1
+            run.groq_prompt_tokens += prompt_tokens
+            run.groq_completion_tokens += completion_tokens
+            run.progress_current = i
+            run.scored = rescored
+            run.phase = f"Rescoring {i}/{len(pending)}"
+            db.session.commit()
+
+            pacing = current_app.config.get("JOB_DISCOVERY_SCORE_PACING_SECONDS", 1.5)
+            if pacing and i < len(pending) and not current_app.config.get("TESTING"):
+                time.sleep(pacing)
+
+        run.status = "completed"
+        run.finished_at = utcnow()
+        db.session.commit()
+        return run
+
+    except Exception as exc:  # noqa: BLE001 - a cron job; must never crash silently
+        db.session.rollback()
+        run.status = "failed"
+        run.error_message = str(exc)
+        run.finished_at = utcnow()
+        db.session.commit()
+        return run
 
 
 # --------------------------------------------------------------------------
