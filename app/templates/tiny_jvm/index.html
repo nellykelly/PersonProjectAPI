@@ -12,9 +12,10 @@
     </p>
 
     <div class="disclaimer-banner">
-        The interactive demo isn't wired up yet. This page is the concept, the architecture,
-        and the instruction set the VM will run. The full build plan lives in
-        <code>docs/build-spec-tiny-jvm.md</code>.
+        The demo below runs a real WebAssembly build of the C interpreter (compiled from
+        the exact same <code>vm.c</code> a microcontroller build would use). Not yet wired
+        up: the Wokwi firmware view, and free-form editing (the three samples are
+        precompiled -- see <code>docs/build-spec-tiny-jvm.md</code>).
     </div>
 
     <h2>The idea</h2>
@@ -70,10 +71,49 @@
         </table>
     </div>
 
-    <h2>Sample programs</h2>
+    <h2>Try it</h2>
     <p class="muted">
-        Written in the project's own language. The demo will let you pick one, compile it in
-        the browser, and step the VM one instruction at a time with the stack visible.
+        Pick a sample (already compiled to bytecode -- <code>tlc</code> runs server-side
+        during the build, not in your browser) and step the VM one instruction at a time,
+        watching the value stack, locals, and console update live.
+    </p>
+    <div class="tjvm-controls">
+        <select id="tjvm-picker">
+            <option value="fib">Fibonacci</option>
+            <option value="factorial">Factorial (recursive)</option>
+            <option value="thermostat">Over-temp alarm</option>
+        </select>
+        <button type="button" class="button small" id="tjvm-step-btn">Step</button>
+        <button type="button" class="button small" id="tjvm-run-btn">Run</button>
+        <button type="button" class="button small" id="tjvm-reset-btn">Reset</button>
+    </div>
+    <div class="stat-grid">
+        <div class="stat-tile"><div class="value mono" id="tjvm-status">-</div><div class="label">Status</div></div>
+        <div class="stat-tile"><div class="value mono" id="tjvm-ip">-</div><div class="label">Instruction pointer</div></div>
+    </div>
+    <div class="table-wrapper">
+        <p class="tjvm-panel-label">Value stack</p>
+        <p class="mono" id="tjvm-stack">-</p>
+        <p class="tjvm-panel-label">Locals (slots 0-7)</p>
+        <p class="mono" id="tjvm-locals">-</p>
+    </div>
+    <div class="table-wrapper">
+        <p class="tjvm-panel-label">Console (PRINT output)</p>
+        <div class="mono" id="tjvm-console">-</div>
+    </div>
+    <div class="table-wrapper">
+        <p class="tjvm-panel-label">GPIO -- relevant to the over-temp alarm sample</p>
+        <div class="mono" id="tjvm-pins">-</div>
+        <label class="tjvm-panel-label tjvm-sensor-label" for="tjvm-sensor">
+            Simulated sensor reading (drives <code>digitalRead(34)</code>)
+        </label>
+        <input type="range" id="tjvm-sensor" min="0" max="50" value="0">
+    </div>
+
+    <h2>Sample source</h2>
+    <p class="muted">
+        Written in the project's own language -- what actually got compiled into the
+        bytecode the demo above is running.
     </p>
     {% for prog in sample_programs %}
     <h3>{{ prog.title }}</h3>
@@ -84,15 +124,22 @@
     {% endfor %}
 
     <h2>What's built so far</h2>
-    <p>
-        This pass is scaffolding: the project's page, its listing, and the written
-        specification. Still to come, in build order:
-    </p>
     <ul>
-        <li>The C VM: interpreter loop, stack, locals, calls, GPIO hooks.</li>
-        <li>The Java toolchain: lexer, parser, code generator, a small CLI.</li>
-        <li>The WebAssembly build and the interactive stepper on this page.</li>
-        <li>The Wokwi project and an embedded view of it running the same bytecode.</li>
+        <li>The C VM: interpreter loop, stack, locals, calls, GPIO hooks, and a full set of
+            traps (divide-by-zero, stack overflow, bad bytecode) instead of undefined
+            behavior -- 8/8 hand-assembled test cases pass, including the adversarial ones.</li>
+        <li>The Java toolchain: lexer, recursive-descent parser with panic-mode error
+            recovery, a scope-resolving pass, and a code generator with full back-patching
+            for control flow and function calls -- 57 JUnit tests pass.</li>
+        <li>The WebAssembly build and the interactive stepper above, running the exact
+            samples the Java compiler produced.</li>
     </ul>
+    <p class="muted">Still to come: the Wokwi firmware view running the same bytecode on a
+        simulated ESP32, and a GitHub repo/README for the standalone VM and toolchain.</p>
 </section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/tiny_jvm/tinyjvm.js') }}"></script>
+<script src="{{ url_for('static', filename='js/tiny_jvm/stepper.js') }}"></script>
 {% endblock %}

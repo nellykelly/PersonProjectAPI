@@ -70,10 +70,11 @@ PROJECTS = [
         "slug": "tiny-jvm",
         "title": "Tiny JVM",
         "blurb": "A compact stack-based virtual machine written in C that runs the same "
-        "bytecode in the browser (WebAssembly) and on a microcontroller. Programs are "
-        "written in a small custom language and compiled to that bytecode by a Java "
-        "toolchain (lexer, parser, code generator). One over-temp-alarm program even "
-        "drives a simulated GPIO pin on a Wokwi board.",
+        "bytecode in the browser (WebAssembly) and, eventually, on a microcontroller. "
+        "Programs are written in a small custom language and compiled to that bytecode "
+        "by a real Java toolchain (lexer, parser, code generator). Try it live: step "
+        "through a recursive factorial, or watch an over-temp-alarm program read a "
+        "simulated sensor and drive a simulated GPIO pin.",
         "endpoint": "tiny_jvm.index",
         "tags": ["Java", "Embedded / C", "WebAssembly", "Compilers"],
         "icon": "assets/img/icons/tiny-jvm.svg",

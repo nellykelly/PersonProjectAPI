@@ -16,6 +16,7 @@ OPCODES = [
     {"hex": "0x11", "name": "SUB", "operand": "--", "effect": "a, b -> a - b"},
     {"hex": "0x12", "name": "MUL", "operand": "--", "effect": "a, b -> a * b"},
     {"hex": "0x13", "name": "DIV", "operand": "--", "effect": "a, b -> a / b (trap on 0)"},
+    {"hex": "0x14", "name": "LT", "operand": "--", "effect": "a, b -> (a < b) ? 1 : 0"},
     {"hex": "0x20", "name": "LOAD", "operand": "uint8 slot", "effect": "push local variable #slot"},
     {"hex": "0x21", "name": "STORE", "operand": "uint8 slot", "effect": "pop into local variable #slot"},
     {"hex": "0x30", "name": "JMP", "operand": "int16 offset", "effect": "unconditional branch"},
@@ -24,8 +25,8 @@ OPCODES = [
     {"hex": "0x40", "name": "CALL", "operand": "uint16 addr", "effect": "call function at bytecode addr"},
     {"hex": "0x41", "name": "RET", "operand": "--", "effect": "return from function"},
     {"hex": "0x50", "name": "PRINT", "operand": "--", "effect": "pop and emit to the output console"},
-    {"hex": "0x51", "name": "PINMODE", "operand": "--", "effect": "mode, pin -> configure a GPIO pin"},
-    {"hex": "0x52", "name": "DWRITE", "operand": "--", "effect": "value, pin -> drive a GPIO pin"},
+    {"hex": "0x51", "name": "PINMODE", "operand": "--", "effect": "pin, mode -> configure a GPIO pin"},
+    {"hex": "0x52", "name": "DWRITE", "operand": "--", "effect": "pin, value -> drive a GPIO pin"},
     {"hex": "0x53", "name": "DREAD", "operand": "--", "effect": "pin -> push the pin's current level"},
     {"hex": "0xFF", "name": "HALT", "operand": "--", "effect": "stop the VM"},
 ]
@@ -82,18 +83,22 @@ SAMPLE_PROGRAMS = [
 
 @bp.route("")
 def index():
-    """Placeholder landing page for the Tiny JVM project.
+    """Landing page for the Tiny JVM project.
 
-    The interactive demo (a WebAssembly build of the C interpreter running
-    bytecode produced by the Java toolchain) is not wired up yet -- this
-    page currently explains the concept and the architecture, and shows
-    the instruction set and the sample programs the demo will run. The
-    full plan lives in docs/build-spec-tiny-jvm.md.
+    The interactive demo is real and wired up: a WebAssembly build of the
+    C interpreter (app/static/js/tiny_jvm/tinyjvm.{js,wasm}, built from
+    tools/tinyjvm/vm/vm.c) steps through one of three samples, each
+    precompiled ahead of time by the actual Java toolchain
+    (tools/tinyjvm/tlc/) into a static .tvm file
+    (app/static/assets/tiny_jvm/). Not yet built: the Wokwi firmware view
+    and free-form editing (see docs/build-spec-tiny-jvm.md for what's left
+    and why free-form editing needs a server compile endpoint first).
 
     Static and read-only: no form posts, so nothing here touches CSRF, the
-    database, or auth. When the `/api/run` endpoint is added (compile +
-    execute server-side as a fallback for no-WASM browsers) it will need
-    an X-CSRFToken header like the assistant and leetcode blueprints.
+    database, or auth. If a `/api/compile` endpoint is added later for
+    free-form editing, it will need an X-CSRFToken header, input size caps,
+    and a wall-clock timeout, like the assistant and leetcode blueprints
+    (see docs/build-spec-tiny-jvm.md section 12).
     """
     return render_template(
         "tiny_jvm/index.html",

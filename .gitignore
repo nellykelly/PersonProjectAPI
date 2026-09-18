@@ -43,3 +43,14 @@ Thumbs.db
 # Nelson mission-orchestration skill -- local planning/tracking state,
 # not repo content.
 .nelson/
+
+# Tiny JVM local toolchain paths -- machine-specific, doesn't exist on
+# any other machine or in CI. Build artifacts too.
+tools/tinyjvm/env.local.sh
+tools/tinyjvm/vm/*.o
+tools/tinyjvm/vm/*.exe
+tools/tinyjvm/vm/tinyjvm_host
+tools/tinyjvm/vm/samples/*.tvm
+tools/tinyjvm/tlc/build/
+tools/tinyjvm/tlc/.gradle/
+tools/tinyjvm/tlc/samples/*.tvm

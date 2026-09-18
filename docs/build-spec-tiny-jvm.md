@@ -13,58 +13,40 @@ files.
 
 ---
 
-## Status: DEFERRED (2026-09-10)
+## Status: IN PROGRESS (updated 2026-09-14)
 
-**The scaffold is done and stays on the site; implementation is paused.**
+**Path 1 from the original deferral (below) is what actually happened:**
+the toolchains got installed locally (JDK/Temurin, MSYS2/UCRT64 gcc,
+Gradle, the emscripten SDK, all at `S:\Tiny JVM\` — see
+`tools/tinyjvm/env.local.sh`, gitignored, machine-specific), and build
+order steps 1-4 from §11 are done and independently verified, not just
+"code exists":
 
-What exists and remains live:
+| Step (§11) | What | Verified |
+|------------|------|----------|
+| 1. C VM | `tools/tinyjvm/vm/vm.c` + `host_native.c` | 9/9 hand-assembled cases pass (`python run_tests.py`), including divide-by-zero, stack overflow, bad magic, truncated file, and (found during a crosscheck pass, not the original build) `INT32_MIN / -1` divide-overflow, which is undefined behaviour in C and crashed the process outright before being fixed |
+| 2. Java toolchain | `tools/tinyjvm/tlc/` (Gradle project) | 57/57 JUnit tests pass (`gradle test`) — lexer, parser, resolver, code generator |
+| 3. Wired together | `tlc`-compiled samples run on `vm.c` | the three samples below were compiled by the real toolchain, not hand-assembled |
+| 4. WASM + in-page stepper | `app/static/js/tiny_jvm/{tinyjvm.js,tinyjvm.wasm,stepper.js}` | driven live in a browser: Fibonacci runs to completion and prints 610 (correct); the over-temp-alarm sample reads the simulated sensor slider and correctly drives GPIO pin 2 high |
 
-- `/projects/tiny-jvm` page (concept, architecture, instruction-set table,
-  sample programs), the `PROJECTS` card, the icon, the blueprint, and
-  this spec.
-- `scripts/smoke_tiny_jvm.py` and the `tests/test_projects_landing.py`
-  inventory row.
+**Not yet built** (§11 steps 5-6): the Wokwi firmware view (an ESP32
+simulation running the same bytecode on real-ish hardware), and a GitHub
+repo + README for the standalone VM/toolchain.
 
-Why it is paused — the remaining work in §11 needs three toolchains that
-were **not available in the development environment** when the build was
-attempted:
+What's live on the site right now:
 
-| Needed for | Toolchain | Present? |
-|------------|-----------|----------|
-| `vm.c` compile + unit tests + ASan/fuzz | a C compiler (`gcc` / `clang` / MSVC), `make` | no |
-| `tlc` build + JUnit + `RefVM` | JDK 21, Gradle | no |
-| the in-page demo | `emscripten` (`emcc`) | no |
-| — | Python, Node 24 | yes |
+- `/projects/tiny-jvm` — the concept/architecture/instruction-set page,
+  plus a genuinely interactive demo (pick a sample, Step/Run/Reset,
+  watch the value stack/locals/console/GPIO update).
+- The `PROJECTS` card, the icon, this spec.
 
-Three ways forward were identified and recorded here so no analysis is
-lost:
-
-1. **Install the toolchains, then build for real.** Install JDK 21, a C
-   compiler (MSVC or mingw-w64), and emscripten, then build `vm.c` and
-   `tlc` layer by layer, compiling and testing each. Highest-quality
-   result, matches this spec exactly. Requires environment setup first.
-   *This is the intended resumption path.*
-2. **Ship a JavaScript VM first, port to C/Java later.** Implement the
-   VM in JS (the `RefVM` §5.6 already calls for), add a small assembler,
-   and wire the in-page stepper — all testable with Node. The page
-   becomes interactive without WASM; the C VM and Java toolchain are
-   then written against a working, tested reference. Trades the "Java +
-   embedded" story landing now for visible progress on the site now.
-3. **Write the C + Java source unverified this pass.** Produce `vm.c`,
-   `vm.h`, the `tlc` Gradle project, a `Makefile`, and hand-assembled
-   sample bytecode without compiling or running any of it; fix build
-   errors once the toolchains exist. Fastest to "code exists", but
-   untested compiler/VM code carries real risk.
-
-**Decision:** none of the above right now. The toolchain setup is
-substantial, so Tiny JVM is shelved as a *later* modelling exercise and
-work moves to a new project: a yfinance → dbt → Snowflake dimensional
-warehouse, in its own self-contained directory `market-data-warehouse/`
-(see `market-data-warehouse/PROMPT.md` and `market-data-warehouse/README.md`).
-When Tiny JVM resumes, take path 1 and pick up at §11 step 1.
-
-Everything below this line is the original spec, unchanged, for when the
-project resumes.
+Everything below this line is the original spec. It was written before
+any of the above was built and reads that way (present/future tense
+throughout) — treat §1-9 as the design that was actually followed, and
+§10-13 (Flask integration, build order, risks, file manifest) as
+increasingly stale the further this doc gets from 2026-09-10; check the
+table above and the code itself over that section's prose where they
+disagree.
 
 ---
 
@@ -331,8 +313,8 @@ render it.
 | `0x40` | `CALL` | uint16 (LE) addr | call function at bytecode address |
 | `0x41` | `RET` | — | return (top of stack is the return value) |
 | `0x50` | `PRINT` | — | pop, emit to the output console |
-| `0x51` | `PINMODE` | — | `mode pin →` configure a GPIO pin |
-| `0x52` | `DWRITE` | — | `value pin →` drive a GPIO pin |
+| `0x51` | `PINMODE` | — | `pin mode →` configure a GPIO pin |
+| `0x52` | `DWRITE` | — | `pin value →` drive a GPIO pin |
 | `0x53` | `DREAD` | — | `pin → level` read a GPIO pin |
 | `0xFF` | `HALT` | — | stop the VM |
 
