@@ -66,7 +66,7 @@ def _token_from(text: str) -> str:
 
 def test_unauthorized_answer_still_offers_the_full_public_tool_set(db_ready, app):
     """Before this wiring, job_tools_authorized=False meant zero tools of
-    any kind were offered. Now the four public domains are unconditional --
+    any kind were offered. Now the five public domains are unconditional --
     only the job-tracker six stay gated."""
     _set_scripted(app)
     with app.app_context():
@@ -90,6 +90,7 @@ def test_unauthorized_answer_still_offers_the_full_public_tool_set(db_ready, app
             "score_company",
             "run_backtest",
             "get_leaderboard",
+            "get_traffic_summary",
         }
         # the job-tracker six are still nowhere to be seen
         assert "add_application" not in offered

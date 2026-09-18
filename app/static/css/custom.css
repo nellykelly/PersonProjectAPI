@@ -2954,6 +2954,24 @@ html.skip-welcome #welcome-gate {
 }
 a.asst-source:hover { color: var(--fg); border-color: var(--accent); }
 
+/* --- inline charts --- */
+.asst-chart-wrap {
+  margin-top: 0.9rem;
+  padding: 0.85rem 0.9rem 0.6rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.asst-chart-title {
+  display: block;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-light);
+  margin-bottom: 0.5rem;
+}
+.asst-chart-wrap canvas { max-height: 220px; }
+
 /* --- typing indicator --- */
 .asst-typing { display: flex; gap: 0.3rem; padding: 0.4rem 0; }
 .asst-typing span {

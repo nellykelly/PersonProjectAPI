@@ -26,7 +26,7 @@ from flask import current_app, jsonify, render_template, request, url_for
 from app.blueprints.assistant import bp
 from app.extensions import db, limiter
 from app.models import AssistantQuery
-from app.services import assistant
+from app.services import assistant, net_monitor
 from app.services.assistant.authz import can_use_job_tools, is_owner
 
 _QUESTION_LOG_MAX = 500
@@ -49,6 +49,10 @@ _SOURCE_ENDPOINTS = {
     "projects/site-traffic": "sniffer.index",
     "projects/timed-squares": "timed_squares.index",
     "projects/beeznest": "projects.index",
+    "projects/tiny-jvm": "tiny_jvm.index",
+    "projects/market-warehouse": "market_warehouse.index",
+    "projects/leetcode-150": "leetcode.index",
+    "resume": "about.index",
 }
 
 
@@ -60,6 +64,38 @@ def _source_url(source: str) -> str | None:
         return url_for(endpoint)
     except Exception:  # noqa: BLE001 - a missing endpoint just means no link
         return None
+
+
+def _traffic_chart() -> dict:
+    """Recomputed from the live buffer, the same "route re-derives the
+    visual from the same service call the tool used, rather than piping
+    raw numbers through the model's text result" pattern
+    `market_warehouse.routes.api_analyze_stream`'s `_enrich()` uses for
+    the projection chart -- a tool's string result is for the model, not
+    a data channel to the frontend."""
+    stats = net_monitor.get_analytics()
+    buckets = stats["volume_buckets"]
+    return {
+        "title": "Request volume over time",
+        "labels": [b["start"].split("T")[-1].split(".")[0] for b in buckets],
+        "series": [
+            {"label": "Inbound", "data": [b["inbound"] for b in buckets]},
+            {"label": "Outbound", "data": [b["outbound"] for b in buckets]},
+        ],
+    }
+
+
+def _charts_for(tool_trace: list[dict]) -> list[dict]:
+    """Which tool calls in this turn earn a chart in the chat UI, and
+    what to draw. Keyed by tool name so adding another chart-worthy tool
+    later is a one-line addition here, not a rewrite."""
+    charts = []
+    for call in tool_trace:
+        if call.get("tool") == "get_traffic_summary":
+            chart = _traffic_chart()
+            if chart["labels"]:
+                charts.append(chart)
+    return charts
 
 
 def _ip_hash() -> str | None:
@@ -158,6 +194,7 @@ def chat():
         {
             "reply": result.reply,
             "sources": sources,
+            "charts": _charts_for(result.tool_trace),
             "backend": result.backend,
             "error": False,
         }

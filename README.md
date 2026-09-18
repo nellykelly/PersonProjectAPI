@@ -211,9 +211,20 @@ not a re-download.
 
 ```bash
 git pull
-docker compose up -d --build                 # rebuilds changed layers, recreates changed services
-docker compose exec -T web flask db upgrade   # only when a migration landed
+docker compose up -d --build                     # rebuilds changed layers, recreates changed services
+docker compose exec -T web flask db upgrade       # only when a migration landed
+docker compose exec -T web flask assistant reindex # only when app/assistant_content/ changed
 ```
+
+**The reindex step is easy to forget, and forgetting it is silent** -- nothing errors,
+the assistant just keeps answering from whatever corpus it last had, including
+confidently denying a project or fact that a content file added days ago already
+covers. There was no automated trigger for this step anywhere in the deploy path
+before this note was added -- `flask assistant reindex` existed only as a manual CLI
+command, easy to run once and then never think about again as more content files
+landed in later commits. `reindex.py`'s own docstring notes the corpus is small and
+always rebuilt whole, so there's no reason not to run this step on every deploy that
+could plausibly have touched content, not just ones you're sure did.
 
 `--build` targets can be scoped to one service (`... up -d --build web`) for a
 faster iteration loop, but the full unscoped form is the default -- worth rebuilding

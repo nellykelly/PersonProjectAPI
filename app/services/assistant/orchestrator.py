@@ -11,7 +11,7 @@ never built, so there is nothing for a crafted message or a retrieved
 passage to invoke there.
 
 The **public** tool domains (trading, Pipeline World, Company Scorer,
-Timed-Squares) are different: they wrap actions that are already public,
+Timed-Squares, Site Traffic Analytics) are different: they wrap actions that are already public,
 unauthenticated web features, so their schemas are built and offered on
 every single call, regardless of `job_tools_authorized` -- there is no
 gate to check. That means the tool-calling model path (the LangGraph
@@ -37,6 +37,7 @@ from .scorer_tools import build_scorer_tools, dispatch_scorer_tool
 from .store import build_store
 from .timedsquares_tools import build_timedsquares_tools, dispatch_timedsquares_tool
 from .trading_tools import build_trading_tools, dispatch_trading_tool
+from .traffic_tools import build_traffic_tools, dispatch_traffic_tool
 
 _ALLOWED_ROLES = {"user", "assistant"}
 _MAX_TURN_CHARS = 2000
@@ -99,8 +100,21 @@ _SOURCE_TERMS = {
         "survival game", "leaderboard", "turn-based",
     ),
     "projects/beeznest": ("beeznest", "b2b", "rails", "ruby on rails", "streetcode", "accelerator"),
+    "projects/tiny-jvm": (
+        "tiny jvm", "tinyjvm", "webassembly", "wasm", "bytecode", "stack machine",
+        "microcontroller", "wokwi", "gpio", "tlc", "opcode",
+    ),
+    "projects/market-warehouse": (
+        "market data warehouse", "data warehouse", "dbt", "dimensional", "kimball",
+        "duckdb", "motherduck", "snowflake", "star schema", "fact table", "sharpe",
+        "sortino", "price projection", "risk metrics",
+    ),
+    "projects/leetcode-150": (
+        "leetcode", "interview 150", "top interview", "leetcode tracker",
+    ),
     "bio": (),
     "faq": (),
+    "resume": (),
 }
 
 
@@ -496,6 +510,7 @@ def _prepare_initial_state(
     pipeline_specs = build_pipeline_tools()
     scorer_specs = build_scorer_tools()
     timedsquares_specs = build_timedsquares_tools()
+    traffic_specs = build_traffic_tools()
 
     dispatch_map = {}
     for spec in trading_specs:
@@ -506,8 +521,10 @@ def _prepare_initial_state(
         dispatch_map[spec["function"]["name"]] = dispatch_scorer_tool
     for spec in timedsquares_specs:
         dispatch_map[spec["function"]["name"]] = dispatch_timedsquares_tool
+    for spec in traffic_specs:
+        dispatch_map[spec["function"]["name"]] = dispatch_traffic_tool
 
-    tools = trading_specs + pipeline_specs + scorer_specs + timedsquares_specs
+    tools = trading_specs + pipeline_specs + scorer_specs + timedsquares_specs + traffic_specs
 
     if job_tools_authorized:
         job_specs = build_job_tools(True)

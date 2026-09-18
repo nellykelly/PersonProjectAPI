@@ -368,7 +368,7 @@ def test_response_shape_unchanged_on_the_tool_path(owner_unlocked_client):
         "/api/assistant/chat", json={"message": "hi Hera", "history": []}
     )
     body = json.loads(resp.data)
-    assert set(body) == {"reply", "sources", "backend", "error"}
+    assert set(body) == {"reply", "sources", "charts", "backend", "error"}
     assert isinstance(body["sources"], list)
 
 
