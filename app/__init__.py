@@ -7,6 +7,11 @@ from flask import Flask, session
 from app.config import CONFIG_BY_NAME
 from app.extensions import csrf, db, limiter, login_manager, migrate, socketio
 
+# Shared with app/blueprints/assistant/routes.py, which links straight to the
+# PDF (not just the About page) when Hera cites the resume -- one constant so
+# the two can never drift if the file is ever renamed.
+RESUME_PATH = "assets/files/Nelson_Koskela_Resume.pdf"
+
 
 def create_app(config_name: str | None = None) -> Flask:
     config_name = config_name or os.environ.get("FLASK_ENV", "production")
@@ -123,7 +128,7 @@ def create_app(config_name: str | None = None) -> Flask:
             "GITHUB_URL": "https://github.com/nellykelly",
             "LINKEDIN_URL": "https://www.linkedin.com/in/nelson-k-70180a101",
             "EMAIL": "koskela.nelson@gmail.com",
-            "RESUME_PATH": "assets/files/Nelson_Koskela_Resume.pdf",
+            "RESUME_PATH": RESUME_PATH,
             "CURRENT_YEAR": datetime.now(timezone.utc).year,
         }
 

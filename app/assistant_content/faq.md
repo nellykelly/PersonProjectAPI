@@ -28,9 +28,11 @@ financial advice.
 
 # Can I get your resume / a copy of Nelson's resume?
 
-Yes. It's public and linked right from the About page (/about) -- both "View Resume"
-and "Download Resume" buttons point at the same PDF. If you're reading this in the
-chat, just ask and the assistant will point you there directly.
+Yes. Here it is: [Download the resume (PDF)](/static/assets/files/Nelson_Koskela_Resume.pdf).
+It's also linked right from the About page (/about) -- both "View Resume" and
+"Download Resume" buttons point at the same PDF. If you're reading this in the chat,
+hand back that link directly rather than just pointing at the About page -- the
+visitor asked for the file, not directions to go find it.
 
 # Can I see the code?
 

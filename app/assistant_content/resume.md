@@ -94,5 +94,7 @@ The two projects he lists on his resume are both live on this site:
 # The full document
 
 This page is a summary drafted for the chat assistant, not a replacement for the actual
-resume. The full PDF is public and linked from the About page (`/about`) — both "View
-Resume" and "Download Resume" point at the same file.
+resume. The full PDF is public: [Download the resume (PDF)](/static/assets/files/Nelson_Koskela_Resume.pdf).
+It's also linked from the About page (`/about`) — both "View Resume" and "Download
+Resume" point at the same file. If asked for the resume in chat, hand back that link
+directly rather than only pointing at the About page.

@@ -23,6 +23,7 @@ import time
 
 from flask import current_app, jsonify, render_template, request, url_for
 
+from app import RESUME_PATH
 from app.blueprints.assistant import bp
 from app.extensions import db, limiter
 from app.models import AssistantQuery
@@ -52,11 +53,18 @@ _SOURCE_ENDPOINTS = {
     "projects/tiny-jvm": "tiny_jvm.index",
     "projects/market-warehouse": "market_warehouse.index",
     "projects/leetcode-150": "leetcode.index",
-    "resume": "about.index",
 }
 
 
 def _source_url(source: str) -> str | None:
+    # The resume source cites the PDF itself, not the About page it's
+    # linked from -- a visitor asking for the resume in chat should get
+    # the file one click away, not a redirect through another page.
+    if source == "resume":
+        try:
+            return url_for("static", filename=RESUME_PATH)
+        except Exception:  # noqa: BLE001 - a missing endpoint just means no link
+            return None
     endpoint = _SOURCE_ENDPOINTS.get(source)
     if not endpoint:
         return None
