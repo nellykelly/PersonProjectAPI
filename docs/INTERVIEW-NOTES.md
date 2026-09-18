@@ -693,3 +693,188 @@ and creates no row, while an owner-and-unlocked request creates the row and its
 audit event. The "does the test have teeth" check: temporarily forcing
 `can_use_job_tools()` to return `True` makes the anonymous-cannot-write test
 fail loudly, and it passes again on restore.
+
+---
+
+## J. RAG retrieval: why Hera does brute-force cosine search, not HNSW (yet)
+
+**Flagged as relevant to AI Engineer / Agentic AI Engineer interviews
+specifically** -- "how does your RAG app find the right document" (naive
+full-scan vs. approximate nearest-neighbor search) is one of the most common
+system-design questions for these roles, and it's a question about a mechanism
+this site actually has, not a general-knowledge topic to memorize cold.
+
+**The honest current answer.** `app/services/assistant/store.py` retrieves
+with:
+
+```sql
+ORDER BY embedding <=> CAST(:qv AS vector)
+```
+
+against pgvector -- a straight brute-force scan (compute cosine distance
+against every row, sort). No `HNSW`/`IVFFlat` index exists on `content_chunks`.
+That's not a gap; it's the right call at this corpus's actual size: the
+chunks come from a curated set of Markdown files under
+`app/assistant_content/` (populated by `flask assistant reindex`) -- tens to
+low hundreds of rows, where a full scan costs a fraction of a millisecond and
+an ANN index would be pure overhead with nothing to buy.
+
+**What the "right" answer at scale actually is, and why.** The naive approach
+compares the query vector against every document vector -- O(n), fine at
+hundreds of rows, a real bottleneck at millions. HNSW (Hierarchical Navigable
+Small World graphs) fixes this by building a multi-layer graph over the
+vectors *ahead of time*: the bottom layer densely connects every vector to its
+near neighbors; each layer above is a sparser subset with longer-range
+connections, the same idea as a skip list's express lanes over a linked list.
+A search starts at the top (sparse, long hops), greedily walks toward the
+query, drops a layer once it can't get closer, and repeats with
+progressively shorter hops -- ending near the true nearest neighbors after
+touching a few hundred nodes instead of all n. The tradeoff to be upfront
+about if asked: HNSW is *approximate* -- high recall, not a guarantee of the
+exact top match every time -- which is the real reason it's a genuine
+engineering tradeoff and not a strictly-better replacement for brute force.
+
+**The actual interview-ready answer:** *"My assistant does exact brute-force
+cosine search via pgvector's `<=>` operator, because the corpus is small
+enough that a full scan is free. pgvector also supports an HNSW index
+(`CREATE INDEX ... USING hnsw (embedding vector_cosine_ops)`), and I'd add
+one if this scaled to millions of chunks -- brute force stops being the right
+call well before that."* That demonstrates judgment about when to reach for a
+tool, which is usually what the question is actually screening for, not
+whether HNSW can be recited from memory.
+
+**Likely follow-ups, worth having ready:**
+- **HNSW vs. IVFFlat** (pgvector's other index type -- k-means clusters the
+  vectors, search only visits the nearest few clusters; cheaper to build,
+  HNSW usually wins on recall/latency once built).
+- **The tuning knobs**: `M` (neighbors per node -- memory/recall tradeoff) and
+  `ef_search` (candidate-list size at query time -- speed/recall tradeoff).
+- **Recall@k** as the metric for "how good is retrieval," since ANN explicitly
+  trades exactness for speed.
+- **Chunking strategy** (fixed-size vs. semantic chunks, overlap between
+  them) -- almost always the next question, and also grounded in this same
+  `flask assistant reindex` pipeline if asked to go deeper.
+
+**When the interviewer keeps pushing past HNSW.** A real follow-up chain,
+each step a genuine, named technique -- worth having the whole arc ready,
+not just the first answer, since a good interviewer will keep asking "what
+else could you do" specifically to see if the reasoning holds up under
+pressure, not just whether HNSW can be recited.
+
+- **Locality-Sensitive Hashing (LSH) -- a real alternative to HNSW, not a
+  worse version of it.** The one thing to get exactly right if this comes
+  up: a *normal* hash function (`SHA-256`, Python's `hash()`, anything
+  backing a dictionary) is deliberately built so similar inputs produce
+  unrelated outputs -- the avalanche effect, needed so hash-table lookups
+  stay O(1) and nothing clusters. LSH is the opposite kind of hash function
+  on purpose: built so *similar* vectors are *likely* to land in the same
+  bucket. One real construction (random-hyperplane LSH, for cosine
+  similarity -- the same metric embeddings use): pick several random
+  hyperplanes through the vector space; each vector's "hash" is one bit per
+  hyperplane (which side it falls on); vectors on the same side of most
+  hyperplanes are probably close. Bucket everything by that signature once;
+  at query time, hash the question the same way and only compare within its
+  bucket. Same goal as HNSW (avoid the full scan), different mechanism
+  (hash-bucketing vs. graph traversal) -- both real, both used in production
+  vector databases today.
+
+- **Hierarchical/coarse-to-fine hashing is also real, not a reach.** LSH
+  Forest organizes multiple hash tables as prefix trees, so a short hash
+  prefix is a coarse "big jump" bucket and more bits refine within it.
+  Separately, IVF (Inverted File index -- pgvector's *other* index type,
+  `ivfflat`) does the same coarse-to-fine shape with clustering instead of
+  hashing: k-means the space into coarse cells, jump straight to the
+  nearest cell, fine-search only inside it. The actual state of the art at
+  billion-scale (FAISS, underneath most production vector DBs) often
+  stacks these -- IVF for the coarse jump, HNSW or product quantization for
+  the refinement within that cell. The "big jump, then refine" shape
+  generalizes well past HNSW specifically; it's closer to the load-bearing
+  idea behind large-scale ANN in general.
+
+- **Hashing every word is real too (MinHash), but it answers a different
+  question than hashing the embedding does.** Hash many words/shingles per
+  document and count matching hashes between two documents -- that
+  literally is MinHash, used to estimate *Jaccard similarity* (token
+  overlap), real and widely used (Google's original web-scale
+  near-duplicate page detection ran on MinHash+LSH). The catch: word
+  overlap and meaning overlap aren't the same signal -- "the dog is happy"
+  and "the puppy seems glad" share almost no literal tokens, so MinHash
+  scores them as dissimilar despite meaning nearly the same thing. That gap
+  is exactly what embeddings exist to close: a trained model maps meaning
+  to geometry, independent of which literal words were used. So hashing
+  *words* (MinHash) captures lexical overlap; hashing an *embedding* (LSH)
+  captures semantic similarity -- different questions, not competing
+  answers to the same one.
+
+- **Which is why production systems usually run both, not one:** hybrid
+  search combines a lexical method (BM25 or MinHash-style overlap) with
+  embedding-based semantic search and merges/re-ranks both result sets.
+  Lexical catches an exact product code, error string, or proper noun an
+  embedding might fuzzy-match past; semantic catches a paraphrase or
+  synonym lexical search misses entirely. Elasticsearch, Weaviate, and
+  Pinecone all ship this as a named "hybrid search" mode for exactly that
+  reason -- neither one alone is the production answer.
+
+- **Can hashing replace the embedding step itself, not just speed up
+  search after it? No -- and the reason why is the actual insight.** Two
+  separate costs exist in a RAG query: turning the question into a vector
+  (a trained model's forward pass -- genuinely expensive) and searching the
+  index for neighbors (what HNSW/LSH/IVF all speed up -- comparatively
+  cheap). LSH doesn't *create* meaning; it takes a vector a neural network
+  already produced -- where similar meanings are already geometrically
+  close, because the model *learned* that from training data -- and buckets
+  it efficiently. Hash raw tokens directly, skipping the trained model, and
+  there's nothing semantic left to preserve; that's back to MinHash/lexical
+  territory. The one place "hash the input for speed" *is* a real,
+  production optimization: caching. Hash the raw query text, check a cache
+  for that exact hash, skip re-embedding and re-searching entirely on a
+  repeat (semantic/exact-match caching, e.g. GPTCache) -- a real speedup,
+  just for repeated questions, not for making a genuinely novel one faster
+  to understand. (Ordering note if asked directly: tokenize is always
+  *first* in a real pipeline, never after hashing -- a hash is already a
+  fixed-size, structureless number by the time it exists, nothing left to
+  tokenize.)
+
+- **Synonym canonicalization before hashing is real and does close part of
+  the lexical gap -- worth knowing exactly how much, and no more.**
+  Normalizing words to a canonical form before hashing (stemming, or a
+  thesaurus-style synonym table like WordNet's synsets mapping "dog" /
+  "canine" / "hound" to one ID) is a real, classic IR technique, and it's
+  still shipped in production today -- Elasticsearch's text-analysis
+  pipeline has a built-in synonym filter that does exactly this ahead of
+  BM25 indexing. It would genuinely improve a MinHash-style approach: two
+  sentences using different synonyms for the same concept now canonicalize
+  to the same (or closer) text before hashing. Where it still falls short
+  of embeddings, for principled reasons, not just "it's less accurate":
+  - **No context (polysemy).** "Bank" (financial) vs. "bank" (river) -- a
+    fixed word-to-synonym table can't disambiguate without reading the
+    sentence around it. This is literally why *contextual* embeddings
+    (BERT-style, where the same word gets a different vector depending on
+    its sentence) were a real breakthrough over older *static* word
+    embeddings (word2vec/GloVe) that had this exact synonym-table-shaped
+    limitation.
+  - **No compositional/phrasal meaning.** Swapping synonyms word-by-word
+    doesn't capture negation ("not good" vs. "good"), idiom ("kick the
+    bucket"), or meaning that comes from word order rather than word
+    identity.
+  - **Binary-ish matching, not graded similarity.** Embeddings give a
+    continuous distance, so thousands of imperfect candidates can be
+    ranked by "how close." Canonicalize-then-hash is closer to
+    match-or-not, losing the graceful ranking that makes vector search
+    useful when nothing matches perfectly.
+  - **Coverage is a maintenance burden that never catches up.** A hand-built
+    synonym dictionary is static and limited to what a human curated; a
+    trained model generalizes to relationships nobody explicitly wrote
+    down (new slang, new jargon, analogies), and absorbs new usage by
+    retraining rather than manual dictionary edits.
+
+**The one-sentence version of this whole arc, if asked to compress it:**
+every technique above is real and production-used, and they all trade off
+along the same two axes -- how much of "meaning" is *learned* (contextual,
+graded, generalizes to the unseen) versus *hand-specified* (lexical,
+binary-ish, only as good as the dictionary someone wrote), and how much of
+the cost is paid once at index time versus on every single query. HNSW,
+LSH, and IVF all answer "search fast" differently; embeddings vs. lexical
+hashing answer a completely different question -- "what counts as similar
+in the first place" -- and production RAG systems generally need an answer
+to both, not just one.
