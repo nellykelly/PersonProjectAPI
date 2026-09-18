@@ -220,6 +220,17 @@ class Config:
     # fail-soft pattern as everything else here (and how this ran before
     # a dedicated key existed).
     JOB_DISCOVERY_GROQ_API_KEY = os.environ.get("JOB_DISCOVERY_GROQ_API_KEY", "")
+    # Market Data Warehouse's live "autonomous stock analysis" demo --
+    # its own separate Groq account, not just a second key on the main
+    # one (Groq's daily token cap is scoped to organization, not key --
+    # confirmed the hard way with JOB_DISCOVERY_GROQ_API_KEY above), so a
+    # heavy testing session or traffic spike on this demo can't eat into
+    # the real /assistant chat's budget. build_backend()'s cache is keyed
+    # by (kind, model, api_key) specifically so this and GROQ_API_KEY can
+    # safely share the same model name without colliding on one cached
+    # client. Falls back to GROQ_API_KEY when unset, same pattern as
+    # every other per-feature key here.
+    STOCK_ANALYSIS_GROQ_API_KEY = os.environ.get("STOCK_ANALYSIS_GROQ_API_KEY", "")
     # Deliberately NOT qwen/qwen3.8-27b: a second key on the *same* Groq
     # account doesn't help (confirmed directly -- the 429 still names the
     # same organization id regardless of which key made the request), but
@@ -431,6 +442,10 @@ class Config:
     # A chat message is a real LLM call against a shared free-tier quota,
     # so this is tighter than the read-only limits elsewhere on the site.
     ASSISTANT_CHAT_RATE_LIMIT = os.environ.get("ASSISTANT_CHAT_RATE_LIMIT", "20 per hour")
+    # The Market Data Warehouse page's "autonomous stock analysis" demo runs
+    # a full multi-tool assistant turn (up to _MAX_TOOL_ITERS Groq calls, not
+    # one) per hit, so it draws from a tighter bucket than a normal chat message.
+    STOCK_ANALYSIS_RATE_LIMIT = os.environ.get("STOCK_ANALYSIS_RATE_LIMIT", "10 per hour")
 
 
 class DevelopmentConfig(Config):

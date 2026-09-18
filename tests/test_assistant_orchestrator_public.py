@@ -81,6 +81,7 @@ def test_unauthorized_answer_still_offers_the_full_public_tool_set(db_ready, app
             "get_quote",
             "list_open_positions",
             "get_risk_report",
+            "get_projection",
             "preview_open_position",
             "open_position",
             "preview_join_pipeline_world",

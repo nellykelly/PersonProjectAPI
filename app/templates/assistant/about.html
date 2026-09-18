@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Assistant: Case Study{% endblock %}
+{% block meta_description %}How Hera, this site's AI assistant, works: retrieval-grounded RAG over the site's own content, and a bounded agent loop that decides for itself which tools to call and in what order.{% endblock %}
+{% block content_class %}wide assistant-about-page{% endblock %}
+
+{% block content %}
+<section>
+  <div class="section-title">
+    <h1 class="major">How the assistant works</h1>
+    <a class="button small" href="{{ url_for('assistant.index') }}">&larr; Talk to Hera</a>
+  </div>
+
+  <p class="muted">
+    This is the write-up version of the chat widget on this site: what problem it's actually
+    solving, what it's built with, and what separates it from a chatbot that just answers
+    questions. Everything below describes what's shipped and running, not a roadmap.
+  </p>
+
+  <div class="stx-grid">
+    <div class="stx-panel">
+      <h2>The problem</h2>
+      <p>
+        A generic LLM chat box bolted onto a portfolio site is a parlor trick: it'll answer
+        questions about Nelson with whatever it already knows (or, worse, confidently make
+        something up) and it has no way to tell a visitor that it's guessing. Hera is scoped
+        differently. It only answers from a curated corpus of this site's own content &mdash;
+        the bio, the FAQ, and a write-up per project &mdash; retrieved fresh for every question
+        rather than baked into a prompt once and left to go stale.
+      </p>
+      <p>
+        Ask it something the corpus doesn't cover and it says so instead of filling the gap.
+        That's the actual product requirement: grounded answers with a source trail, not just
+        answers.
+      </p>
+    </div>
+
+    <div class="stx-panel">
+      <h2>What it's built with</h2>
+      <p>
+        Retrieval runs over <strong>pgvector</strong> in the same Postgres instance the rest of
+        the site uses &mdash; no separate vector database to run or pay for. Embeddings are
+        computed locally with <strong>fastembed</strong> (ONNX, BAAI/bge-small-en-v1.5,
+        384-dimensional), so indexing the content costs no API calls and no per-token fee.
+      </p>
+      <p>
+        Generation goes to <strong>Groq</strong>, and the agent's step-by-step reasoning and
+        tool-calling loop is built on <strong>LangGraph</strong>: a bounded number of
+        model&harr;tool round trips per turn, not one prompt-and-done call and not an unbounded
+        loop that can run away on its own.
+      </p>
+    </div>
+
+    <div class="stx-panel stx-wide">
+      <h2>What makes it autonomous, not just conversational</h2>
+      <p>
+        A conversational bot answers the question you asked. An autonomous one decides what it
+        needs to find out first. Hera already reaches into this site's own live projects when a
+        question calls for it &mdash; pulling a real trade from the Trading Simulator, a real
+        score from the Company Scorer, a real run from Pipeline World &mdash; instead of
+        describing them from memory.
+      </p>
+      <p>
+        The clearest version of that is its flagship case: ask about a stock's risk, and instead
+        of returning one canned reply, it chains its own sequence of tool calls &mdash; look up a
+        live quote, feed that into a trend projection, then turn the projection into a written
+        risk report &mdash; deciding at each step, based on what the last step actually returned,
+        whether to keep going and what to call next. Nobody hard-coded that order. The model
+        picks it, inside a bounded loop that stops it from spinning forever.
+      </p>
+      <p class="muted">
+        That loop is capped on purpose: a fixed maximum of tool round trips per turn, so
+        "autonomous" means "decides its own path through a bounded set of steps," not
+        "unsupervised and unbounded."
+      </p>
+    </div>
+  </div>
+
+  <p class="muted stx-sub">
+    Curious what people actually ask it, and how often it answers from the corpus versus says
+    it doesn't know? <a href="{{ url_for('assistant.stats') }}">The stats page</a> is built from
+    the same request logs, with no model calls of its own. Or just
+    <a href="{{ url_for('assistant.index') }}">ask Hera something</a> directly.
+  </p>
+</section>
+{% endblock %}

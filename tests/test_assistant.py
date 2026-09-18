@@ -279,6 +279,27 @@ def test_backend_available_true_for_fake_false_for_keyless_groq(app):
             build_backend(app.config)
 
 
+def test_build_backend_does_not_share_cache_across_different_api_keys():
+    """Regression test: the cache used to key only on (kind, model), so two
+    callers building the same Groq model with two different API keys (e.g.
+    the main /assistant chat vs. a feature given its own dedicated Groq
+    quota) would silently share one cached client -- the second caller's
+    calls would bill against the first caller's key instead of its own."""
+    import pytest as _pytest
+
+    _pytest.importorskip("groq")
+
+    config_a = {"ASSISTANT_LLM_BACKEND": "groq", "GROQ_API_KEY": "key-a", "GROQ_MODEL": "some-model"}
+    config_b = {"ASSISTANT_LLM_BACKEND": "groq", "GROQ_API_KEY": "key-b", "GROQ_MODEL": "some-model"}
+
+    backend_a = build_backend(config_a)
+    backend_b = build_backend(config_b)
+    assert backend_a is not backend_b
+
+    # Same (model, key) pair a second time -- still cached, same instance.
+    assert build_backend(dict(config_a)) is backend_a
+
+
 def test_fake_backend_reports_context_presence():
     fb = FakeBackend()
     with_ctx = fb.generate(

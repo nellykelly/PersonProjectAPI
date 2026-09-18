@@ -84,6 +84,15 @@ def index():
     )
 
 
+@bp.route("/assistant/about", methods=["GET"])
+def about():
+    """Static case-study page: what problem the assistant solves, what
+    it's built with, and what makes it an autonomous agent rather than a
+    plain chatbot. No model calls, no backend dependency -- it renders
+    even when the assistant itself is offline."""
+    return render_template("assistant/about.html")
+
+
 @bp.route("/assistant/stats", methods=["GET"])
 def stats():
     """Public, aggregate-only usage stats for the assistant. Built by a

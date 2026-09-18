@@ -16,129 +16,6 @@ import pytest
 duckdb = pytest.importorskip("duckdb")
 
 
-@pytest.fixture
-def warehouse_db(tmp_path):
-    """A minimal but real DuckDB file with two securities, a few days of
-    prices, and one dividend -- enough to exercise every query."""
-    path = str(tmp_path / "test_market.duckdb")
-    con = duckdb.connect(path)
-    con.execute("CREATE SCHEMA marts")
-    con.execute(
-        """
-        CREATE TABLE marts.dim_exchange (
-            exchange_key VARCHAR, exchange_code VARCHAR, exchange_name VARCHAR
-        )
-        """
-    )
-    con.execute(
-        "INSERT INTO marts.dim_exchange VALUES ('ex1', 'NMS', 'Nasdaq Stock Market')"
-    )
-    con.execute(
-        """
-        CREATE TABLE marts.dim_security (
-            security_key VARCHAR, ticker VARCHAR, security_name VARCHAR,
-            sector VARCHAR, exchange_key VARCHAR
-        )
-        """
-    )
-    con.execute(
-        "INSERT INTO marts.dim_security VALUES "
-        "('sec1', 'AAPL', 'Apple Inc.', 'Technology', 'ex1'), "
-        "('sec2', 'KO', 'The Coca-Cola Company', 'Consumer Defensive', 'ex1')"
-    )
-    con.execute(
-        """
-        CREATE TABLE marts.fct_security_price (
-            price_key VARCHAR, security_key VARCHAR, date_key INTEGER,
-            exchange_key VARCHAR, ticker VARCHAR, trade_date DATE,
-            close DOUBLE, adj_close DOUBLE, volume BIGINT, daily_return DOUBLE
-        )
-        """
-    )
-    # date_key mirrors the real yyyymmdd convention -- distinct per day, so
-    # the technical/risk left joins below (keyed on security_key+date_key)
-    # match only the intended row, not every day for that security.
-    rows = [
-        ("sec1", "AAPL", dt.date(2026, 1, 2), 20260102, 100.0, 100.0, 1000, None),
-        ("sec1", "AAPL", dt.date(2026, 1, 5), 20260105, 110.0, 110.0, 1100, 0.10),
-        ("sec2", "KO", dt.date(2026, 1, 2), 20260102, 60.0, 58.0, 2000, None),
-        ("sec2", "KO", dt.date(2026, 1, 5), 20260105, 61.2, 59.16, 2100, 0.02),
-    ]
-    con.executemany(
-        "INSERT INTO marts.fct_security_price "
-        "(price_key, security_key, date_key, exchange_key, ticker, trade_date, "
-        " close, adj_close, volume, daily_return) VALUES "
-        "(gen_random_uuid()::VARCHAR, ?, ?, 'ex1', ?, ?, ?, ?, ?, ?)",
-        [
-            (r[0], r[3], r[1], r[2], r[4], r[5], r[6], r[7])
-            for r in rows
-        ],
-    )
-    con.execute(
-        """
-        CREATE TABLE marts.fct_corporate_action (
-            corporate_action_key VARCHAR, security_key VARCHAR,
-            action_type VARCHAR, dividend_amount DOUBLE
-        )
-        """
-    )
-    con.execute(
-        "INSERT INTO marts.fct_corporate_action VALUES "
-        "('ca1', 'sec2', 'dividend', 0.5), ('ca2', 'sec1', 'split', NULL)"
-    )
-    con.execute(
-        """
-        CREATE TABLE marts.fct_security_technical_daily (
-            security_key VARCHAR, date_key INTEGER, ticker VARCHAR, trade_date DATE,
-            sma_20 DOUBLE, sma_50 DOUBLE, sma_200 DOUBLE,
-            bollinger_upper_20 DOUBLE, bollinger_lower_20 DOUBLE,
-            high_52w DOUBLE, low_52w DOUBLE, pct_off_52w_high DOUBLE,
-            rsi_14_simplified DOUBLE
-        )
-        """
-    )
-    con.execute(
-        "INSERT INTO marts.fct_security_technical_daily VALUES "
-        "('sec1', 20260105, 'AAPL', DATE '2026-01-05', 105.0, 102.0, 101.0, 115.0, 95.0, 110.0, 100.0, 0.0, 71.4)"
-    )
-    con.execute(
-        """
-        CREATE TABLE marts.fct_security_risk_daily (
-            security_key VARCHAR, date_key INTEGER, ticker VARCHAR, trade_date DATE,
-            volatility_20d DOUBLE, volatility_60d DOUBLE, volatility_252d DOUBLE,
-            max_drawdown_252d DOUBLE, sharpe_ratio_252d DOUBLE, sortino_ratio_252d DOUBLE,
-            beta_60d DOUBLE, beta_252d DOUBLE
-        )
-        """
-    )
-    con.execute(
-        "INSERT INTO marts.fct_security_risk_daily VALUES "
-        "('sec1', 20260105, 'AAPL', DATE '2026-01-05', 0.18, 0.20, 0.22, -0.08, 1.5, 2.1, 1.1, 1.2)"
-    )
-    con.execute(
-        """
-        CREATE TABLE marts.fct_security_price_projection (
-            projection_key VARCHAR, security_key VARCHAR, ticker VARCHAR, date_key INTEGER,
-            projection_date DATE, method VARCHAR, lookback_days INTEGER, trading_day_offset INTEGER,
-            projected_close DOUBLE, lower_bound_95 DOUBLE, upper_bound_95 DOUBLE,
-            fit_quality DOUBLE
-        )
-        """
-    )
-    con.execute(
-        "INSERT INTO marts.fct_security_price_projection VALUES "
-        # default combination: linear_trend, 90d lookback
-        "('pk1', 'sec1', 'AAPL', 20260106, DATE '2026-01-06', 'linear_trend', 90, 1, 111.0, 105.0, 117.0, 0.42), "
-        "('pk2', 'sec1', 'AAPL', 20260107, DATE '2026-01-07', 'linear_trend', 90, 2, 112.0, 103.0, 121.0, 0.42), "
-        # a second combination, used to test filtering: mean_reversion, 30d, no fit_quality... wait it has one
-        "('pk3', 'sec1', 'AAPL', 20260106, DATE '2026-01-06', 'mean_reversion', 30, 1, 108.0, 104.0, 112.0, 0.55), "
-        # random_walk_drift has no fit statistic -- null, same as the real model
-        "('pk4', 'sec1', 'AAPL', 20260106, DATE '2026-01-06', 'random_walk_drift', 90, 1, 109.5, 104.5, 114.5, NULL)"
-    )
-    con.close()
-    return path
-
-
 # --------------------------------------------------------------------------
 # app.services.market_warehouse.get_analytics
 # --------------------------------------------------------------------------
@@ -268,6 +145,34 @@ def test_get_projection_rejects_unknown_method_or_lookback(warehouse_db):
     assert market_warehouse.get_projection(warehouse_db, method="linear_trend", lookback_days=999) == {
         "tickers": [], "series": {}
     }
+
+
+def test_get_projection_chart_data_bundles_projection_and_recent_actual(warehouse_db):
+    from app.services import market_warehouse
+
+    result = market_warehouse.get_projection_chart_data(warehouse_db, method="mean_reversion", lookback_days=30)
+    assert result["projection"]["tickers"] == ["AAPL"]
+    assert result["projection"]["series"]["AAPL"]["projected"] == [108.0]
+    assert "AAPL" in result["recent_actual"]
+    assert result["recent_actual"]["AAPL"]["dates"]
+    assert result["recent_actual"]["AAPL"]["close"]
+
+
+def test_get_projection_chart_data_rejects_unknown_method_or_lookback(warehouse_db):
+    from app.services import market_warehouse
+
+    empty = {"projection": {"tickers": [], "series": {}}, "recent_actual": {}}
+    assert market_warehouse.get_projection_chart_data(warehouse_db, method="astrology", lookback_days=90) == empty
+    assert market_warehouse.get_projection_chart_data(warehouse_db, method="linear_trend", lookback_days=999) == empty
+
+
+def test_get_projection_chart_data_graceful_on_bad_path(tmp_path):
+    from app.services import market_warehouse
+
+    result = market_warehouse.get_projection_chart_data(
+        str(tmp_path / "nope.duckdb"), method="linear_trend", lookback_days=90
+    )
+    assert result == {"projection": {"tickers": [], "series": {}}, "recent_actual": {}}
 
 
 def test_get_chart_window_respects_start_and_end(warehouse_db):

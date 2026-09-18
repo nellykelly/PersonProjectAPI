@@ -27,7 +27,12 @@
                 <span class="tag">{{ tag }}</span>
                 {% endfor %}
             </div>
-            <a class="button small" href="{{ url_for(project.endpoint) }}">{{ "Work in Progress" if project.wip else "Open" }}</a>
+            <div class="card-links" style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+                <a class="button small" href="{{ url_for(project.endpoint) }}">{{ "Work in Progress" if project.wip else "Open" }}</a>
+                {% if project.case_study_endpoint %}
+                <a class="button small" href="{{ url_for(project.case_study_endpoint) }}">Case study</a>
+                {% endif %}
+            </div>
         </div>
         {% endfor %}
     </div>

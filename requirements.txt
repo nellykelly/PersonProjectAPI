@@ -32,13 +32,24 @@ Flask-Migrate>=4.0,<5.0
 fakeredis>=2.20,<3.0
 
 # Personal AI assistant (app/services/assistant, app/blueprints/assistant).
-# All three are imported lazily -- the app still boots, and the test suite
-# still runs, without them installed (the /assistant page just reports
-# "offline"). Retrieval requires Postgres + the pgvector extension, same
-# as /pipeline-analytics; there is no SQLite path for it.
+# groq/fastembed/pgvector are imported lazily -- the app still boots, and
+# the test suite still runs, without them installed (the /assistant page
+# just reports "offline"). Retrieval requires Postgres + the pgvector
+# extension, same as /pipeline-analytics; there is no SQLite path for it.
 groq>=0.20,<1.0          # Groq LPU chat inference + function calling, free tier
 fastembed>=0.3,<0.8      # local ONNX sentence embeddings (bge-small-en-v1.5, 384-d), no torch
 pgvector>=0.3,<0.5       # SQLAlchemy vector column type + `<=>` cosine operator on Postgres
+
+# /assistant's tool-calling loop (app/services/assistant/orchestrator.py):
+# a synchronous LangGraph StateGraph (retrieve -> agent -> tools -> loop or
+# END), invoked with plain `.invoke()` -- no async, matching this WSGI app.
+# Unlike groq/fastembed/pgvector above, this is imported at module load, not
+# lazily: it's a light, pure-Python orchestration layer with no network or
+# ML runtime of its own, so it carries none of their "heavy/optional" cost.
+# langchain-core comes along as langgraph's own required dependency, not
+# pulled in on spec -- no broader LangChain surface is used.
+langgraph>=1.2,<2.0
+langchain-core>=1.6,<2.0
 
 # Market Data Warehouse (app/blueprints/market_warehouse, app/services/
 # market_warehouse.py). Imported lazily -- the /projects/market-warehouse

@@ -144,7 +144,13 @@
   // ------------------------------------------------------------------
   var projectionChart = null;
 
-  function renderProjectionChart(canvas, ticker, projectionData, recentActualData) {
+  // Pure: turns one ticker's projection + recent-actual series into a
+  // {config, rSquared} pair -- `config` is ready for `new Chart(ctx, config)`.
+  // Shared by the page's own "Price projection" chart (one static canvas,
+  // one long-lived Chart instance below) and the live autonomous-analysis
+  // demo (a fresh canvas + instance per tool result) -- neither owns this
+  // data shaping, so it can't drift between the two.
+  function buildProjectionChart(ticker, projectionData, recentActualData) {
     var recent = recentActualData[ticker] || { dates: [], close: [] };
     var proj = projectionData.series[ticker] || { dates: [], projected: [], lower: [], upper: [] };
 
@@ -211,17 +217,22 @@
         plugins: { legend: { position: "bottom" } },
       },
     };
+    return { config: config, rSquared: proj.r_squared };
+  }
+
+  function renderProjectionChart(canvas, ticker, projectionData, recentActualData) {
+    var built = buildProjectionChart(ticker, projectionData, recentActualData);
 
     if (projectionChart) {
-      projectionChart.data = config.data;
+      projectionChart.data = built.config.data;
       projectionChart.update();
     } else {
-      projectionChart = new Chart(canvas.getContext("2d"), config);
+      projectionChart = new Chart(canvas.getContext("2d"), built.config);
     }
 
     var r2El = document.getElementById("mw-projection-r2");
     if (r2El) {
-      var r2 = proj.r_squared;
+      var r2 = built.rSquared;
       var quality = r2 == null ? "n/a" : r2 < 0.3 ? "weak" : r2 < 0.6 ? "moderate" : "stronger (still not predictive)";
       r2El.textContent = ticker + "'s trend fit: R² = " + (r2 == null ? "n/a" : r2.toFixed(2)) + " (" + quality + ")";
     }
@@ -321,8 +332,148 @@
     }
   }
 
+  // ------------------------------------------------------------------
+  // Autonomous stock analysis -- a live SSE feed of the actual LangGraph
+  // run (see app/blueprints/market_warehouse/routes.py::api_analyze_stream
+  // and app/services/assistant/orchestrator.py::stream_answer). Every event
+  // here is the graph reporting a real step the instant it happens -- there
+  // is no client-side pacing/animation standing in for progress, only for
+  // the CSS transition on top of a real state change.
+  // ------------------------------------------------------------------
+  var ANALYZE_STREAM_ENDPOINT = "/projects/market-warehouse/api/analyze/stream";
+
+  var TOOL_LABELS = {
+    get_quote: "quote",
+    get_projection: "projection",
+    get_risk_report: "risk report",
+  };
+
+  function initStockAnalysis() {
+    var picker = document.getElementById("mw-analyze-ticker-picker");
+    var runBtn = document.getElementById("mw-analyze-run");
+    var statusEl = document.getElementById("mw-analyze-status");
+    var graphEl = document.getElementById("mw-analyze-graph");
+    var chipsEl = document.getElementById("mw-graph-chips");
+    var agentSubEl = document.getElementById("mw-graph-agent-sub");
+    var answerEl = document.getElementById("mw-analyze-answer");
+    var chartWrapperEl = document.getElementById("mw-analyze-chart-wrapper");
+    var chartCanvas = document.getElementById("mw-analyze-chart");
+    var chartR2El = document.getElementById("mw-analyze-chart-r2");
+    if (!picker || !runBtn || !graphEl) return;
+
+    var ticker = null;
+    var source = null;
+    var analyzeChart = null;
+
+    function renderAnalyzeChart(chartData) {
+      if (!window.Chart || !chartCanvas || !chartData) return;
+      var built = buildProjectionChart(ticker, chartData.projection, chartData.recent_actual);
+      if (analyzeChart) analyzeChart.destroy();
+      analyzeChart = new Chart(chartCanvas.getContext("2d"), built.config);
+      chartWrapperEl.hidden = false;
+      if (chartR2El) {
+        var r2 = built.rSquared;
+        chartR2El.textContent = "Fit quality: R² = " + (r2 == null ? "n/a" : r2.toFixed(2)) +
+          " -- a low value means the trend line barely fits the recent data at all.";
+        chartR2El.hidden = false;
+      }
+    }
+
+    picker.querySelectorAll(".button").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        selectOnly(picker, btn);
+        ticker = btn.dataset.ticker;
+        runBtn.disabled = false;
+      });
+    });
+
+    function setNode(node, cls) {
+      var el = graphEl.querySelector('[data-node="' + node + '"]');
+      if (!el) return;
+      el.classList.remove("is-active", "is-done");
+      if (cls) el.classList.add(cls);
+    }
+
+    function resetGraph() {
+      graphEl.hidden = false;
+      graphEl.querySelectorAll(".mw-graph-node").forEach(function (el) {
+        el.classList.remove("is-active", "is-done");
+      });
+      chipsEl.innerHTML = "";
+      agentSubEl.textContent = "deciding…";
+      answerEl.hidden = true;
+      chartWrapperEl.hidden = true;
+      if (chartR2El) chartR2El.hidden = true;
+      if (analyzeChart) { analyzeChart.destroy(); analyzeChart = null; }
+    }
+
+    function closeSource() {
+      if (source) { source.close(); source = null; }
+      runBtn.disabled = false;
+    }
+
+    runBtn.addEventListener("click", function () {
+      if (!ticker || !window.EventSource) return;
+      closeSource();
+      runBtn.disabled = true;
+      statusEl.textContent = "Connecting…";
+      resetGraph();
+      setNode("retrieve", "is-active");
+
+      source = new EventSource(ANALYZE_STREAM_ENDPOINT + "?ticker=" + encodeURIComponent(ticker));
+
+      source.onmessage = function (evt) {
+        var data;
+        try { data = JSON.parse(evt.data); } catch (e) { return; }
+
+        if (data.type === "retrieved") {
+          statusEl.textContent = "";
+          setNode("retrieve", "is-done");
+          setNode("agent", "is-active");
+        } else if (data.type === "tool_call") {
+          agentSubEl.textContent = "calling " + (TOOL_LABELS[data.tool] || data.tool) + "…";
+          setNode("agent", "is-done");
+          setNode("tools", "is-active");
+        } else if (data.type === "tool_result") {
+          var chip = document.createElement("span");
+          chip.className = "mw-graph-chip" + (/^That didn't work/.test(data.result || "") ? " is-note" : "");
+          chip.textContent = TOOL_LABELS[data.tool] || data.tool;
+          chip.title = data.result || "";
+          chipsEl.appendChild(chip);
+          if (data.chart) renderAnalyzeChart(data.chart);
+          setNode("tools", "is-done");
+          setNode("agent", "is-active");
+          agentSubEl.textContent = "deciding…";
+        } else if (data.type === "final") {
+          setNode("agent", "is-done");
+          setNode("answer", "is-active");
+          answerEl.textContent = data.reply;
+          answerEl.hidden = false;
+          statusEl.textContent = "";
+          closeSource();
+          setTimeout(function () { setNode("answer", "is-done"); }, 400);
+        } else if (data.type === "error") {
+          statusEl.textContent = data.message || "Something went wrong.";
+          closeSource();
+        }
+      };
+
+      // A one-shot bounded turn, not a persistent feed -- EventSource's
+      // default auto-reconnect is the wrong behavior here (it would just
+      // start a brand new analysis), so any connection drop just ends it.
+      // Guarded against a stale instance's error firing after a rapid
+      // re-click already replaced `source` with a fresh EventSource.
+      source.onerror = function (evt) {
+        if (evt.target !== source) return;
+        statusEl.textContent = "Connection lost -- try again.";
+        closeSource();
+      };
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     initPerfChart();
     initProjectionChart();
+    initStockAnalysis();
   });
 })();

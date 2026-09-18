@@ -235,7 +235,13 @@ def build_backend(config, *, for_tools: bool = False):
         model = config["GROQ_MODEL"]
         if for_tools:
             model = config.get("GROQ_TOOL_MODEL") or model
-        cache_key = ("groq", model)
+        # api_key is part of the cache key, not just (kind, model): two
+        # callers building the same model with two different keys (e.g.
+        # the main /assistant chat vs. a feature given its own dedicated
+        # Groq quota) must never share a cached client, or the second
+        # caller's requests would silently bill against the first
+        # caller's key instead of its own.
+        cache_key = ("groq", model, api_key)
         if cache_key not in _CACHE:
             _CACHE[cache_key] = GroqBackend(api_key, model)
         return _CACHE[cache_key]

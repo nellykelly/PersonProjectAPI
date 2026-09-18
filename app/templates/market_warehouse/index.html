@@ -2,6 +2,10 @@
 {% block title %}Market Data Warehouse{% endblock %}
 {% block content_class %}wide{% endblock %}
 
+{% block extra_head %}
+<meta name="csrf-token" content="{{ csrf_token() }}">
+{% endblock %}
+
 {% block content %}
 <section>
     <h1 class="major"><img class="page-icon" src="{{ url_for('static', filename='assets/img/icons/market-warehouse.svg') }}" alt="">Market Data Warehouse</h1>
@@ -191,6 +195,61 @@
                 height="110"></canvas>
     </div>
     <p class="muted" id="mw-projection-r2"></p>
+
+    <h2>Autonomous stock analysis</h2>
+    <div class="disclaimer-banner">
+        <strong>Not a forecast. Not financial advice.</strong> This runs the real
+        <a href="{{ url_for('assistant.index') }}">assistant</a>'s live agent loop, not a
+        scripted demo -- the model decides for itself whether to check a live quote, this
+        page's own trend projection, and a risk report, in whatever order it chooses.
+        See <a href="{{ url_for('assistant.about') }}">how the assistant works</a> for the
+        full picture.
+    </div>
+    <p class="muted">
+        Pick a ticker and watch each step as the model actually takes it -- a live call each
+        time, capped the same way a normal assistant turn is. Limited to the tickers this
+        warehouse has projections for.
+    </p>
+
+    <div class="mw-ticker-picker" id="mw-analyze-ticker-picker">
+        {% for ticker in analytics.projection.tickers %}
+        <button type="button" class="button small" data-ticker="{{ ticker }}">{{ ticker }}</button>
+        {% endfor %}
+    </div>
+    <button type="button" class="button" id="mw-analyze-run" disabled>Analyze</button>
+    <span class="muted" id="mw-analyze-status"></span>
+
+    <div class="mw-graph" id="mw-analyze-graph" hidden>
+        <div class="mw-graph-flow">
+            <div class="mw-graph-node" data-node="retrieve">
+                <span class="mw-graph-node-label">Retrieve</span>
+                <span class="mw-graph-node-sub">this site's own content</span>
+            </div>
+            <div class="mw-graph-arrow" aria-hidden="true">&rarr;</div>
+            <div class="mw-graph-node" data-node="agent">
+                <span class="mw-graph-node-label">Agent</span>
+                <span class="mw-graph-node-sub" id="mw-graph-agent-sub">deciding&hellip;</span>
+            </div>
+            <div class="mw-graph-loop" aria-hidden="true" title="agent and tools loop until the model has enough to answer">&#8635;</div>
+            <div class="mw-graph-node" data-node="tools">
+                <span class="mw-graph-node-label">Tools</span>
+                <div class="mw-graph-chips" id="mw-graph-chips"></div>
+            </div>
+            <div class="mw-graph-arrow" aria-hidden="true">&rarr;</div>
+            <div class="mw-graph-node" data-node="answer">
+                <span class="mw-graph-node-label">Answer</span>
+            </div>
+        </div>
+        <p class="muted mw-graph-caption">
+            This is the actual LangGraph the assistant runs -- each box lights up the moment that
+            step really happens, not a canned replay. Hover a tool chip for its full result.
+        </p>
+    </div>
+    <div class="chart-wrapper" id="mw-analyze-chart-wrapper" hidden>
+        <canvas id="mw-analyze-chart" height="110"></canvas>
+    </div>
+    <p class="muted" id="mw-analyze-chart-r2" hidden></p>
+    <p id="mw-analyze-answer" class="mw-analyze-answer" hidden></p>
     {% endif %}
 
     {% endif %}

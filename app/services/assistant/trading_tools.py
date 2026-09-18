@@ -22,13 +22,35 @@ do, just faster":
   The token lives in the Flask session, server-side, so it can't be forged
   by a crafted message or a retrieved passage.
 
-`get_quote` and `list_open_positions` are read-only and carry no rate limit
-of their own, matching the equivalent web routes (which aren't rate-limited
-either). `get_risk_report` consumes from the same `"trading_risk_report"`
-bucket (again via `rate_limit.consume`) that all three web risk-request
-routes (leg/position/book scope) draw from -- a real shared bucket, not just
-a matching limit value, so asking the assistant for a risk report doesn't
-grant a second quota alongside the web forms.
+`get_quote`, `list_open_positions`, and `get_projection` are read-only and
+carry no rate limit of their own, matching the equivalent web routes (which
+aren't rate-limited either). `get_risk_report` consumes from the same
+`"trading_risk_report"` bucket (again via `rate_limit.consume`) that all
+three web risk-request routes (leg/position/book scope) draw from -- a real
+shared bucket, not just a matching limit value, so asking the assistant for
+a risk report doesn't grant a second quota alongside the web forms.
+
+`get_projection` wraps `app.services.market_warehouse.get_projection`, a
+read-only view over a sibling project's precomputed warehouse of price
+projections. That warehouse only has precomputed rows for 9 tickers
+(AAPL, MSFT, AMZN, GOOGL, NVDA, JPM, KO, XOM, SPY) -- a small subset of
+this app's own 46-symbol `TICKER_WHITELIST` -- so this tool enforces its
+own, narrower whitelist (`PROJECTION_TICKERS`) and rejects anything
+outside it with a clear message, rather than letting a ticker like TSLA
+or META silently come back with nothing. Like `market_warehouse`'s own
+module docstring says: NOT FINANCIAL ADVICE -- none of the three
+projection methods has any demonstrated predictive power over real future
+prices, and this tool's schema description and returned text both carry
+that caveat forward so the model can't quietly drop it from a chained
+answer.
+
+`get_quote`, `get_projection`, and `get_risk_report` are intentionally
+three separate tools rather than one scripted pipeline function -- the
+model decides which to call, in what order, and whether to chain their
+outputs into one answer (e.g. quote -> projection -> risk report for a
+"what do you think of AAPL" style question) or just call one. That's what
+makes the resulting multi-step analysis a real autonomous decision rather
+than a hand-scripted sequence wearing a chat UI.
 
 Every dispatcher function returns a short string for the model to read and
 never raises out of `dispatch_trading_tool`, exactly like `job_tools.py`'s
@@ -44,12 +66,26 @@ from typing import Any
 
 from flask import current_app, session
 
-from app.services import market_data, risk_engine, risk_models, trading_actions
+from app.extensions import db
+from app.services import market_data, market_warehouse, risk_engine, risk_models, trading_actions
 from app.services.assistant import rate_limit
 from app.services.market_data import MarketDataError
 
 _MAX_LIST_ROWS = 20
 _CONFIRMATION_TTL_SECONDS = 300
+
+# The intersection of this app's TICKER_WHITELIST (app/config.py, 46
+# symbols) and market_warehouse's fct_security_price_projection table
+# (9 symbols) -- the only tickers get_projection can actually answer for.
+# Hardcoded rather than queried per-call: the warehouse's precomputed set
+# is small, static (it changes only when the sibling project's dbt models
+# are re-run against a different security list), and querying it live on
+# every call would trade a cheap whitelist check for an extra DuckDB round
+# trip just to reject the common case. If the warehouse's ticker set ever
+# changes, this constant needs updating to match.
+PROJECTION_TICKERS = frozenset({
+    "AAPL", "MSFT", "AMZN", "GOOGL", "NVDA", "JPM", "KO", "XOM", "SPY",
+})
 
 
 # --------------------------------------------------------------------------
@@ -133,6 +169,40 @@ _TOOL_SPECS = [
             "model_key": {"type": "string", "description": "Optional risk model to use; defaults to the standard model if omitted."},
         },
         [],
+    ),
+    _tool(
+        "get_projection",
+        "Look up this demo's own experimental price projection for a ticker -- "
+        "linear trend, random-walk-with-drift, or mean-reversion, each with a 95% "
+        "uncertainty band -- precomputed by a sibling market-data warehouse from "
+        "historical prices alone. NOT FINANCIAL ADVICE: none of these methods has "
+        "any demonstrated predictive power over real future prices; treat the "
+        "result as a modeling exercise, not a forecast, and carry that caveat into "
+        "any answer built on it. Only available for a small subset of tickers with "
+        "precomputed projections (AAPL, MSFT, AMZN, GOOGL, NVDA, JPM, KO, XOM, SPY) "
+        "-- most of the full trading whitelist (e.g. TSLA, META, BAC) has no "
+        "projection data and will be rejected with an explanation, not a blank "
+        "result.",
+        {
+            "ticker": {
+                "type": "string",
+                "description": "Ticker symbol. Must be one of the 9 with "
+                "precomputed projections: AAPL, MSFT, AMZN, GOOGL, NVDA, JPM, KO, "
+                "XOM, SPY -- a small subset of the full trading whitelist.",
+            },
+            "method": {
+                "type": "string",
+                "enum": list(market_warehouse.PROJECTION_METHODS),
+                "description": "Projection method. Defaults to 'linear_trend' if omitted.",
+            },
+            "lookback_days": {
+                "type": "integer",
+                "enum": list(market_warehouse.PROJECTION_LOOKBACK_GRID),
+                "description": "History window the projection was fit on, in days. "
+                "Defaults to 90 if omitted.",
+            },
+        },
+        ["ticker"],
     ),
     _tool(
         "preview_open_position",
@@ -320,6 +390,69 @@ def _get_risk_report(args: dict) -> str:
     )
 
 
+def _fmt_price(value) -> str:
+    return f"${value:.2f}" if isinstance(value, (int, float)) else "n/a"
+
+
+def _get_projection(args: dict) -> str:
+    ticker = (args.get("ticker") or "").strip().upper()
+    if not ticker:
+        return "Which ticker?"
+    if ticker not in PROJECTION_TICKERS:
+        return (
+            f"'{ticker}' doesn't have a precomputed price projection in this demo. "
+            "Projections only exist for a 9-ticker subset of the trading whitelist: "
+            f"{', '.join(sorted(PROJECTION_TICKERS))}."
+        )
+
+    method = (args.get("method") or market_warehouse.DEFAULT_PROJECTION_METHOD).strip().lower()
+    if method not in market_warehouse.PROJECTION_METHODS:
+        return (
+            f"'{method}' isn't a supported projection method -- choose one of "
+            + ", ".join(market_warehouse.PROJECTION_METHODS) + "."
+        )
+
+    lookback_days = args.get("lookback_days")
+    if lookback_days in (None, ""):
+        lookback_days = market_warehouse.DEFAULT_PROJECTION_LOOKBACK
+    else:
+        try:
+            lookback_days = int(lookback_days)
+        except (TypeError, ValueError):
+            return "lookback_days must be a whole number."
+    if lookback_days not in market_warehouse.PROJECTION_LOOKBACK_GRID:
+        return (
+            f"{lookback_days} isn't a supported lookback -- choose one of "
+            + ", ".join(str(d) for d in market_warehouse.PROJECTION_LOOKBACK_GRID)
+            + " days."
+        )
+
+    db_path = current_app.config["MARKET_WAREHOUSE_DB_PATH"]
+    result = market_warehouse.get_projection(db_path, method=method, lookback_days=lookback_days)
+    series = (result.get("series") or {}).get(ticker)
+    if not series or not series.get("dates"):
+        return (
+            f"No projection data available for {ticker} right now -- the warehouse "
+            "may not be built yet, or this combination hasn't been precomputed. "
+            "This is read-only, best-effort data, not a live computation."
+        )
+
+    last_date = series["dates"][-1]
+    last_price = series["projected"][-1]
+    lower = series["lower"][-1]
+    upper = series["upper"][-1]
+    r2 = series.get("r_squared")
+    r2_str = f"{r2:.3f}" if isinstance(r2, (int, float)) else "n/a"
+
+    return (
+        "NOT FINANCIAL ADVICE -- experimental projection only, none of this "
+        f"demo's methods has demonstrated predictive power. {ticker} {method} "
+        f"projection ({lookback_days}d lookback), by {last_date}: "
+        f"{_fmt_price(last_price)} (95% band {_fmt_price(lower)}-{_fmt_price(upper)}), "
+        f"fit quality r^2={r2_str}."
+    )
+
+
 def _preview_open_position(args: dict) -> str:
     ticker = (args.get("ticker") or "").strip().upper()
     kind = (args.get("kind") or "stock").strip().lower()
@@ -392,6 +525,7 @@ _HANDLERS = {
     "get_quote": _get_quote,
     "list_open_positions": _list_open_positions,
     "get_risk_report": _get_risk_report,
+    "get_projection": _get_projection,
     "preview_open_position": _preview_open_position,
     "open_position": _open_position,
 }
@@ -418,4 +552,20 @@ def dispatch_trading_tool(name: str, arguments: Any) -> str:
     try:
         return handler(arguments)
     except Exception as exc:  # noqa: BLE001 - the model must never see a trace
+        # A handler that touched the DB (get_risk_report, open_position, ...)
+        # and hit a SQLAlchemy error leaves db.session in a "pending
+        # rollback" state -- every later query on this same request's
+        # session raises PendingRollbackError until it's rolled back, which
+        # would otherwise cascade into every subsequent tool call this same
+        # chat turn makes (a multi-tool-call turn can easily call three or
+        # four trading tools after one failure). Roll back defensively for
+        # any exception, not just recognized DB ones, since this handler
+        # has no reliable way to know which failures did and didn't touch
+        # the session.
+        db.session.rollback()
+        # Deliberately generic to the model/visitor -- a chat reply is not
+        # the place to leak internal tracebacks -- but the real detail
+        # still needs to go SOMEWHERE, or a real bug here is invisible from
+        # both ends (the model just sees "didn't work" and moves on).
+        current_app.logger.exception("Trading tool %r failed", name)
         return f"That didn't work ({type(exc).__name__})."

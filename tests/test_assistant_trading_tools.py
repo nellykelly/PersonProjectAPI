@@ -14,14 +14,19 @@ tested here instead:
   (`"trading_open_position"`) as the web route's `POST /open`, so the
   assistant can't hand out a second, unlimited quota alongside the form.
 """
+import json
 import time
 
 import pytest
 
 from app.extensions import db, limiter
 from app.models import Instrument, Leg, Strategy
-from app.services import market_data
-from app.services.assistant.trading_tools import build_trading_tools, dispatch_trading_tool
+from app.services import market_data, market_warehouse
+from app.services.assistant.trading_tools import (
+    PROJECTION_TICKERS,
+    build_trading_tools,
+    dispatch_trading_tool,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -37,13 +42,14 @@ def _token_from_preview(preview_text: str) -> str:
 # build_trading_tools -- schema shape
 # --------------------------------------------------------------------------
 
-def test_build_trading_tools_returns_all_five():
+def test_build_trading_tools_returns_all_six():
     tools = build_trading_tools()
     names = {t["function"]["name"] for t in tools}
     assert names == {
         "get_quote",
         "list_open_positions",
         "get_risk_report",
+        "get_projection",
         "preview_open_position",
         "open_position",
     }
@@ -365,6 +371,189 @@ def test_get_risk_report_route_itself_429s_once_the_tool_has_spent_the_bucket(ap
     client = app.test_client()
     resp = client.post(f"/projects/trading-simulator/positions/{leg_id}/risk-requests")
     assert resp.status_code == 429
+
+
+def test_a_db_error_in_one_tool_call_does_not_poison_the_next_one(app, db, monkeypatch):
+    """dispatch_trading_tool's generic except-and-report-text handler must
+    roll back db.session before returning -- otherwise a SQLAlchemy error
+    from one tool call (e.g. a failed risk request) leaves the session in
+    "pending rollback", and every later tool call in the SAME chat turn
+    (a live multi-hop turn easily makes several) raises PendingRollbackError
+    instead of running normally. Found live: an autonomous stock-analysis
+    turn chaining get_risk_report -> list_open_positions surfaced exactly
+    this cascade."""
+    from sqlalchemy.exc import IntegrityError
+
+    from app.services import risk_engine
+
+    def _boom(**kwargs):
+        raise IntegrityError("INSERT", {}, Exception("simulated constraint violation"))
+
+    monkeypatch.setattr(risk_engine, "submit_risk_request", _boom)
+
+    with app.test_request_context():
+        failed = dispatch_trading_tool("get_risk_report", {"book": True})
+        assert "That didn't work (IntegrityError)." == failed
+
+        # Any DB-touching call right after must run cleanly -- not
+        # "That didn't work (PendingRollbackError)."
+        after = dispatch_trading_tool("list_open_positions", {})
+        assert "PendingRollbackError" not in after
+
+
+# --------------------------------------------------------------------------
+# get_projection
+# --------------------------------------------------------------------------
+
+def _fake_projection_result(ticker: str, r_squared: float = 0.83) -> dict:
+    return {
+        "tickers": [ticker],
+        "series": {
+            ticker: {
+                "dates": ["2026-09-16", "2026-09-17"],
+                "projected": [150.0, 151.5],
+                "lower": [145.0, 145.5],
+                "upper": [155.0, 157.5],
+                "r_squared": r_squared,
+            }
+        },
+    }
+
+
+def test_projection_tickers_are_a_subset_of_the_trading_whitelist(app):
+    # The mismatch this tool exists to guard against: the warehouse only
+    # has precomputed rows for 9 tickers, a small slice of the 46-symbol
+    # trading whitelist. Confirm the intersection is real (every projection
+    # ticker is whitelisted) and that the gap is real too (a whitelisted
+    # ticker like TSLA has no projection data).
+    with app.app_context():
+        whitelist = set(app.config["TICKER_WHITELIST"])
+    assert PROJECTION_TICKERS <= whitelist
+    assert "TSLA" in whitelist
+    assert "TSLA" not in PROJECTION_TICKERS
+
+
+def test_get_projection_returns_the_projection(app, db, monkeypatch):
+    captured = {}
+
+    def fake_get_projection(db_path, *, method, lookback_days):
+        captured["method"] = method
+        captured["lookback_days"] = lookback_days
+        return _fake_projection_result("AAPL")
+
+    monkeypatch.setattr(market_warehouse, "get_projection", fake_get_projection)
+
+    with app.test_request_context():
+        result = dispatch_trading_tool("get_projection", {"ticker": "aapl"})
+
+    assert "AAPL" in result
+    assert "151.50" in result
+    assert "145.50" in result
+    assert "157.50" in result
+    assert "0.830" in result
+    # Defaults, since neither was passed.
+    assert captured == {"method": "linear_trend", "lookback_days": 90}
+
+
+def test_get_projection_passes_through_explicit_method_and_lookback(app, db, monkeypatch):
+    captured = {}
+
+    def fake_get_projection(db_path, *, method, lookback_days):
+        captured["method"] = method
+        captured["lookback_days"] = lookback_days
+        return _fake_projection_result("MSFT")
+
+    monkeypatch.setattr(market_warehouse, "get_projection", fake_get_projection)
+
+    with app.test_request_context():
+        result = dispatch_trading_tool(
+            "get_projection",
+            {"ticker": "MSFT", "method": "mean_reversion", "lookback_days": 30},
+        )
+
+    assert captured == {"method": "mean_reversion", "lookback_days": 30}
+    assert "MSFT" in result
+    assert "mean_reversion" in result
+
+
+def test_get_projection_response_carries_the_disclaimer(app, db, monkeypatch):
+    monkeypatch.setattr(
+        market_warehouse, "get_projection",
+        lambda db_path, *, method, lookback_days: _fake_projection_result("AAPL"),
+    )
+    with app.test_request_context():
+        result = dispatch_trading_tool("get_projection", {"ticker": "AAPL"})
+    assert "NOT FINANCIAL ADVICE" in result
+    assert "predictive power" in result.lower()
+
+
+def test_get_projection_schema_description_carries_the_disclaimer():
+    tools = build_trading_tools()
+    proj = next(t for t in tools if t["function"]["name"] == "get_projection")
+    desc = proj["function"]["description"]
+    assert "NOT FINANCIAL ADVICE" in desc
+    assert "predictive power" in desc.lower()
+    # The 9-ticker subset needs to be spelled out somewhere the model reads
+    # before it calls the tool, not just discovered via a runtime rejection.
+    for ticker in sorted(PROJECTION_TICKERS):
+        assert ticker in desc + json.dumps(proj["function"]["parameters"])
+
+
+def test_get_projection_rejects_ticker_outside_the_nine_ticker_intersection(app, db):
+    # TSLA is on the full 46-symbol trading whitelist but has no warehouse
+    # projection data -- must be a clear, non-silent rejection, not a
+    # blank/empty result.
+    with app.test_request_context():
+        result = dispatch_trading_tool("get_projection", {"ticker": "TSLA"})
+    assert result.strip() != ""
+    assert "TSLA" in result
+    assert "doesn't have a precomputed price projection" in result
+    assert "AAPL" in result  # names the supported subset
+
+
+def test_get_projection_rejects_ticker_off_the_whitelist_entirely(app, db):
+    with app.test_request_context():
+        result = dispatch_trading_tool("get_projection", {"ticker": "NOTATICKER"})
+    assert result.strip() != ""
+    assert "doesn't have a precomputed price projection" in result
+
+
+def test_get_projection_rejects_bad_method(app, db):
+    with app.test_request_context():
+        result = dispatch_trading_tool(
+            "get_projection", {"ticker": "AAPL", "method": "crystal_ball"}
+        )
+    assert "supported projection method" in result.lower()
+
+
+def test_get_projection_rejects_bad_lookback(app, db):
+    with app.test_request_context():
+        result = dispatch_trading_tool(
+            "get_projection", {"ticker": "AAPL", "lookback_days": 45}
+        )
+    assert "supported lookback" in result.lower()
+
+
+def test_get_projection_rejects_non_numeric_lookback(app, db):
+    with app.test_request_context():
+        result = dispatch_trading_tool(
+            "get_projection", {"ticker": "AAPL", "lookback_days": "soon"}
+        )
+    assert "whole number" in result.lower()
+
+
+def test_get_projection_handles_missing_warehouse_data(app, db, monkeypatch):
+    # e.g. warehouse not built yet -- market_warehouse.get_projection's own
+    # never-raises contract returns an empty-but-valid shape, and this tool
+    # must turn that into an explanatory string, not a blank result.
+    monkeypatch.setattr(
+        market_warehouse, "get_projection",
+        lambda db_path, *, method, lookback_days: {"tickers": [], "series": {}},
+    )
+    with app.test_request_context():
+        result = dispatch_trading_tool("get_projection", {"ticker": "AAPL"})
+    assert result.strip() != ""
+    assert "No projection data available" in result
 
 
 # --------------------------------------------------------------------------

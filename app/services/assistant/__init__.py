@@ -12,11 +12,12 @@ the test suite -- works without them installed.
 """
 from .backends import backend_available
 from .errors import AssistantError, AssistantInputError, AssistantUnavailable
-from .orchestrator import AssistantAnswer, answer
+from .orchestrator import AssistantAnswer, answer, stream_answer
 from .reindex import reindex
 
 __all__ = [
     "answer",
+    "stream_answer",
     "reindex",
     "backend_available",
     "AssistantAnswer",

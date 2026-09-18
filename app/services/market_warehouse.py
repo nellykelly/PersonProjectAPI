@@ -156,6 +156,34 @@ def get_projection(db_path: str, *, method: str, lookback_days: int) -> dict:
         con.close()
 
 
+def get_projection_chart_data(db_path: str, *, method: str, lookback_days: int) -> dict:
+    """Projection series plus its recent-actual-price lead-in, together --
+    exactly the two pieces `renderProjectionChart()` in market_warehouse.js
+    needs to draw the same chart the page's own "Price projection" section
+    shows, for an explicit (method, lookback_days) pair. Used by the live
+    autonomous stock-analysis demo to show what get_projection actually
+    found as a real chart, not just the summary sentence the model reads.
+    Same never-raises, empty-but-valid-shape-on-failure contract as
+    get_projection/get_chart_window."""
+    empty = {"projection": {"tickers": [], "series": {}}, "recent_actual": {}}
+    if method not in PROJECTION_METHODS or lookback_days not in PROJECTION_LOOKBACK_GRID:
+        return empty
+    con, _reason = _open(db_path)
+    if con is None:
+        return empty
+    try:
+        max_date = con.execute("select max(trade_date) from marts.fct_security_price").fetchone()[0]
+        return {
+            "projection": _fetch_projection(con, method=method, lookback_days=lookback_days),
+            "recent_actual": _fetch_recent_actual_prices(con, max_date),
+        }
+    except Exception as exc:  # noqa: BLE001
+        log.warning("market_warehouse: projection chart data query failed: %s", exc)
+        return empty
+    finally:
+        con.close()
+
+
 def _query_all(con) -> dict:
     stats_row = con.execute(
         """

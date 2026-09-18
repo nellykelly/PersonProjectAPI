@@ -106,15 +106,25 @@ PROJECTS = [
     {
         "slug": "assistant",
         "title": "AI Assistant",
-        "blurb": "A retrieval-grounded chatbot that answers questions about this site and its "
-        "projects, using only a curated content corpus: RAG over a pgvector store, local "
-        "embeddings, and Groq for generation behind a rate-limited, prompt-injection-aware "
-        "public endpoint. A stats page tracks tone, volume, and top questions from the logs, "
-        "with no model calls.",
+        "blurb": "A retrieval-grounded agent, not a scripted chatbot: a LangGraph agent loop "
+        "decides for itself which tools to call and in what order, pulling real data from this "
+        "site's own live projects (trading simulator, pipeline world, company scorer, "
+        "timed-squares) instead of describing them from memory. Its flagship example chains "
+        "three tool calls on its own -- a stock quote, a trend projection, then a written risk "
+        "report -- deciding at each step what to call next based on what the last one returned. "
+        "Retrieval runs over a pgvector store with local embeddings; generation is Groq, behind "
+        "a rate-limited, prompt-injection-aware public endpoint. A stats page tracks tone, "
+        "volume, and top questions from the logs, with no model calls.",
         "endpoint": "assistant.index",
-        "tags": ["RAG", "pgvector", "Embeddings", "Groq"],
+        "tags": ["RAG", "pgvector", "Embeddings", "Groq", "LangGraph"],
         "icon": "assets/img/icons/assistant.svg",
-        "wip": True,
+        # The write-up version of this project: the problem it solves, what
+        # it's built with, and what makes it an autonomous agent rather than
+        # a plain chatbot. Added 2026-09-14; blurb/tags/wip above were
+        # updated 2026-09-15 once the LangGraph rebuild and stock-predictor
+        # chain it describes actually landed and were verified (758 tests
+        # passing, no skips related to this work).
+        "case_study_endpoint": "assistant.about",
     },
 ]
 
