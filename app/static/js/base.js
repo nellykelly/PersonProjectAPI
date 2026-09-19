@@ -77,7 +77,135 @@ document.addEventListener("DOMContentLoaded", function () {
   initTooltipEdgeAlignment();
   initLandingStatsFocus();
   initBioNetwork();
+  initHeroDotField();
 });
+
+// The hero's dot-grid background, drawn on <canvas class="hero-dot-field">
+// (full-bleed, see custom.css) instead of a CSS background-image: each
+// dot's actual drawn position is its rest position pulled toward the
+// cursor, within a radius, tapering to zero at the edge of that radius --
+// dots near the pointer visibly move closer together and to it, dots
+// outside the radius don't move at all. A tiled background-image can't do
+// this (one flat image, no per-dot state), which is the whole reason this
+// moved to canvas. A soft elliptical falloff centered over the hero's
+// text/bubble content (FOCUS_*) still fades dots out near the true screen
+// edges, the same job the old CSS mask did.
+function initHeroDotField() {
+  var hero = document.querySelector(".hero");
+  var canvas = document.querySelector(".hero-dot-field");
+  if (!hero || !canvas || !canvas.getContext) return;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+  var ctx = canvas.getContext("2d");
+  var GAP = 22; // px between dots at rest, matching the old background-size
+  var BASE_ALPHA = 0.09;
+  var INFLUENCE_RADIUS = 120; // px: how far the cursor's pull reaches
+  var MAX_PULL = 9; // px: how far a dot right under the cursor moves
+  // Elliptical falloff focus, as a fraction of the canvas's own box --
+  // matches the old mask's "ellipse ... at 50% 38%" center. Dots inside
+  // the 25%-radius core are fully opaque; outside the 92%-radius edge
+  // they're invisible; linear ramp between.
+  var FOCUS_X_FRAC = 0.5, FOCUS_Y_FRAC = 0.38;
+  var FALLOFF_IN = 0.25, FALLOFF_OUT = 0.92;
+
+  var width = 0, height = 0, dpr = 1;
+  var dots = []; // {x, y, alpha} at rest, in CSS-pixel space
+  var pointer = null; // {x, y} in CSS-pixel space, or null when not hovering
+
+  function buildDots() {
+    dots = [];
+    var focusX = width * FOCUS_X_FRAC;
+    var focusY = height * FOCUS_Y_FRAC;
+    // Wide enough that dots stay visible almost to the true left/right
+    // screen edges, not just within the (narrower) content column --
+    // width is the full viewport now (see .hero-dot-field), so this has
+    // to reach much further than it would relative to just the hero's
+    // own text/bubble column.
+    var radiusX = width * 0.7;
+    var radiusY = height * 0.85;
+    for (var y = 0; y <= height; y += GAP) {
+      for (var x = 0; x <= width; x += GAP) {
+        var d = Math.sqrt(
+          Math.pow((x - focusX) / radiusX, 2) + Math.pow((y - focusY) / radiusY, 2)
+        );
+        var t = 1 - (d - FALLOFF_IN) / (FALLOFF_OUT - FALLOFF_IN);
+        var alpha = BASE_ALPHA * Math.max(0, Math.min(1, t));
+        if (alpha > 0.002) dots.push({ x: x, y: y, alpha: alpha });
+      }
+    }
+  }
+
+  function resize() {
+    var rect = canvas.getBoundingClientRect();
+    width = rect.width;
+    height = rect.height;
+    dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    buildDots();
+    render();
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, width, height);
+    for (var i = 0; i < dots.length; i++) {
+      var dot = dots[i];
+      var drawX = dot.x, drawY = dot.y, radius = 1, alpha = dot.alpha;
+
+      if (pointer) {
+        var dx = dot.x - pointer.x;
+        var dy = dot.y - pointer.y;
+        var dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < INFLUENCE_RADIUS) {
+          // 1 at the cursor, 0 at the radius's edge -- both the pull
+          // distance and a brightness/size lift share this so the dots
+          // that moved the most also read as the most "activated."
+          var strength = 1 - dist / INFLUENCE_RADIUS;
+          var pull = strength * MAX_PULL;
+          if (dist > 0.01) {
+            drawX = dot.x - (dx / dist) * pull;
+            drawY = dot.y - (dy / dist) * pull;
+          }
+          radius = 1 + strength * 1.4;
+          alpha = Math.min(1, dot.alpha + strength * 0.5);
+        }
+      }
+
+      ctx.beginPath();
+      ctx.arc(drawX, drawY, radius, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255, 255, 255, " + alpha.toFixed(3) + ")";
+      ctx.fill();
+    }
+  }
+
+  var raf = null;
+  function scheduleRender() {
+    if (raf) return;
+    raf = requestAnimationFrame(function () {
+      raf = null;
+      render();
+    });
+  }
+
+  hero.addEventListener("mousemove", function (event) {
+    var rect = canvas.getBoundingClientRect();
+    pointer = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    scheduleRender();
+  });
+  hero.addEventListener("mouseleave", function () {
+    pointer = null;
+    scheduleRender();
+  });
+
+  var resizeRaf = null;
+  window.addEventListener("resize", function () {
+    if (resizeRaf) cancelAnimationFrame(resizeRaf);
+    resizeRaf = requestAnimationFrame(resize);
+  });
+
+  resize();
+}
 
 // Landing-page "by the numbers" row: hovering one stat blurs+dims the
 // others. Scoped to .landing-stats specifically so the shared .stat-tile
@@ -118,34 +246,43 @@ function initBioNetwork() {
   var wrap = document.querySelector("[data-bio-network]");
   if (!wrap) return;
 
-  var svg = wrap.querySelector(".bio-network-lines");
+  // No longer a descendant of wrap -- .bio-network-wrap's .reveal-up
+  // carries a permanent transform once revealed, which would make it the
+  // containing block for a position: fixed descendant instead of the
+  // real viewport (see main/index.html's comment where this SVG lives).
+  var svg = document.querySelector(".bio-network-lines");
   var center = wrap.querySelector('[data-node="center"]');
-  var satellites = wrap.querySelectorAll(".bio-node-satellite");
+  var addBtn = document.getElementById("bio-network-add");
+  var removeBtn = document.getElementById("bio-network-remove");
+  // A live array (not the static NodeList querySelectorAll returns),
+  // since the "+" button pushes new satellites into it -- draw() needs
+  // to see whichever satellites exist right now, not just the ones that
+  // existed at page load.
+  var satellites = Array.prototype.slice.call(wrap.querySelectorAll(".bio-node-satellite"));
 
   function isStacked() {
     return window.matchMedia("(max-width: 720px)").matches;
   }
 
-  function centerOf(el, containerRect) {
+  function centerOf(el) {
     var bubble = el.querySelector(".bio-node-bubble") || el;
     var r = bubble.getBoundingClientRect();
-    return {
-      x: r.left + r.width / 2 - containerRect.left,
-      y: r.top + r.height / 2 - containerRect.top,
-    };
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   }
 
+  // Lines are always drawn, for every satellite, unconditionally -- no
+  // bubble is ever mid-drag or removable anymore, so there's nothing
+  // that would make a line worth hiding.
   function draw() {
     if (!svg || isStacked()) {
       if (svg) svg.innerHTML = "";
       return;
     }
-    var containerRect = wrap.getBoundingClientRect();
-    var from = centerOf(center, containerRect);
+    var from = centerOf(center);
     var frag = document.createDocumentFragment();
 
-    Array.prototype.forEach.call(satellites, function (sat) {
-      var to = centerOf(sat, containerRect);
+    satellites.forEach(function (sat) {
+      var to = centerOf(sat);
       var midX = (from.x + to.x) / 2;
       var midY = (from.y + to.y) / 2;
       // Slight bow so lines fan out visually instead of crossing
@@ -166,7 +303,71 @@ function initBioNetwork() {
     svg.appendChild(frag);
   }
 
-  Array.prototype.forEach.call(satellites, function (sat) {
+  var raf = null;
+  function scheduleDraw() {
+    if (raf) cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(draw);
+  }
+
+  // Collision avoidance: a newly added bubble organizes itself around
+  // the center photo rather than landing on top of it, on top of any
+  // other bubble, over the hero text column, or off-screen. Earlier
+  // versions searched anywhere on rings out past the wrap's own box,
+  // which could place a bubble over the text column to the left (the
+  // wrap has no clipping, so nothing stopped it) or partway off the
+  // right edge of the viewport. findPlacement() now only ever considers
+  // spots fully inside the wrap's own box (SAFE_MARGIN keeps a bubble's
+  // full radius, not just its center, inside that box, which is what
+  // actually keeps it off the text column and on screen) and returns
+  // null when nothing in that box is free -- the caller treats that as
+  // "at capacity" and declines to add rather than force an overlap.
+  var SAT_MIN_DIST = 168; // px between two satellite centers
+  var CENTER_MIN_DIST = 208; // px between a satellite and the center bubble
+  var SAFE_MARGIN = 80; // >= a satellite bubble's own radius (72px), so its edge stays inside the wrap
+  var PLACEMENT_STEP = 18; // px grid resolution for the placement search
+
+  function bubbleCenterPx(el) {
+    var b = el.querySelector(".bio-node-bubble") || el;
+    var r = b.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }
+
+  function placementIsClear(x, y, excludeSat) {
+    var centerPos = bubbleCenterPx(center);
+    if (Math.hypot(x - centerPos.x, y - centerPos.y) < CENTER_MIN_DIST) return false;
+    for (var i = 0; i < satellites.length; i++) {
+      var other = satellites[i];
+      if (other === excludeSat) continue;
+      var p = bubbleCenterPx(other);
+      if (Math.hypot(x - p.x, y - p.y) < SAT_MIN_DIST) return false;
+    }
+    return true;
+  }
+
+  // Scans a grid across the safe area (inside the wrap, clear of the
+  // text column and the viewport edge) and picks at random among every
+  // spot that's fully clear -- a grid instead of random sampling so
+  // "nothing free" is an actual exhaustive answer, not a run of bad luck.
+  function findPlacement(excludeSat) {
+    var wrapRect = wrap.getBoundingClientRect();
+    var minX = wrapRect.left + SAFE_MARGIN;
+    var maxX = wrapRect.right - SAFE_MARGIN;
+    var minY = wrapRect.top + SAFE_MARGIN;
+    var maxY = wrapRect.bottom - SAFE_MARGIN;
+    if (minX >= maxX || minY >= maxY) return null;
+
+    var candidates = [];
+    for (var x = minX; x <= maxX; x += PLACEMENT_STEP) {
+      for (var y = minY; y <= maxY; y += PLACEMENT_STEP) {
+        if (placementIsClear(x, y, excludeSat)) candidates.push({ x: x, y: y });
+      }
+    }
+    if (!candidates.length) return null;
+    return candidates[Math.floor(Math.random() * candidates.length)];
+  }
+
+  // Hover/focus on a satellite highlights its own connecting line.
+  function wireSatellite(sat) {
     var id = sat.dataset.node;
     function activate() {
       var path = svg.querySelector('path[data-node="' + id + '"]');
@@ -180,15 +381,132 @@ function initBioNetwork() {
     sat.addEventListener("mouseleave", deactivate);
     sat.addEventListener("focus", activate);
     sat.addEventListener("blur", deactivate);
-  });
-
-  var raf = null;
-  function scheduleDraw() {
-    if (raf) cancelAnimationFrame(raf);
-    raf = requestAnimationFrame(draw);
   }
+
+  satellites.forEach(wireSatellite);
+
+  // "+"/"-" buttons: a stack. "+" pushes one bubble at a time from the
+  // real project list rendered into #bio-network-extra (see
+  // main/routes.py), each with its own icon and a real URL -- never
+  // invented placeholder content. "-" pops the most recently added one
+  // back off, in the reverse order it was added, and re-reveals "+" for
+  // it. Only bubbles added this way are poppable -- the four built-in
+  // satellites (JPMorgan, Ruth Asawa, Cogswell, StreetCode) are the
+  // site's real bio, not part of this toy stack.
+  (function initAddRemoveButtons() {
+    if (!addBtn) return;
+    var dataEl = document.getElementById("bio-network-extra");
+    var pool = [];
+    try {
+      pool = dataEl ? JSON.parse(dataEl.textContent) : [];
+    } catch (e) {
+      pool = [];
+    }
+    var nextIndex = 0;
+    var added = []; // stack of satellite elements pushed by "+"
+    // Set once a click finds no clear spot left -- the safe area is
+    // full. Cleared on every removal so freed space gets tried again;
+    // left alone otherwise, since re-scanning on every click after
+    // capacity is reached is wasted work for a result that can't change
+    // until something is removed.
+    var atCapacity = false;
+
+    if (!pool.length) {
+      addBtn.hidden = true;
+      if (removeBtn) removeBtn.hidden = true;
+      return;
+    }
+
+    function syncButtons() {
+      addBtn.hidden = nextIndex >= pool.length || atCapacity;
+      if (removeBtn) removeBtn.hidden = added.length === 0;
+    }
+
+    addBtn.addEventListener("click", function () {
+      if (nextIndex >= pool.length) return;
+
+      // Found before anything is built or added to the DOM/stack -- a
+      // full safe area means declining the add outright (see
+      // findPlacement()'s comment) rather than creating a bubble with
+      // nowhere clean to put it.
+      var placement = findPlacement(null);
+      if (!placement) {
+        atCapacity = true;
+        syncButtons();
+        return;
+      }
+
+      var item = pool[nextIndex++];
+
+      var sat = document.createElement("a");
+      sat.className = "bio-node bio-node-satellite";
+      sat.dataset.node = item.id;
+      sat.href = item.url;
+
+      var bubble = document.createElement("span");
+      bubble.className = "bio-node-bubble";
+      var img = document.createElement("img");
+      img.src = item.icon;
+      img.alt = "";
+      bubble.appendChild(img);
+
+      var label = document.createElement("span");
+      label.className = "bio-node-label";
+      label.textContent = item.title;
+
+      sat.appendChild(bubble);
+      sat.appendChild(label);
+
+      // Positioned in %, matching the wrap's own coordinate system the
+      // built-in satellites use, converting through px only for the
+      // placement search itself.
+      var wrapRect = wrap.getBoundingClientRect();
+      sat.style.left = (((placement.x - wrapRect.left) / wrapRect.width) * 100) + "%";
+      sat.style.top = (((placement.y - wrapRect.top) / wrapRect.height) * 100) + "%";
+
+      wrap.appendChild(sat);
+      satellites.push(sat);
+      added.push(sat);
+
+      wireSatellite(sat);
+      scheduleDraw();
+      syncButtons();
+    });
+
+    if (removeBtn) {
+      removeBtn.addEventListener("click", function () {
+        var sat = added.pop();
+        if (!sat) return;
+        nextIndex--;
+        atCapacity = false;
+        var idx = satellites.indexOf(sat);
+        if (idx !== -1) satellites.splice(idx, 1);
+        sat.remove();
+        scheduleDraw();
+        syncButtons();
+      });
+    }
+
+    syncButtons();
+  })();
+
+  // .bio-network-wrap carries .reveal-up, which slides/fades it in over
+  // 0.8s on load (initScrollReveal() adds .is-visible, then the CSS
+  // transition runs). The first draw() calls below can easily land while
+  // that transition is still in flight, locking the lines onto the
+  // bubbles' in-transit positions -- they'd only ever correct themselves
+  // once some later resize/scroll happened to trigger a fresh draw,
+  // which is the "loads wrong, then jumps into place" symptom. Redrawing
+  // right when that transition actually finishes is the real fix.
+  wrap.addEventListener("transitionend", scheduleDraw);
+
   window.addEventListener("resize", scheduleDraw);
   window.addEventListener("load", scheduleDraw);
+  // Lines are drawn in viewport coordinates (see centerOf() above) while
+  // the satellites themselves stay in normal page flow -- scrolling
+  // changes every satellite's viewport position even though nothing
+  // about the network itself moved, so redraw needs to track scroll too.
+  window.addEventListener("scroll", scheduleDraw, { passive: true });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(scheduleDraw);
   scheduleDraw();
 }

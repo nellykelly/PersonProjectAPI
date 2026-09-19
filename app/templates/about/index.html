@@ -1,28 +1,153 @@
 {% extends "base.html" %}
 {% block title %}About{% endblock %}
+{% block content_class %}wide{% endblock %}
 
 {% block content %}
-<section>
-    <h1 class="major">About</h1>
+<section class="about-intro">
+    <div class="reveal-mask">
+        <h1 class="major reveal-up">About</h1>
+    </div>
+    <p class="reveal-up about-lede">
+        I'm Nelson Koskela, a software engineer with four years of experience building production data
+        infrastructure in Python, most recently at <strong>JPMorgan Chase &amp; Co.</strong> I'm
+        currently looking for the next place to put that experience to work, while also building out
+        independent projects on the side. On this site you'll find a retrieval-augmented AI assistant
+        I built from scratch, along with a live pipeline visualizer where you can submit a character
+        and watch it move through an actual queued processing system. I also designed and built a
+        dimensional data warehouse with its own automated test suite and self-directed adversarial
+        review, applying that same modeling discipline to both data pipelines and AI systems.
+    </p>
+    <div class="reveal-up about-contact">
+        <a class="button primary" href="{{ url_for('static', filename=RESUME_PATH) }}" target="_blank" rel="noopener">
+            View Resume
+        </a>
+    </div>
+</section>
 
-    <p>
-        My name is Nelson Koskela. Until <strong>September 2026</strong> I was a
-        <strong>Software Engineer II</strong> at <strong>JPMorgan Chase &amp; Co.</strong> in Houston,
-        on the Corporate &amp; Investment Banking side. I joined in July 2022 after interning
-        through the Software Engineering Program the previous summer. I'm now building independently,
-        including the projects on this site.
-    </p>
-    <p>
-        I studied Computer Science at Cogswell University of Silicon Valley after initially attending
-        Howard University in Washington, DC. Before pursuing computer science, I studied classical voice
-        at the Ruth Asawa School of the Arts, with a minor in jazz.
-    </p>
-    <p>
-        One example is a small simulated world where you can submit a character and watch it move through
-        a real queued processing pipeline. If you have a moment, please submit an entry. Having real users
-        interact with the projects makes them much more interesting to build.
-    </p>
+<div class="about-story">
+    <section class="about-section">
+        <div class="about-section-text reveal-up">
+            <span class="about-eyebrow">Before engineering</span>
+            <h2>Classical voice at Ruth Asawa</h2>
+            <p>
+                Before engineering, I trained in classical vocal performance at the Ruth Asawa School
+                of the Arts in San Francisco, with a minor in jazz. I've always thought of myself as
+                blending a technical and a creative background rather than choosing between them.
+            </p>
+        </div>
+        <div class="about-section-photo reveal-mask">
+            <div class="reveal-up about-photo-frame" style="--ring-speed: 6s">
+                <img src="{{ url_for('static', filename='assets/img/bubbles/sota-choir.jpg') }}"
+                     alt="Nelson Koskela performing with the Ruth Asawa School of the Arts choir" loading="lazy">
+            </div>
+        </div>
+    </section>
 
+    <section class="about-section about-section-reverse">
+        <div class="about-section-text reveal-up">
+            <span class="about-eyebrow">Then, computer science</span>
+            <h2>A Computer Science degree at Cogswell</h2>
+            <p>
+                I studied Computer Science at Cogswell University of Silicon Valley, after beginning my
+                studies at Howard University in Washington, DC.
+            </p>
+        </div>
+        <div class="about-section-photo reveal-mask">
+            <div class="reveal-up about-photo-frame" style="--ring-speed: 4.5s">
+                <img src="{{ url_for('static', filename='assets/img/bubbles/cogswell-grad.jpg') }}"
+                     alt="Nelson Koskela at his Cogswell University graduation" loading="lazy"
+                     style="object-position: top">
+            </div>
+        </div>
+    </section>
+
+    <section class="about-section">
+        <div class="about-section-text reveal-up">
+            <span class="about-eyebrow">Fall 2020 &ndash; Fall 2022</span>
+            <h2>StreetCode Academy</h2>
+            <p>
+                Before JPMorgan, I was a Diversity &amp; Inclusion Officer and freelance developer at
+                StreetCode Academy, building responsive web applications with HTML, CSS, and JavaScript,
+                and running sprints under Agile Scrum to deliver client solutions on time.
+            </p>
+            <p>
+                I also took on the organisation's own logistics and inventory tracking, building the
+                analytics reporting that improved item-tracking accuracy by 50% &mdash; the same instinct
+                for turning a manual, ad hoc process into something measured and reliable that later
+                showed up in the regulatory work at JPMorgan.
+            </p>
+        </div>
+        <div class="about-section-photo reveal-mask">
+            <div class="reveal-up about-photo-frame" style="--ring-speed: 3s">
+                <img src="{{ url_for('static', filename='assets/img/bubbles/streetcode-ewaste.jpg') }}"
+                     alt="Nelson Koskela carrying salvaged laptops during e-waste work at StreetCode Academy" loading="lazy"
+                     style="object-position: top">
+            </div>
+        </div>
+    </section>
+
+    <section class="about-section about-section-reverse">
+        <div class="about-section-text reveal-up">
+            <span class="about-eyebrow">Background</span>
+            <h2>Four years inside a bank's engineering org</h2>
+            <p>
+                I joined JPMorgan Chase &amp; Co. in July 2022 after interning the previous summer
+                through the Software Engineering Program, and spent the next four years as a Software
+                Engineer II in the Corporate &amp; Investment Banking technology organisation, engineering
+                and operating data pipelines and analytics infrastructure for regulatory and risk
+                reporting &mdash; reliably processing multi-terabyte datasets across global business units
+                in a production, always-on environment, and partnering directly with business
+                stakeholders to deliver that data in live, end-of-day, and start-of-day formats.
+            </p>
+            <p>
+                I later stepped up as de facto project lead on a full system migration during a team
+                staffing shortage, and separately designed and led a parallel &ldquo;prod vs.
+                prod&rdquo; validation framework end to end &mdash; automated reconciliation that
+                guaranteed two independently-built platforms matched to the record before every release.
+            </p>
+        </div>
+        <div class="about-section-photo reveal-mask">
+            <div class="reveal-up about-photo-frame" style="--ring-speed: 1.5s">
+                <img src="{{ url_for('static', filename='assets/img/bubbles/jpmchase-entrance.jpg') }}"
+                     alt="JPMorgan Chase &amp; Co. office entrance in Houston" loading="lazy">
+            </div>
+        </div>
+    </section>
+</div>
+
+<section class="about-intro">
+    <div class="reveal-mask">
+        <span class="reveal-up about-eyebrow">The longer version</span>
+    </div>
+    <p class="reveal-up about-lede">
+        I'm Nelson Koskela, a software engineer with four years of experience building production
+        data infrastructure in Python, most recently as a <strong>Software Engineer II</strong> at
+        <strong>JPMorgan Chase &amp; Co.</strong> on the Corporate &amp; Investment Banking side. I
+        joined the bank in <strong>July 2022</strong> after interning the previous summer through
+        their Software Engineering Program. These days I'm looking for the next place to put that
+        experience to work, while also building out a handful of independent projects on the side.
+    </p>
+    <p class="reveal-up about-lede">
+        My path here wasn't a straight line. I started at Howard University in Washington, DC, then
+        finished my Computer Science degree at Cogswell University of Silicon Valley. Before any of
+        that, I trained in classical voice at the Ruth Asawa School of the Arts, with a minor in jazz.
+        I'm still the kind of person who's curious about a lot of things at once, and I care about
+        building technology that actually improves someone's day, not just technology for its own
+        sake.
+    </p>
+    <p class="reveal-up about-lede">
+        On the technical side, I work mostly in Python and production data systems, and I've put real
+        time into building and shipping agentic AI applications, including a retrieval-augmented AI
+        assistant that runs on this site. I also designed and built a live pipeline visualizer here, a
+        small simulated world where you submit a character and watch it move through an actual queued
+        processing system, so if you have a minute, send one through. Separately, I designed and built
+        a dimensional data warehouse from scratch, complete with an automated test suite and a
+        self-directed adversarial review, applying that same modeling discipline to both data
+        pipelines and AI systems.
+    </p>
+</section>
+
+<section class="about-contact reveal-up">
     <a class="button primary" href="{{ url_for('static', filename=RESUME_PATH) }}" target="_blank" rel="noopener">
         View Resume
     </a>

@@ -31,10 +31,28 @@ _STATIC_PUBLIC_ENDPOINTS = (
 def index():
     listed = listed_projects()
     featured = [p for p in listed if p["slug"] in FEATURED_PROJECT_SLUGS]
+    # The bio network's "+" button adds a bubble for one of these at a
+    # time -- real projects, a real icon already drawn for /projects, and
+    # a real URL, so a bubble someone adds always links somewhere genuine
+    # rather than to placeholder content invented just for the toy.
+    bio_network_extra_nodes = [
+        {
+            "id": p["slug"],
+            "title": p["title"],
+            "icon": url_for("static", filename=p["icon"]),
+            "url": url_for(p["endpoint"]),
+        }
+        for p in listed
+    ]
     # Counted, not written into the template: it drifted before (the copy
     # still said 5 after a sixth shipped), and putting a project on hold
     # changes it again.
-    return render_template("main/index.html", featured_projects=featured, project_count=len(listed))
+    return render_template(
+        "main/index.html",
+        featured_projects=featured,
+        project_count=len(listed),
+        bio_network_extra_nodes=bio_network_extra_nodes,
+    )
 
 
 @bp.route("/favicon.ico")

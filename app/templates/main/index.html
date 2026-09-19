@@ -4,6 +4,7 @@
 
 {% block content %}
 <section class="hero">
+    <canvas class="hero-dot-field" aria-hidden="true"></canvas>
     <div class="hero-grid">
         <div class="hero-text">
             <div class="reveal-mask">
@@ -21,6 +22,7 @@
                     <a class="button primary" href="{{ url_for('about.index') }}">About Me</a>
                     <a class="button" href="{{ url_for('projects.index') }}">View Projects</a>
                     <a class="button" href="{{ url_for('contact.index') }}">Contact</a>
+                    <a class="button" href="{{ LINKEDIN_URL }}" target="_blank" rel="noopener">LinkedIn</a>
                 </div>
             </div>
 
@@ -36,10 +38,39 @@
             </div>
         </div>
 
+        <!-- Deliberately NOT inside .bio-network-wrap: that element carries
+             .reveal-up, whose .is-visible state applies transform:
+             translateY(0) permanently once revealed -- any transform value
+             other than none (even an identity one) turns an element into
+             the containing block for its position:fixed descendants, so a
+             fixed-position button/bubble inside it is fixed relative to
+             THAT box, not the real viewport. Kept as a direct child of
+             .hero (which has no transform of its own) instead. -->
+        <script type="application/json" id="bio-network-extra">{{ bio_network_extra_nodes | tojson }}</script>
+        <div class="bio-network-controls">
+            <button type="button" class="bio-network-add" id="bio-network-add"
+                    aria-label="Add a project bubble" title="Add a project">
+                <svg class="bio-network-add-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+                </svg>
+            </button>
+            <button type="button" class="bio-network-remove" id="bio-network-remove" hidden
+                    aria-label="Remove the last added project bubble" title="Remove last bubble">
+                <svg class="bio-network-remove-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M5 12h14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Same reason as the button above: NOT inside .bio-network-wrap,
+             or its permanent transform: translateY(0) traps this
+             position: fixed SVG inside that small box instead of the real
+             viewport -- every line would draw far outside the visible
+             area. -->
+        <svg class="bio-network-lines" aria-hidden="true"></svg>
+
         <div class="hero-bio">
             <div class="bio-network-wrap reveal-up" data-bio-network>
-                <svg class="bio-network-lines" aria-hidden="true"></svg>
-
                 <div class="bio-node bio-node-center" data-node="center" aria-hidden="true">
                     <img src="{{ url_for('static', filename='assets/img/bubbles/nelson.jpg') }}" alt="">
                 </div>

@@ -84,6 +84,7 @@ def _traffic_chart() -> dict:
     stats = net_monitor.get_analytics()
     buckets = stats["volume_buckets"]
     return {
+        "kind": "series",
         "title": "Request volume over time",
         "labels": [b["start"].split("T")[-1].split(".")[0] for b in buckets],
         "series": [
@@ -93,16 +94,75 @@ def _traffic_chart() -> dict:
     }
 
 
+def _projection_chart(args: dict) -> dict | None:
+    """Same re-derive-it-from-the-service pattern as `_traffic_chart()`,
+    for the market-warehouse `get_projection` tool -- reuses the exact
+    service call (`get_projection_chart_data`) and default-filling
+    `market_warehouse.routes.api_analyze_stream`'s `_enrich()` already
+    established for the SSE stock-analysis demo, so a chart asked for
+    from the main chat and one streamed from that demo are drawn from
+    the same numbers. Returns None when the ticker has no precomputed
+    projection (an invalid/unsupported ticker, or a warehouse that isn't
+    built) -- the model's own text reply already explains that case. Also
+    returns None (never raises) on a malformed `args` shape -- a chart is a
+    nice-to-have on top of a reply that already stands on its own, so a
+    parsing hiccup here must never turn into a 500 for the whole turn."""
+    if not isinstance(args, dict):
+        return None
+    from app.services import market_warehouse
+
+    ticker = (args.get("ticker") or "").strip().upper()
+    if not ticker:
+        return None
+    method = (args.get("method") or market_warehouse.DEFAULT_PROJECTION_METHOD).strip().lower()
+    lookback = args.get("lookback_days") or market_warehouse.DEFAULT_PROJECTION_LOOKBACK
+    try:
+        lookback = int(lookback)
+    except (TypeError, ValueError):
+        lookback = market_warehouse.DEFAULT_PROJECTION_LOOKBACK
+
+    chart_data = market_warehouse.get_projection_chart_data(
+        current_app.config["MARKET_WAREHOUSE_DB_PATH"], method=method, lookback_days=lookback
+    )
+    proj = chart_data["projection"]["series"].get(ticker)
+    if not proj or not proj.get("dates"):
+        return None
+    recent = chart_data["recent_actual"].get(ticker, {"dates": [], "close": []})
+
+    return {
+        "kind": "projection",
+        "title": f"{ticker} price projection ({method}, {lookback}d lookback)",
+        "ticker": ticker,
+        "labels": recent["dates"] + proj["dates"],
+        "actual": recent["close"],
+        "projected": proj["projected"],
+        "lower": proj["lower"],
+        "upper": proj["upper"],
+        "r_squared": proj.get("r_squared"),
+    }
+
+
 def _charts_for(tool_trace: list[dict]) -> list[dict]:
     """Which tool calls in this turn earn a chart in the chat UI, and
     what to draw. Keyed by tool name so adding another chart-worthy tool
-    later is a one-line addition here, not a rewrite."""
+    later is a one-line addition here, not a rewrite. A chart is always
+    optional on top of a reply that already stands on its own without it,
+    so any single call's failure here is swallowed, never a 500 for the
+    whole turn."""
     charts = []
     for call in tool_trace:
-        if call.get("tool") == "get_traffic_summary":
-            chart = _traffic_chart()
-            if chart["labels"]:
-                charts.append(chart)
+        try:
+            tool = call.get("tool")
+            if tool == "get_traffic_summary":
+                chart = _traffic_chart()
+                if chart["labels"]:
+                    charts.append(chart)
+            elif tool == "get_projection":
+                chart = _projection_chart(call.get("arguments") or {})
+                if chart:
+                    charts.append(chart)
+        except Exception:  # noqa: BLE001 - a chart is optional; the reply text isn't
+            current_app.logger.exception("assistant chat: chart enrichment failed")
     return charts
 
 

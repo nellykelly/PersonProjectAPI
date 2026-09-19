@@ -445,23 +445,42 @@ html.js-reveal .reveal-up.is-visible {
    absolutely-positioned child wider than the viewport pushes the whole
    document's scrollWidth out and creates a horizontal scrollbar, since
    nothing in the ancestor chain clips it. */
-.hero::before {
-  content: "";
+/* Full-bleed across the whole viewport, not just the (max 1200px)
+   content column .hero itself sits in -- left/right: 50% with equal and
+   opposite negative margins is the standard breakout that avoids a
+   literal `width: 100vw` (which double-counts the scrollbar gutter on
+   some browsers). html/body's own `overflow-x: hidden` (top of this
+   file) is what makes this safe: it's a standing guard against exactly
+   this class of decorative-element overflow, already in place before
+   this rule needed it.
+
+   The dot field is a <canvas> (base.js's initHeroDotField()), not a CSS
+   background: the actual ask -- dots pulling closer together near the
+   cursor, not the whole field brightening or sliding -- means each dot's
+   drawn position has to be computed individually against the cursor
+   every frame, which a tiled background-image fundamentally can't do
+   (one flat image, no per-dot state). Canvas is the right tool once the
+   effect is "per-dot," not "per-layer." */
+.hero-dot-field {
   position: absolute;
-  inset: -3rem 0 auto 0;
-  /* Taller than before to reach the bottom of the bigger bubble
-     cluster -- was sized for the old, smaller network. */
+  top: -3rem;
+  left: 50%;
+  right: 50%;
+  margin-left: -50vw;
+  margin-right: -50vw;
+  /* Explicit, not left-the-implicit-width-to-left/right: a <canvas> is a
+     replaced element (like img/video) -- when width is auto, a replaced
+     element uses its own intrinsic size (300px for a bare canvas)
+     instead of stretching to fill the left/right gap the way a plain
+     div would. That's why this was still getting cut off well short of
+     the true right edge even after the field became full-bleed. */
+  width: 100vw;
   height: 46rem;
-  background-image:
-    radial-gradient(circle at center, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
-  background-size: 22px 22px;
-  /* Widened to cover the whole hero -- text column AND the bubble/graph
-     section on the right -- rather than fading out before it reached
-     the graph, which is what read as incomplete. */
-  -webkit-mask-image: radial-gradient(ellipse 78% 85% at 50% 38%, #000 25%, transparent 92%);
-  mask-image: radial-gradient(ellipse 78% 85% at 50% 38%, #000 25%, transparent 92%);
   z-index: -2;
   pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-dot-field { display: none; }
 }
 
 /* Glow sits behind the bubble network (the visual "light source" the
@@ -541,6 +560,20 @@ html.js-reveal .reveal-up.is-visible {
   justify-content: flex-start;
   flex-wrap: wrap;
   padding: 0.35rem 0;
+}
+
+/* The three outline buttons here (View Projects, Contact, LinkedIn) go
+   fully white on hover, same fill as "About Me" (.button.primary) --
+   the vendored theme's own :hover rule (main.css) only nudges the
+   background to a barely-there rgba(255,255,255,0.075), which reads as
+   almost no feedback next to a solid white button in the same row.
+   !important matches the specificity of that theme's own `color:
+   #ffffff !important` on .button, which would otherwise keep the label
+   white-on-white. Scoped to .hero-actions rather than every .button on
+   the site, since only these three were asked for. */
+.hero-actions .button:not(.primary):hover {
+  background-color: #ffffff;
+  color: #1b1f22 !important;
 }
 
 .tech-strip {
@@ -1981,11 +2014,24 @@ html.skip-welcome #welcome-gate {
   aspect-ratio: 1 / 0.86;
 }
 
+/* position: fixed over the whole viewport, not sized to .bio-network-wrap
+   -- a dragged satellite can end up anywhere on screen (even outside the
+   network's own box, even off the original .hero section once scrolled),
+   and its line has to reach it wherever that is. base.js's centerOf()
+   reads viewport-relative coordinates directly to match (no more
+   subtracting the wrap's own rect). */
 .bio-network-lines {
-  position: absolute;
+  position: fixed;
   inset: 0;
-  width: 100%;
-  height: 100%;
+  width: 100vw;
+  height: 100vh;
+  /* Bubbles, then lines, then the page background -- .bio-network-wrap
+     has its own transform (from .reveal-up), which makes it a stacking
+     context of its own; z-index:1 on the bubbles inside it only wins
+     against this sibling if this sits at or below the wrap's own
+     (unset/auto, effectively 0) level. Higher than the dot field (-2)
+     and hero glow (-1) so it still paints above those. */
+  z-index: 0;
   overflow: visible;
   pointer-events: none;
 }
@@ -2047,6 +2093,50 @@ html.skip-welcome #welcome-gate {
   width: 184px;
   cursor: pointer;
   border-bottom: none;
+}
+
+/* "+"/"-" controls -- absolute within .hero (which has position:
+   relative), not fixed to the viewport, so they scroll away with the
+   hero section instead of hovering over the whole page. "+" pushes one
+   bubble onto the stack per click, "-" pops the most recently added one
+   back off; see initBioNetwork()'s add/remove handlers in base.js. */
+.bio-network-controls {
+  position: absolute;
+  top: 1.5rem;
+  right: 1.5rem;
+  z-index: 600;
+  display: flex;
+  gap: 0.6rem;
+}
+.bio-network-add,
+.bio-network-remove {
+  width: 3rem;
+  height: 3rem;
+  /* Overrides the vendored theme's generic `button` rule (main.css),
+     which sets an icon-label offset padding (0 1.25rem 0 1.35rem) meant
+     for text buttons elsewhere on the site -- left unset here, that
+     asymmetric padding shrank the grid cell around the icon unevenly
+     and pushed it several px off-center instead of in the middle of the
+     circle. */
+  padding: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--surface);
+  border: 1px solid var(--surface-border);
+  color: var(--fg);
+  cursor: pointer;
+  box-shadow: 0 12px 28px -14px rgba(0, 0, 0, 0.6);
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+.bio-network-add:hover,
+.bio-network-remove:hover { border-color: var(--accent); transform: translateY(-2px); }
+.bio-network-add-icon,
+.bio-network-remove-icon { width: 1.3rem; height: 1.3rem; }
+.bio-network-add[hidden],
+.bio-network-remove[hidden] { display: none; }
+@media (max-width: 720px) {
+  .bio-network-controls { display: none; }
 }
 .bio-node-bubble {
   width: 144px;
@@ -2785,7 +2875,22 @@ html.skip-welcome #welcome-gate {
   font-family: "Space Grotesk", system-ui, sans-serif;
   user-select: none;
 }
-.asst-avatar { width: 2.25rem; height: 2.25rem; font-size: 1rem; }
+/* The header avatar carries a soft halo and a slow pulse -- the one place
+   on the page allowed to read as "always on," since Hera is a LangGraph
+   agent loop, not a static chatbot waiting for input. */
+.asst-avatar {
+  width: 2.25rem; height: 2.25rem; font-size: 1rem;
+  position: relative;
+  box-shadow: 0 0 0 1px var(--accent-glow), 0 0 22px 2px var(--accent-glow);
+  animation: asst-avatar-pulse 3.6s ease-in-out infinite;
+}
+@keyframes asst-avatar-pulse {
+  0%, 100% { box-shadow: 0 0 0 1px var(--accent-glow), 0 0 16px 1px var(--accent-glow); }
+  50% { box-shadow: 0 0 0 1px var(--accent-glow), 0 0 26px 4px var(--accent-glow); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .asst-avatar { animation: none; }
+}
 .asst-name {
   font-size: 1.2rem;
   margin: 0;
@@ -2829,6 +2934,7 @@ html.skip-welcome #welcome-gate {
   border: 1px solid var(--surface-border);
   border-radius: 16px;
   background: var(--surface);
+  box-shadow: 0 30px 70px -36px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
   overflow: hidden;
 }
 .asst-scroll {
@@ -2837,7 +2943,18 @@ html.skip-welcome #welcome-gate {
   overflow-y: auto;
   padding: 1.5rem 1.25rem 0.5rem;
   scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-border) transparent;
 }
+.asst-scroll::-webkit-scrollbar { width: 8px; }
+.asst-scroll::-webkit-scrollbar-track { background: transparent; }
+.asst-scroll::-webkit-scrollbar-thumb {
+  background: var(--surface-border);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.asst-scroll::-webkit-scrollbar-thumb:hover { background: var(--border-strong); background-clip: content-box; }
 .asst-thread {
   display: flex;
   flex-direction: column;
@@ -2853,7 +2970,10 @@ html.skip-welcome #welcome-gate {
   gap: 0.4rem;
   padding: 2rem 1rem 1rem;
 }
-.asst-empty-avatar { width: 2.75rem; height: 2.75rem; font-size: 1.15rem; margin-bottom: 0.5rem; }
+.asst-empty-avatar {
+  width: 2.75rem; height: 2.75rem; font-size: 1.15rem; margin-bottom: 0.5rem;
+  box-shadow: 0 0 0 1px var(--accent-glow), 0 0 24px 3px var(--accent-glow);
+}
 .asst-empty-title { font-size: 1.05rem; font-weight: 600; margin: 0; }
 .asst-empty-note { font-size: 0.9rem; color: var(--fg-light); margin: 0; max-width: 28rem; }
 .asst-suggest {
@@ -2883,18 +3003,131 @@ html.skip-welcome #welcome-gate {
 /* --- messages --- */
 .asst-msg { display: flex; gap: 0.7rem; }
 .asst-msg-user { justify-content: flex-end; }
+/* Hera's whole turn -- avatar, text, citations, chart -- lives in one
+   card, not text floating loose with extra boxes hanging underneath it.
+   The user's own turn stays a bubble (below); the asymmetry is the
+   point, the same "their words in a pill, mine on the record" split
+   most chat UIs use. */
+.asst-msg-bot {
+  position: relative;
+  overflow: hidden;
+  padding: 1rem 1.1rem 0.9rem;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0));
+  border: 1px solid var(--surface-border);
+  border-radius: 16px;
+  box-shadow: 0 14px 32px -24px rgba(0, 0, 0, 0.6);
+}
+/* Toned down from a classic speech-bubble pill (uniform radius, no
+   tail corner, a much fainter tint) so the user's turn reads as part of
+   the same conversation surface as Hera's card, not a separate chat-app
+   widget dropped on top of it -- while the tint still stays just enough
+   to tell the two sides apart at a glance. */
 .asst-bubble {
+  position: relative;
+  overflow: hidden;
   max-width: 85%;
   padding: 0.7rem 0.95rem;
-  border-radius: 16px 16px 4px 16px;
-  background: var(--accent-dim);
-  border: 1px solid rgba(58, 160, 255, 0.35);
+  border-radius: 12px;
+  background: rgba(58, 160, 255, 0.07);
+  border: 1px solid rgba(58, 160, 255, 0.16);
   color: var(--fg);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   line-height: 1.55;
 }
 .asst-msg-avatar { width: 1.6rem; height: 1.6rem; font-size: 0.72rem; margin-top: 0.15rem; }
+
+/* --- send reveal ---
+   The same wipe-and-scanline mechanic the landing page's name reveal uses
+   (.welcome-gate-word / .welcome-gate-scanline, see the WELCOME GATE
+   section above): a solid panel starts covering the message, then its
+   clip-path wipes away left-to-right in sync with a thin glowing
+   scanline, uncovering the message underneath instead of animating the
+   text itself. Both the cover's wipe and the scanline move left-to-right
+   in lockstep -- the cover's clip-path grows in from the LEFT edge (the
+   4th inset value), not the right, which is the opposite of
+   welcome-reveal's own values (that one reveals text by shrinking a
+   clip from the right); copying those values verbatim here made the
+   cover's edge and the scanline visibly cross in opposite directions
+   instead of reading as one clean sweep.
+
+   Hera's cover is always the same accent->violet gradient, the same
+   identity as her avatar. The user's cover cycles through a fixed
+   palette, one color per message sent, via .asst-cover-0..4 (set in
+   assistant.js) -- different color per message, but a small closed set,
+   not random, so it never clashes with the rest of the page.
+
+   The user's bubble has real text the instant it exists, so its cover
+   animates immediately on creation. Hera's equivalent is
+   .asst-reveal-panel -- NOT put directly on .asst-msg-bot, because that
+   row exists (and needs to show its typing dots / "thinking" status)
+   well before any real reply text does; a cover on the row itself would
+   hide that status underneath an opaque panel for the entire wait.
+   assistant.js's fillReply() instead creates .asst-reveal-panel fresh,
+   inside the message body, at the exact moment the real reply replaces
+   the dots -- so it only ever exists once there is something worth
+   revealing, and animates immediately like the user's bubble does. */
+.asst-bubble::after,
+.asst-reveal-panel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  clip-path: inset(0 0 0 0%);
+  animation: asst-uncover 1.5s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+.asst-bubble::before,
+.asst-reveal-panel::before {
+  content: "";
+  position: absolute;
+  top: -10%;
+  bottom: -10%;
+  left: 0;
+  width: 2px;
+  z-index: 3;
+  pointer-events: none;
+  animation: asst-uncover-scan 1.5s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+.asst-reveal-panel {
+  position: relative;
+  overflow: hidden;
+}
+.asst-reveal-panel::after {
+  background: linear-gradient(150deg, var(--accent), var(--accent-violet, #7f9cff));
+}
+.asst-reveal-panel::before {
+  background: var(--accent-violet, #7f9cff);
+  box-shadow: 0 0 16px 2px var(--accent-glow);
+}
+/* Both end at opacity 0, not just moved/clipped out of the way -- a
+   glow's box-shadow can still bleed a faint edge past a rounded
+   overflow:hidden corner, so the cover and scanline fade out on top of
+   wiping away, leaving nothing behind once the reveal is done. */
+@keyframes asst-uncover {
+  92% { clip-path: inset(0 0 0 92%); opacity: 1; }
+  100% { clip-path: inset(0 0 0 100%); opacity: 0; }
+}
+@keyframes asst-uncover-scan {
+  92% { opacity: 1; }
+  100% { left: 100%; opacity: 0; }
+}
+
+.asst-cover-0::after { background: linear-gradient(150deg, var(--accent), #7f9cff); }
+.asst-cover-0::before { background: var(--accent); box-shadow: 0 0 16px 2px var(--accent-glow); }
+.asst-cover-1::after { background: linear-gradient(150deg, var(--accent-violet, #b388ff), #f472b6); }
+.asst-cover-1::before { background: #f472b6; box-shadow: 0 0 16px 2px rgba(244, 114, 182, 0.45); }
+.asst-cover-2::after { background: linear-gradient(150deg, #f87171, #fb923c); }
+.asst-cover-2::before { background: #fb923c; box-shadow: 0 0 16px 2px rgba(251, 146, 60, 0.45); }
+.asst-cover-3::after { background: linear-gradient(150deg, #4ade80, #22d3ee); }
+.asst-cover-3::before { background: #4ade80; box-shadow: 0 0 16px 2px rgba(74, 222, 128, 0.45); }
+.asst-cover-4::after { background: linear-gradient(150deg, #fb923c, #facc15); }
+.asst-cover-4::before { background: #facc15; box-shadow: 0 0 16px 2px rgba(250, 204, 21, 0.45); }
+
+@media (prefers-reduced-motion: reduce) {
+  .asst-reveal-panel::after, .asst-bubble::after { animation: none; clip-path: inset(0 0 0 100%); }
+  .asst-reveal-panel::before, .asst-bubble::before { display: none; }
+}
 .asst-msg-body {
   min-width: 0;
   flex: 1;
@@ -2904,6 +3137,11 @@ html.skip-welcome #welcome-gate {
 }
 .asst-msg-body > *:first-child { margin-top: 0; }
 .asst-msg-body > *:last-child { margin-bottom: 0; }
+/* Same trim, one level deeper -- fillReply() nests the real reply inside
+   .asst-reveal-panel now, so .asst-msg-body's own direct child is the
+   panel, not the reply's first/last paragraph. */
+.asst-reveal-panel > *:first-child { margin-top: 0; }
+.asst-reveal-panel > *:last-child { margin-bottom: 0; }
 .asst-msg-body p { margin: 0 0 0.85rem; }
 .asst-msg-body ul,
 .asst-msg-body ol { margin: 0 0 0.85rem; padding-left: 1.3rem; }
@@ -2927,7 +3165,9 @@ html.skip-welcome #welcome-gate {
 }
 .asst-msg-body pre code { background: none; border: 0; padding: 0; font-size: 0.85rem; }
 
-/* --- sources --- */
+/* --- sources ---
+   A quiet footer inside the reply card -- a hairline rule, not another
+   bordered box, so citations read as a detail of the answer above them. */
 .asst-sources {
   display: flex;
   flex-wrap: wrap;
@@ -2935,7 +3175,7 @@ html.skip-welcome #welcome-gate {
   gap: 0.4rem;
   margin-top: 0.9rem;
   padding-top: 0.75rem;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
   font-size: 0.8rem;
 }
 .asst-sources-label {
@@ -2945,39 +3185,70 @@ html.skip-welcome #welcome-gate {
   font-size: 0.66rem;
 }
 .asst-source {
-  padding: 0.15rem 0.55rem;
+  padding: 0.2rem 0.65rem;
   border-radius: 999px;
-  background: var(--bg);
-  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid transparent;
   color: var(--fg-light);
   text-decoration: none;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
-a.asst-source:hover { color: var(--fg); border-color: var(--accent); }
+a.asst-source:hover { color: var(--fg); border-color: var(--accent); background: var(--accent-dim); }
 
-/* --- inline charts --- */
+/* --- inline charts ---
+   A recessed "screen" inset into the reply card, the same dark-panel
+   language app/static/css/custom.css already uses for the project-card
+   device mockups (a screen sits IN a frame, it doesn't compete with it)
+   -- so a chart reads as part of Hera's answer, not a second, unrelated
+   box bolted underneath it. */
 .asst-chart-wrap {
-  margin-top: 0.9rem;
-  padding: 0.85rem 0.9rem 0.6rem;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  position: relative;
+  margin-top: 1rem;
+  padding: 1rem 1.05rem 0.7rem;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.asst-chart-wrap::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-violet, #7f9cff));
+  opacity: 0.85;
 }
 .asst-chart-title {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--fg-light);
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+.asst-chart-title::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px 1px var(--accent-glow);
 }
 .asst-chart-wrap canvas { max-height: 220px; }
+.asst-chart-note { margin: 0.5rem 0 0; font-size: 0.76rem; color: var(--fg-light); }
 
 /* --- typing indicator --- */
+.asst-typing-wrap { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.asst-typing-note { font-size: 0.82rem; color: var(--fg-light); }
 .asst-typing { display: flex; gap: 0.3rem; padding: 0.4rem 0; }
 .asst-typing span {
   width: 0.4rem; height: 0.4rem;
   border-radius: 50%;
-  background: var(--fg-light);
+  background: var(--accent);
+  box-shadow: 0 0 6px 0 var(--accent-glow);
   animation: asst-bounce 1.2s infinite ease-in-out;
 }
 .asst-typing span:nth-child(2) { animation-delay: 0.15s; }
@@ -3004,7 +3275,7 @@ a.asst-source:hover { color: var(--fg); border-color: var(--accent); }
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 0.55rem 3.2rem 0.55rem 0.9rem;
-  transition: border-color 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 .asst-inputwrap:focus-within { border-color: var(--accent); }
 .asst-inputwrap textarea {
@@ -3012,6 +3283,7 @@ a.asst-source:hover { color: var(--fg); border-color: var(--accent); }
   resize: none;
   border: 0;
   outline: 0;
+  box-shadow: none;
   background: transparent;
   color: var(--fg);
   font: inherit;
@@ -3019,6 +3291,19 @@ a.asst-source:hover { color: var(--fg); border-color: var(--accent); }
   max-height: 12.5rem;
   min-height: 1.5rem;
   padding: 0.2rem 0;
+}
+/* The Dimension theme's own global `textarea:focus` rule (main.css,
+   loaded before this file) paints a white box-shadow ring plus a pale
+   background wash -- equal specificity to the plain-tag rule above, so
+   it wins on focus unless explicitly beaten here. The wrapper's own
+   border already carries the focus state (.asst-inputwrap:focus-within
+   above); the field itself should show nothing but the native blinking
+   caret. */
+.asst-inputwrap textarea:focus {
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+  background: transparent;
 }
 .asst-inputwrap textarea::placeholder { color: var(--fg-light); }
 .asst-send {
@@ -3051,6 +3336,8 @@ a.asst-source:hover { color: var(--fg); border-color: var(--accent); }
   .asst-window { height: min(76vh, 36rem); border-radius: 12px; }
   .asst-scroll { padding: 1.1rem 0.9rem 0.4rem; }
   .asst-bubble { max-width: 90%; }
+  .asst-msg-bot { padding: 0.85rem 0.85rem 0.75rem; border-radius: 14px; }
+  .asst-chart-wrap { padding: 0.85rem 0.85rem 0.6rem; }
 }
 
 /* ============================================================
@@ -3310,4 +3597,149 @@ a.asst-source:hover { color: var(--fg); border-color: var(--accent); }
 .tjvm-sensor-label {
   display: block;
   margin-top: 0.6rem;
+}
+
+/* ---------- About page: modular story sections ----------
+   Headline -> text -> photo, repeated and alternating, in the spirit of
+   perryw-2023.webflow.io/info -- each block is its own <section> so
+   base.js's existing initScrollReveal() staggers its text+photo in as a
+   pair when it scrolls into view, the same convention the landing
+   page's hero already uses (see main/index.html's .reveal-mask/.reveal-up
+   pairing). The photo is a single placeholder headshot repeated across
+   every section for now; .about-photo-frame is sized by aspect-ratio and
+   crops via object-fit, not by the source image's own dimensions, so
+   swapping in real, differently-sized photos later is a drop-in, not a
+   layout change. */
+
+.about-intro { max-width: 46rem; }
+.about-lede {
+  font-size: 1.1rem;
+  line-height: 1.7;
+  color: var(--fg-light);
+}
+
+.about-story {
+  display: flex;
+  flex-direction: column;
+  gap: 4.5rem;
+  margin: 3.5rem 0;
+}
+
+.about-section {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 380px);
+  align-items: center;
+  gap: 2.5rem;
+}
+.about-section-reverse .about-section-text { order: 2; }
+.about-section-reverse .about-section-photo { order: 1; }
+
+.about-eyebrow {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  margin-bottom: 0.6rem;
+}
+.about-section-text h2 {
+  font-size: clamp(1.35rem, 2.4vw, 1.75rem);
+  line-height: 1.25;
+  margin: 0 0 0.9rem;
+}
+.about-section-text p {
+  color: var(--fg-light);
+  line-height: 1.75;
+  margin: 0 0 0.9rem;
+}
+.about-section-text p:last-of-type { margin-bottom: 1.1rem; }
+
+/* Kept the original 4:5 rounded rectangle (not the circular treatment
+   used for a moment here -- "the white outline that circles them" meant
+   a ring effect going around each frame, not a change of shape). A dim,
+   translucent white border is the constant "outline" the photo always
+   shows; a brighter white arc rides around that same edge and completes
+   one lap every --ring-speed, using the same content-box/border-box
+   mask-composite technique as .education-tile::before above, just in
+   white instead of that card's accent-colored ring. Each section on the
+   About page sets --ring-speed inline, fastest for the most recent
+   chapter and slowest for the oldest, so the ring visibly speeds up as
+   the timeline runs top to bottom. The base border deliberately isn't
+   full-opacity white: a solid white border plus a solid white arc
+   riding on top of it would be white-on-white, and the motion -- the
+   entire point -- would be invisible. */
+.about-photo-frame {
+  --ring-speed: 4s;
+  position: relative;
+  aspect-ratio: 4 / 5;
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--surface);
+  border: 2px solid rgba(255, 255, 255, 0.32);
+  box-shadow: 0 24px 50px -28px var(--accent-glow);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+.about-photo-frame:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 28px 60px -26px var(--accent-glow);
+}
+/* Animates the gradient's own angle via @property, not
+   transform: rotate() on the element -- rotating the whole element only
+   looks like a clean travelling ring on a shape with full rotational
+   symmetry (a circle, or .education-tile's square-ish corners); this
+   frame is a 4:5 rectangle, and spinning the whole ring would swing its
+   straight edges away from the frame's actual boundary every quarter
+   turn instead of tracing it. */
+@property --about-ring-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+.about-photo-frame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: conic-gradient(from var(--about-ring-angle), transparent 0%, #ffffff 10%, transparent 24%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 2.5px;
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.9));
+  animation: about-ring-spin var(--ring-speed) linear infinite;
+  z-index: 1;
+  pointer-events: none;
+}
+@keyframes about-ring-spin {
+  to { --about-ring-angle: 360deg; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .about-photo-frame::after { animation: none; }
+}
+.about-photo-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.about-contact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  margin-top: 1rem;
+}
+
+@media (max-width: 720px) {
+  .about-section,
+  .about-section-reverse {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .about-section-reverse .about-section-text,
+  .about-section-reverse .about-section-photo {
+    order: 0;
+  }
+  .about-photo-frame { aspect-ratio: 16 / 10; max-width: 22rem; margin: 0 auto; }
+  .about-story { gap: 3rem; }
 }
