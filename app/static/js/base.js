@@ -108,20 +108,60 @@ function initHeroDotField() {
   var FOCUS_X_FRAC = 0.5, FOCUS_Y_FRAC = 0.38;
   var FALLOFF_IN = 0.25, FALLOFF_OUT = 0.92;
 
+  // Falling balls that bounce off the dot grid, pachinko-style. They
+  // read each dot's CURRENT (pointer-pulled) position, not its rest
+  // position -- dotCurrentPosition() is the one place that pull math
+  // lives, shared by both this and the plain dot render below, so a
+  // ball bounces off where a dot actually is on screen right now,
+  // dragged-toward-the-cursor or not.
+  var BALL_RADIUS = 4;
+  var GRAVITY = 420; // px/s^2
+  var MAX_FALL_SPEED = 260; // px/s -- capped so a fast ball can't tunnel through a dot between frames
+  var RESTITUTION = 0.55; // velocity kept (not lost) in a dot bounce
+  var COLLISION_DIST = BALL_RADIUS + 6;
+  // DOM furniture (a bubble, a button, a tag) doesn't bounce a ball at
+  // all -- it consumes it. Earlier this tried to bounce balls off these
+  // too, the same as the dot grid, but a wide surface (the profile
+  // photo especially) could put a ball into a long run of bounces that
+  // never quite cleared it, and every fix for that -- a bouncier
+  // restitution, a minimum escape speed, finally an outright forced
+  // teleport once it had been bouncing too long -- was still visibly a
+  // ball fighting the same spot, ending in a hard cut that read as the
+  // ball just vanishing. Removing the ball on contact and glowing the
+  // thing it hit sidesteps needing any of that: there's no bounce
+  // physics left to get stuck.
+  var GLOW_MS = 4000;
+  var MAX_BALLS = 8;
+  var SPAWN_MIN_MS = 750, SPAWN_MAX_MS = 1668; // prior interval raised 25% -- spawns 25% slower
+  var PHYSICS_STEP = 1 / 120; // fixed substep so collisions stay reliable regardless of frame rate
+
   var width = 0, height = 0, dpr = 1;
   var dots = []; // {x, y, alpha} at rest, in CSS-pixel space
+  var dotGrid = {}; // "gx,gy" (rest coords) -> dot, for a ball's neighborhood lookup
   var pointer = null; // {x, y} in CSS-pixel space, or null when not hovering
+  var balls = [];
+  var obstacles = []; // real page furniture a ball also bounces off -- see collectObstacles()
+  var nextSpawnAt = 0;
+  var pendingExits = []; // { el, at } -- a look-alike ball due to spawn at el's bottom edge once `at` (a tick timestamp) passes
+  var EXIT_DELAY_MS = 5000;
 
   function buildDots() {
     dots = [];
+    dotGrid = {};
     var focusX = width * FOCUS_X_FRAC;
     var focusY = height * FOCUS_Y_FRAC;
-    // Wide enough that dots stay visible almost to the true left/right
-    // screen edges, not just within the (narrower) content column --
-    // width is the full viewport now (see .hero-dot-field), so this has
-    // to reach much further than it would relative to just the hero's
-    // own text/bubble column.
-    var radiusX = width * 0.7;
+    // Wide enough that dots stay visible (and, via the pointer pull
+    // below, movable) all the way out into the margin outside #content's
+    // 1200px cap on a wide screen, not just within the narrower content
+    // column -- width is the full viewport now (see .hero-dot-field), so
+    // this has to reach much further than it would relative to just the
+    // hero's own text/bubble column. 0.7 still let the horizontal
+    // falloff crush dots out past roughly the content column's own edge
+    // down to ~3% alpha -- technically nonzero, indistinguishable from
+    // absent, and dead exactly where the bio-network's "+"/"-" controls
+    // now sit on a wide screen. 1.15 keeps dots close to full brightness
+    // (and clearly pullable) all the way to the true left/right edges.
+    var radiusX = width * 1.15;
     var radiusY = height * 0.85;
     for (var y = 0; y <= height; y += GAP) {
       for (var x = 0; x <= width; x += GAP) {
@@ -130,9 +170,41 @@ function initHeroDotField() {
         );
         var t = 1 - (d - FALLOFF_IN) / (FALLOFF_OUT - FALLOFF_IN);
         var alpha = BASE_ALPHA * Math.max(0, Math.min(1, t));
-        if (alpha > 0.002) dots.push({ x: x, y: y, alpha: alpha });
+        if (alpha > 0.002) {
+          var dot = { x: x, y: y, alpha: alpha };
+          dots.push(dot);
+          dotGrid[x + "," + y] = dot;
+        }
       }
     }
+  }
+
+  // Where a dot actually draws right now: pulled toward the pointer
+  // within INFLUENCE_RADIUS, same as before pull math existed only
+  // inline in render(). Balls need this exact position too, or they'd
+  // bounce off a dot's rest spot instead of the (possibly dragged)
+  // spot it's actually rendered at.
+  function dotCurrentPosition(dot) {
+    var x = dot.x, y = dot.y, radius = 1, alpha = dot.alpha;
+    if (pointer) {
+      var dx = dot.x - pointer.x;
+      var dy = dot.y - pointer.y;
+      var dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < INFLUENCE_RADIUS) {
+        // 1 at the cursor, 0 at the radius's edge -- both the pull
+        // distance and a brightness/size lift share this so the dots
+        // that moved the most also read as the most "activated."
+        var strength = 1 - dist / INFLUENCE_RADIUS;
+        var pull = strength * MAX_PULL;
+        if (dist > 0.01) {
+          x = dot.x - (dx / dist) * pull;
+          y = dot.y - (dy / dist) * pull;
+        }
+        radius = 1 + strength * 1.4;
+        alpha = Math.min(1, dot.alpha + strength * 0.5);
+      }
+    }
+    return { x: x, y: y, radius: radius, alpha: alpha };
   }
 
   function resize() {
@@ -147,55 +219,316 @@ function initHeroDotField() {
     render();
   }
 
+  function spawnBall() {
+    if (balls.length >= MAX_BALLS) return;
+    balls.push({
+      x: 20 + Math.random() * Math.max(1, width - 40),
+      y: -BALL_RADIUS * 2,
+      vx: (Math.random() - 0.5) * 50,
+      vy: 0,
+      age: 0,
+    });
+  }
+
+  // Not literally the same ball resuming -- a fresh one spawned at the
+  // bottom edge of whatever it was consumed by, timed so it reads as
+  // "that ball passed through and came out the other side." Simpler and
+  // more robust than actually pausing a ball's physics/rendering for
+  // EXIT_DELAY_MS and resuming it: no state to keep in sync with an
+  // element that might move (a bubble's reveal-up settling, a hover
+  // lift) or vanish (the "-" button removing a satellite) in the
+  // meantime -- this only ever needs the element's position at the
+  // moment it actually fires.
+  //
+  // EXIT_CLEARANCE below matters more than it looks: a point exactly on
+  // a circle's own bottom edge is still exactly `r` from its center --
+  // still within that same circle's own consume radius (r + BALL_RADIUS)
+  // once resolveObstacle() checks it on the very next tick. Spawned
+  // flush against the edge, the "exit" ball was immediately re-consumed
+  // by the very obstacle it just came from, which is what "spawns on a
+  // DOM element just disappear instantly, never falls" actually was.
+  var EXIT_CLEARANCE = 18; // px past the element's own bottom edge, comfortably outside its consume radius
+  function spawnExitBall(el) {
+    if (!el || !el.isConnected || balls.length >= MAX_BALLS) return;
+    var canvasRect = canvas.getBoundingClientRect();
+    var r = el.getBoundingClientRect();
+    balls.push({
+      x: r.left + r.width / 2 - canvasRect.left,
+      y: r.bottom - canvasRect.top + EXIT_CLEARANCE,
+      vx: (Math.random() - 0.5) * 50,
+      vy: 0,
+      age: 0,
+    });
+  }
+
+  // Nearest dots to (x, y) via direct grid-index lookup (dots sit on a
+  // known GAP spacing) instead of scanning the whole dots array --
+  // cheap enough to run per ball per physics substep even with a couple
+  // thousand dots on a wide screen.
+  function nearbyDots(x, y) {
+    var found = [];
+    var gx = Math.round(x / GAP) * GAP;
+    var gy = Math.round(y / GAP) * GAP;
+    for (var oy = -GAP; oy <= GAP; oy += GAP) {
+      for (var ox = -GAP; ox <= GAP; ox += GAP) {
+        var dot = dotGrid[(gx + ox) + "," + (gy + oy)];
+        if (dot) found.push(dot);
+      }
+    }
+    return found;
+  }
+
+  // Real page furniture a ball gets consumed by, not just the dot grid:
+  // the bio-network's photo and bubbles, the hero buttons, and the tag
+  // pills (Python, Flask, ...). Read fresh every frame a ball exists
+  // (see tick()) rather than cached once -- the "+" button adds bubbles
+  // at runtime, .reveal-up slides these in on load, and .bio-photo-frame
+  // lifts on hover, so a stale rect would drift out of sync with what's
+  // actually on screen. Positions are converted into the same
+  // canvas-local coordinate space stepBall() already works in; `el`
+  // itself is kept too, so a hit can glow the actual element (see
+  // glowElement()).
+  function collectObstacles() {
+    var canvasRect = canvas.getBoundingClientRect();
+    var list = [];
+
+    function addCircle(el) {
+      var r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) return; // hidden (e.g. mobile layout)
+      list.push({
+        shape: "circle",
+        el: el,
+        x: r.left + r.width / 2 - canvasRect.left,
+        y: r.top + r.height / 2 - canvasRect.top,
+        r: r.width / 2,
+      });
+    }
+    function addRect(el) {
+      var r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) return;
+      list.push({
+        shape: "rect",
+        el: el,
+        left: r.left - canvasRect.left,
+        top: r.top - canvasRect.top,
+        right: r.right - canvasRect.left,
+        bottom: r.bottom - canvasRect.top,
+      });
+    }
+
+    var center = document.querySelector(".bio-node-center");
+    if (center) addCircle(center);
+    var bubbles = document.querySelectorAll(".bio-node-satellite .bio-node-bubble");
+    for (var i = 0; i < bubbles.length; i++) addCircle(bubbles[i]);
+
+    var buttons = document.querySelectorAll(".hero-actions .button, .bio-network-controls .bio-network-add, .bio-network-controls .bio-network-remove");
+    for (var b = 0; b < buttons.length; b++) addRect(buttons[b]);
+
+    var tags = document.querySelectorAll(".tech-strip .tag");
+    for (var t = 0; t < tags.length; t++) addRect(tags[t]);
+
+    return list;
+  }
+
+  // Restarting a glow on a second hit mid-glow needs the animation to
+  // actually restart, which re-adding a class an element already has
+  // won't do on its own -- removing the class, waiting a frame (so a
+  // style recalculation actually happens before it goes back on), then
+  // re-adding is what makes a CSS animation replay from the top. A
+  // requestAnimationFrame round-trip rather than the more common
+  // "remove, read offsetWidth, re-add" reflow trick specifically
+  // because this also has to work on an SVG <path> (the connector line
+  // below), and offsetWidth isn't reliably present on SVG elements the
+  // way it is on ordinary HTML ones.
+  function restartGlow(el, className, timeoutProp) {
+    el.classList.remove(className);
+    requestAnimationFrame(function () {
+      el.classList.add(className);
+    });
+    clearTimeout(el[timeoutProp]);
+    el[timeoutProp] = setTimeout(function () {
+      el.classList.remove(className);
+    }, GLOW_MS);
+  }
+
+  // Glows the element a ball was just consumed by, and, if it's a
+  // bubble with its own connector line back to the profile photo,
+  // glows that line too -- the bubble and the line it hangs off read as
+  // one piece of the network, so a ball landing on the bubble alone
+  // would look like it missed half of what it hit. Not every glowing
+  // element has one of these (the profile photo, buttons, and tag
+  // pills don't), hence the closest()/querySelector guard.
+  function glowElement(el) {
+    restartGlow(el, "ball-glow", "_ballGlowTimeout");
+
+    var satellite = el.closest(".bio-node-satellite");
+    var svg = document.querySelector(".bio-network-lines");
+    if (!satellite || !svg) return;
+    var line = svg.querySelector('path[data-node="' + satellite.dataset.node + '"]');
+    if (line) restartGlow(line, "line-glow", "_lineGlowTimeout");
+  }
+
+  var TANGENT_ESCAPE = 45; // px/s -- floor on sideways speed after any dot bounce
+
+  // Bounces the ball off the dot grid: decomposes velocity into the
+  // part driving it INTO the dot (which reflects and gets damped by
+  // `restitution`) and the part running ALONG its surface, which a real
+  // bounce leaves untouched -- topped up to TANGENT_ESCAPE when it's
+  // near zero (keeping whatever sign it already has, or picking one
+  // once if it's exactly zero) so a ball landing dead-center on a dot
+  // still visibly deflects to one side instead of bouncing straight up
+  // and back down on the same spot. DOM furniture (bubbles, buttons,
+  // tags) doesn't call this at all -- see resolveObstacle() -- a ball
+  // is simply consumed on contact with those, no bounce involved.
+  function bounce(ball, nx, ny, x, y, pushOut, restitution, minSpeed) {
+    var tx = -ny, ty = nx; // tangent: perpendicular to the normal
+    var normalSpeed = ball.vx * nx + ball.vy * ny; // negative == still moving into the surface
+    var tangentSpeed = ball.vx * tx + ball.vy * ty;
+
+    var outSpeed = Math.max(minSpeed || 0, -normalSpeed * restitution);
+    if (Math.abs(tangentSpeed) < TANGENT_ESCAPE) {
+      var sign = tangentSpeed === 0 ? (Math.random() < 0.5 ? -1 : 1) : (tangentSpeed > 0 ? 1 : -1);
+      tangentSpeed = sign * TANGENT_ESCAPE;
+    }
+
+    ball.vx = outSpeed * nx + tangentSpeed * tx;
+    ball.vy = outSpeed * ny + tangentSpeed * ty;
+    ball.x = x + nx * pushOut;
+    ball.y = y + ny * pushOut;
+  }
+
+  // Returns the obstacle's element (and glows it) the instant the ball
+  // touches this obstacle, or null otherwise -- no bounce math, no
+  // escape case to get wrong, since the ball is about to be removed
+  // entirely (see stepBall()). The element is what stepBall() needs to
+  // later spawn a look-alike ball at this same obstacle's bottom edge
+  // (see EXIT_DELAY_MS in tick()).
+  function resolveObstacle(ball, obstacle) {
+    if (obstacle.shape === "circle") {
+      var dx = ball.x - obstacle.x, dy = ball.y - obstacle.y;
+      if (Math.sqrt(dx * dx + dy * dy) >= BALL_RADIUS + obstacle.r) return null;
+    } else {
+      var cx = Math.max(obstacle.left, Math.min(ball.x, obstacle.right));
+      var cy = Math.max(obstacle.top, Math.min(ball.y, obstacle.bottom));
+      var ddx = ball.x - cx, ddy = ball.y - cy;
+      if (Math.sqrt(ddx * ddx + ddy * ddy) >= BALL_RADIUS) return null;
+    }
+    glowElement(obstacle.el);
+    return obstacle.el;
+  }
+
+  function stepBall(ball, dt) {
+    ball.vy = Math.min(MAX_FALL_SPEED, ball.vy + GRAVITY * dt);
+    ball.x += ball.vx * dt;
+    ball.y += ball.vy * dt;
+    ball.age += dt;
+
+    var candidates = nearbyDots(ball.x, ball.y);
+    for (var i = 0; i < candidates.length; i++) {
+      var pos = dotCurrentPosition(candidates[i]);
+      var dx = ball.x - pos.x, dy = ball.y - pos.y;
+      var dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 0.01 && dist < COLLISION_DIST) {
+        var nx = dx / dist, ny = dy / dist;
+        bounce(ball, nx, ny, pos.x, pos.y, COLLISION_DIST, RESTITUTION, 0);
+      }
+    }
+
+    for (var o = 0; o < obstacles.length; o++) {
+      var el = resolveObstacle(ball, obstacles[o]);
+      if (el) {
+        ball.consumed = true;
+        ball.consumedBy = el;
+        break;
+      }
+    }
+  }
+
   function render() {
     ctx.clearRect(0, 0, width, height);
     for (var i = 0; i < dots.length; i++) {
-      var dot = dots[i];
-      var drawX = dot.x, drawY = dot.y, radius = 1, alpha = dot.alpha;
-
-      if (pointer) {
-        var dx = dot.x - pointer.x;
-        var dy = dot.y - pointer.y;
-        var dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < INFLUENCE_RADIUS) {
-          // 1 at the cursor, 0 at the radius's edge -- both the pull
-          // distance and a brightness/size lift share this so the dots
-          // that moved the most also read as the most "activated."
-          var strength = 1 - dist / INFLUENCE_RADIUS;
-          var pull = strength * MAX_PULL;
-          if (dist > 0.01) {
-            drawX = dot.x - (dx / dist) * pull;
-            drawY = dot.y - (dy / dist) * pull;
-          }
-          radius = 1 + strength * 1.4;
-          alpha = Math.min(1, dot.alpha + strength * 0.5);
-        }
-      }
+      var pos = dotCurrentPosition(dots[i]);
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, pos.radius, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255, 255, 255, " + pos.alpha.toFixed(3) + ")";
+      ctx.fill();
+    }
+    for (var b = 0; b < balls.length; b++) {
+      var ball = balls[b];
+      var glow = ctx.createRadialGradient(ball.x, ball.y, 0, ball.x, ball.y, BALL_RADIUS * 3);
+      glow.addColorStop(0, "rgba(58, 160, 255, 0.35)");
+      glow.addColorStop(1, "rgba(58, 160, 255, 0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, BALL_RADIUS * 3, 0, Math.PI * 2);
+      ctx.fill();
 
       ctx.beginPath();
-      ctx.arc(drawX, drawY, radius, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(255, 255, 255, " + alpha.toFixed(3) + ")";
+      ctx.arc(ball.x, ball.y, BALL_RADIUS, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(58, 160, 255, 0.9)";
       ctx.fill();
     }
   }
 
-  var raf = null;
-  function scheduleRender() {
-    if (raf) return;
-    raf = requestAnimationFrame(function () {
-      raf = null;
-      render();
+  var lastTick = null;
+  function tick(timestamp) {
+    if (lastTick === null) lastTick = timestamp;
+    // Clamped so a backgrounded/inactive tab doesn't dump a huge dt on
+    // return and send every ball flying through the whole board at once.
+    var dt = Math.min(0.05, (timestamp - lastTick) / 1000);
+    lastTick = timestamp;
+
+    if (timestamp >= nextSpawnAt) {
+      spawnBall();
+      nextSpawnAt = timestamp + SPAWN_MIN_MS + Math.random() * (SPAWN_MAX_MS - SPAWN_MIN_MS);
+    }
+
+    // Only worth measuring real DOM rects when there's actually a ball
+    // that could hit one.
+    if (balls.length) obstacles = collectObstacles();
+
+    var remaining = dt;
+    while (remaining > 0) {
+      var step = Math.min(PHYSICS_STEP, remaining);
+      for (var i = 0; i < balls.length; i++) stepBall(balls[i], step);
+      remaining -= step;
+    }
+
+    for (var c = 0; c < balls.length; c++) {
+      var consumedBall = balls[c];
+      if (consumedBall.consumed) {
+        pendingExits.push({ el: consumedBall.consumedBy, at: timestamp + EXIT_DELAY_MS });
+      }
+    }
+    balls = balls.filter(function (ball) {
+      return !ball.consumed && ball.y - BALL_RADIUS < height + 40 && ball.age < 20;
     });
+
+    pendingExits = pendingExits.filter(function (pending) {
+      if (timestamp < pending.at) return true;
+      spawnExitBall(pending.el);
+      return false;
+    });
+
+    render();
+    requestAnimationFrame(tick);
   }
 
-  hero.addEventListener("mousemove", function (event) {
+  // Listened for on the document, not .hero -- .hero itself is only as
+  // wide as #content's capped column (1200px), while the canvas it owns
+  // breaks out to the full viewport (see custom.css). A listener on
+  // .hero never fires while the cursor is out in the margin beyond that
+  // 1200px column on a wide screen, so the dots there stayed put no
+  // matter how close the cursor got, even once they were made bright
+  // enough to actually see. document's own box always covers the full
+  // viewport, matching where the canvas -- and now the bio-network's
+  // "+"/"-" controls -- actually are.
+  document.addEventListener("mousemove", function (event) {
     var rect = canvas.getBoundingClientRect();
     pointer = { x: event.clientX - rect.left, y: event.clientY - rect.top };
-    scheduleRender();
   });
-  hero.addEventListener("mouseleave", function () {
+  document.addEventListener("mouseleave", function () {
     pointer = null;
-    scheduleRender();
   });
 
   var resizeRaf = null;
@@ -205,6 +538,7 @@ function initHeroDotField() {
   });
 
   resize();
+  requestAnimationFrame(tick);
 }
 
 // Landing-page "by the numbers" row: hovering one stat blurs+dims the
@@ -498,7 +832,23 @@ function initBioNetwork() {
   // once some later resize/scroll happened to trigger a fresh draw,
   // which is the "loads wrong, then jumps into place" symptom. Redrawing
   // right when that transition actually finishes is the real fix.
-  wrap.addEventListener("transitionend", scheduleDraw);
+  //
+  // The lines also start invisible (see .bio-network-lines in
+  // custom.css) and only fade in once that same transitionend fires --
+  // event.target === wrap specifically, not any bubbling transitionend
+  // from a bubble's own hover transition, so a stray hover mid-load
+  // can't reveal the lines early. Under reduced motion .reveal-up's
+  // transition is removed outright (see custom.css), so this event
+  // would never fire at all -- revealed immediately below instead, same
+  // as .reveal-up itself skips straight to its settled state there.
+  function revealLines() {
+    if (svg) svg.classList.add("is-visible");
+  }
+  wrap.addEventListener("transitionend", function (event) {
+    if (event.target === wrap) revealLines();
+    scheduleDraw();
+  });
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) revealLines();
 
   window.addEventListener("resize", scheduleDraw);
   window.addEventListener("load", scheduleDraw);
@@ -588,6 +938,30 @@ function initScrollReveal() {
     Array.prototype.forEach.call(items, function (el, i) {
       el.style.transitionDelay = i * STAGGER_SECONDS + "s";
       el.classList.add("is-visible");
+      unclipRevealMask(el);
+    });
+  }
+
+  // .reveal-mask's overflow: hidden (custom.css) exists only to clip the
+  // slide-in wipe itself, while the wrapped .reveal-up is still
+  // physically translated out of its box -- once that one-time
+  // transition actually finishes (or never runs at all, under reduced
+  // motion) it serves no further purpose, and leaving it in place
+  // forever clips anything later layered on top that extends past the
+  // wrapper's own box, like a ball-glow flash on a button inside one
+  // (see .ball-glow in custom.css) -- the exact "buttons cut off when
+  // they glow" bug this exists to fix.
+  function unclipRevealMask(el) {
+    var mask = el.closest(".reveal-mask");
+    if (!mask) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      mask.classList.add("reveal-mask-done");
+      return;
+    }
+    el.addEventListener("transitionend", function handler(event) {
+      if (event.target !== el) return;
+      mask.classList.add("reveal-mask-done");
+      el.removeEventListener("transitionend", handler);
     });
   }
 

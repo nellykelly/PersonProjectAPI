@@ -32,14 +32,19 @@ def index():
     listed = listed_projects()
     featured = [p for p in listed if p["slug"] in FEATURED_PROJECT_SLUGS]
     # The bio network's "+" button adds a bubble for one of these at a
-    # time -- real projects, a real icon already drawn for /projects, and
-    # a real URL, so a bubble someone adds always links somewhere genuine
-    # rather than to placeholder content invented just for the toy.
+    # time -- real projects, a real URL, so a bubble someone adds always
+    # links somewhere genuine rather than to placeholder content invented
+    # just for the toy. Icon is a dedicated, more detailed variant drawn
+    # just for the bubble's larger, isolated presentation -- the /projects
+    # card icon (p["icon"]) reads fine small and packed next to a dozen
+    # others, but the bubble network only ever shows one project at a
+    # time at 84px, with room the plain card icon doesn't use. Every
+    # project slug has one in assets/img/icons/bubbles/.
     bio_network_extra_nodes = [
         {
             "id": p["slug"],
             "title": p["title"],
-            "icon": url_for("static", filename=p["icon"]),
+            "icon": url_for("static", filename=f"assets/img/icons/bubbles/{p['slug']}.svg"),
             "url": url_for(p["endpoint"]),
         }
         for p in listed

@@ -141,6 +141,14 @@ html.js-reveal .reveal-up.is-visible {
 .reveal-mask {
   overflow: hidden;
 }
+/* Lifted once the wipe itself is done (see unclipRevealMask() in
+   base.js) -- overflow: hidden has no more travel to clip at that
+   point, and left in place forever it also clips anything later
+   layered on top that extends past this wrapper's own box, such as a
+   ball-glow flash (see .ball-glow below) on a button inside one. */
+.reveal-mask.reveal-mask-done {
+  overflow: visible;
+}
 
 @media (prefers-reduced-motion: reduce) {
   html.js-reveal .reveal-up {
@@ -475,7 +483,16 @@ html.js-reveal .reveal-up.is-visible {
      div would. That's why this was still getting cut off well short of
      the true right edge even after the field became full-bleed. */
   width: 100vw;
-  height: 46rem;
+  /* max(), not a flat 100vh: 46rem is already the right height to sit
+     behind the hero's own content on a typical laptop screen, and
+     100vh only takes over on a viewport tall enough that 46rem would
+     fall short of it -- filling the initial screen on load without
+     reaching for the page's full scrollable height the way the dot
+     field briefly considered (and dropped: canvas backing-store memory
+     and per-frame draw cost both scale with this number, and a
+     scrollable page can run into the thousands of px where a viewport
+     never does). */
+  height: max(46rem, 100vh);
   z-index: -2;
   pointer-events: none;
 }
@@ -2034,6 +2051,21 @@ html.skip-welcome #welcome-gate {
   z-index: 0;
   overflow: visible;
   pointer-events: none;
+  /* Starts invisible and fades in only once .bio-network-wrap's own
+     .reveal-up slide-in has finished (initBioNetwork() in base.js adds
+     .is-visible on that transition's transitionend) -- without this,
+     the lines draw immediately at load, connecting to the bubbles'
+     still-in-transit positions and visibly snapping into place as the
+     slide-in catches up, instead of only appearing once there's
+     somewhere settled to connect. */
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+.bio-network-lines.is-visible {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bio-network-lines { transition: none; }
 }
 .bio-network-lines path {
   fill: none;
@@ -2048,11 +2080,28 @@ html.skip-welcome #welcome-gate {
   stroke-width: 2.25;
   filter: drop-shadow(0 0 6px var(--accent-glow));
 }
+/* A bubble's own connector line, brightening in step with it when a
+   ball is consumed (see glowElement() in base.js) -- the bubble and
+   the line it hangs off read as one piece of the network, so only the
+   bubble flashing would look like the hit missed half of what it
+   actually landed on. Layered alongside (not replacing) the base
+   rule's own bio-line-flow -- animation is a single property, so
+   naming only line-glow-pulse here would stop the line's continuous
+   dash-flow for the glow's whole 4s instead of just brightening it. */
+@keyframes line-glow-pulse {
+  0% { stroke-opacity: 0.28; stroke-width: 1.5; filter: none; }
+  10% { stroke-opacity: 1; stroke-width: 3; filter: drop-shadow(0 0 10px var(--accent-glow)); }
+  100% { stroke-opacity: 0.28; stroke-width: 1.5; filter: none; }
+}
+.bio-network-lines path.line-glow {
+  animation: bio-line-flow 1.6s linear infinite, line-glow-pulse 4s ease-out;
+}
 @keyframes bio-line-flow {
   to { stroke-dashoffset: 24; }
 }
 @media (prefers-reduced-motion: reduce) {
   .bio-network-lines path { animation: none; }
+  .bio-network-lines path.line-glow { animation: none; }
 }
 
 .bio-node {
@@ -2095,6 +2144,30 @@ html.skip-welcome #welcome-gate {
   border-bottom: none;
 }
 
+/* A falling ball (see initHeroDotField()/base.js) is consumed the
+   instant it touches real page furniture -- the profile photo, a
+   bubble, a hero button, a tag pill -- rather than bouncing off it;
+   this is that contact's payoff, a blue flash that eases back out over
+   4s. Applies generically to circles and rects alike since box-shadow
+   follows whatever border-radius the element already has. Overrides
+   (rather than adds to) any resting box-shadow the element already
+   carries -- .bio-node-center's ring, the "+"/"-" buttons' drop shadow
+   -- only for the animation's own duration; once it ends and the class
+   is removed (base.js times this to GLOW_MS, not left to the animation
+   alone, so a second hit mid-glow can restart it) the element's normal
+   box-shadow governs again. */
+@keyframes ball-glow-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(58, 160, 255, 0); }
+  10% { box-shadow: 0 0 28px 10px rgba(58, 160, 255, 0.9), 0 0 60px 22px rgba(58, 160, 255, 0.45); }
+  100% { box-shadow: 0 0 0 0 rgba(58, 160, 255, 0); }
+}
+.ball-glow {
+  animation: ball-glow-pulse 4s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ball-glow { animation: none; }
+}
+
 /* "+"/"-" controls -- absolute within .hero (which has position:
    relative), not fixed to the viewport, so they scroll away with the
    hero section instead of hovering over the whole page. "+" pushes one
@@ -2107,6 +2180,21 @@ html.skip-welcome #welcome-gate {
   z-index: 600;
   display: flex;
   gap: 0.6rem;
+}
+/* On wide viewports, #content.wide caps out at 1200px and centers,
+   leaving an empty margin on either side -- right: 1.5rem alone anchors
+   to .hero's own (capped) edge, which reads as "close to the middle"
+   on a big screen instead of out in that margin. right's own edge is
+   measured from .hero's edge, so a NEGATIVE value here is what pushes
+   the box past that edge and out into the gutter; (1200px - 100vw) is
+   negative exactly when the viewport is wider than the cap, and halving
+   it accounts for the margin being split evenly on both sides. Left
+   alone below 1200px, where there's no gutter to move into and this
+   formula would otherwise shove it inward over the content instead. */
+@media (min-width: 1200px) {
+  .bio-network-controls {
+    right: calc((1200px - 100vw) / 2);
+  }
 }
 .bio-network-add,
 .bio-network-remove {
@@ -2133,8 +2221,21 @@ html.skip-welcome #welcome-gate {
 .bio-network-remove:hover { border-color: var(--accent); transform: translateY(-2px); }
 .bio-network-add-icon,
 .bio-network-remove-icon { width: 1.3rem; height: 1.3rem; }
+/* visibility, not display:none -- a hidden flex item collapsed out of
+   the flow would let its sibling slide into the freed slot (the "-"
+   jumping left into "+"'s spot once "+" hides at pool exhaustion).
+   Keeping the slot reserved is what makes "+" always sit in the same
+   place and "-" always appear to its right, never the other way round.
+   The browser's own [hidden] UA rule is `display: none`, which would
+   collapse the layout regardless of visibility -- display: grid here
+   (matching the buttons' normal display) overrides that so only
+   visibility, not layout, changes. */
 .bio-network-add[hidden],
-.bio-network-remove[hidden] { display: none; }
+.bio-network-remove[hidden] {
+  display: grid;
+  visibility: hidden;
+  pointer-events: none;
+}
 @media (max-width: 720px) {
   .bio-network-controls { display: none; }
 }
@@ -3658,17 +3759,19 @@ a.asst-source:hover { color: var(--fg); border-color: var(--accent); background:
 /* Kept the original 4:5 rounded rectangle (not the circular treatment
    used for a moment here -- "the white outline that circles them" meant
    a ring effect going around each frame, not a change of shape). A dim,
-   translucent white border is the constant "outline" the photo always
-   shows; a brighter white arc rides around that same edge and completes
+   translucent blue border is the constant "outline" the photo always
+   shows; a brighter blue arc rides around that same edge and completes
    one lap every --ring-speed, using the same content-box/border-box
-   mask-composite technique as .education-tile::before above, just in
-   white instead of that card's accent-colored ring. Each section on the
-   About page sets --ring-speed inline, fastest for the most recent
-   chapter and slowest for the oldest, so the ring visibly speeds up as
-   the timeline runs top to bottom. The base border deliberately isn't
-   full-opacity white: a solid white border plus a solid white arc
-   riding on top of it would be white-on-white, and the motion -- the
-   entire point -- would be invisible. */
+   mask-composite technique as .education-tile::before above (--accent,
+   the same blue, not that card's own accent-colored ring -- this
+   started out white, matching the original ask, but read as too plain
+   next to the site's blue elsewhere and was changed to --accent).
+   Each section on the About page sets --ring-speed inline, fastest for
+   the most recent chapter and slowest for the oldest, so the ring
+   visibly speeds up as the timeline runs top to bottom. The base border
+   deliberately isn't full-opacity: a solid border plus a solid arc
+   riding on top of it in the same color would hide the motion --
+   the entire point -- against itself. */
 .about-photo-frame {
   --ring-speed: 4s;
   position: relative;
@@ -3676,7 +3779,7 @@ a.asst-source:hover { color: var(--fg); border-color: var(--accent); background:
   border-radius: 16px;
   overflow: hidden;
   background: var(--surface);
-  border: 2px solid rgba(255, 255, 255, 0.32);
+  border: 2px solid rgba(58, 160, 255, 0.32);
   box-shadow: 0 24px 50px -28px var(--accent-glow);
   transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
@@ -3701,12 +3804,12 @@ a.asst-source:hover { color: var(--fg); border-color: var(--accent); background:
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: conic-gradient(from var(--about-ring-angle), transparent 0%, #ffffff 10%, transparent 24%);
+  background: conic-gradient(from var(--about-ring-angle), transparent 0%, var(--accent) 10%, transparent 24%);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   padding: 2.5px;
-  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.9));
+  filter: drop-shadow(0 0 4px rgba(58, 160, 255, 0.9));
   animation: about-ring-spin var(--ring-speed) linear infinite;
   z-index: 1;
   pointer-events: none;

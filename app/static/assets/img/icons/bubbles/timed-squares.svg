@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <rect x="6" y="6" width="38" height="38" fill="none" stroke="#0a58ca" stroke-width="2" opacity="0.35"/>
+  <line x1="6" y1="18.67" x2="44" y2="18.67" stroke="#0a58ca" stroke-width="1.2" opacity="0.25"/>
+  <line x1="6" y1="31.33" x2="44" y2="31.33" stroke="#0a58ca" stroke-width="1.2" opacity="0.25"/>
+  <line x1="18.67" y1="6" x2="18.67" y2="44" stroke="#0a58ca" stroke-width="1.2" opacity="0.25"/>
+  <line x1="31.33" y1="6" x2="31.33" y2="44" stroke="#0a58ca" stroke-width="1.2" opacity="0.25"/>
+
+  <rect x="20.5" y="20.5" width="10.5" height="10.5" fill="#0a58ca"/>
+  <rect x="7.5" y="7.5" width="10.5" height="10.5" fill="#dc2626"/>
+  <path d="M9.5 12.5 L16.5 12.5 M13 9.5 L16.5 12.5 L13 15.5" stroke="#ffffff" stroke-width="1.4"
+        fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <circle cx="47" cy="47" r="13" fill="#0d1117" stroke="#4ade80" stroke-width="2.5"/>
+  <path d="M47 39 L47 47 L52 50" fill="none" stroke="#4ade80" stroke-width="2.2"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="47" y1="32" x2="47" y2="35" stroke="#15803d" stroke-width="2" stroke-linecap="round"/>
+</svg>
