@@ -3,13 +3,15 @@
 Four domain captains (trading, pipeline world, company scorer,
 timed-squares) each built their own `build_*_tools()` / `dispatch_*_tool()`
 pair, following the shape `job_tools.py` established. This module is what
-actually reaches those tools from chat: `answer()` now always builds and
-offers the public tool set (no authorization gate, unlike the job tracker),
-routes each tool call to the right dispatcher by name, and enforces a
-per-turn cap on the four calls that matter most (`open_position`,
-`join_pipeline_world`, `score_company`, `run_backtest`) so a single chat
-turn can't loop a write/expensive call past what one visitor "asking once"
-should get.
+actually reaches those tools from chat: `answer()` builds every domain's
+schemas and dispatcher unconditionally (no authorization gate, unlike the
+job tracker), but only *offers* a domain's schemas to the model when
+`_select_tool_domains()` finds this turn's question actually relevant to
+it -- a plain question gets none of them. It also routes each tool call
+to the right dispatcher by name, and enforces a per-turn cap on the four
+calls that matter most (`open_position`, `join_pipeline_world`,
+`score_company`, `run_backtest`) so a single chat turn can't loop a
+write/expensive call past what one visitor "asking once" should get.
 
 Deterministic tool calls come from `ScriptedBackend` (kind "scripted"),
 same pattern as `tests/test_assistant_job_tools.py`.
@@ -61,13 +63,16 @@ def _token_from(text: str) -> str:
 
 
 # --------------------------------------------------------------------------
-# public tools are always offered, unauthorized or not
+# public tools are offered per-domain, based on the question -- unauthorized
+# or not, unlike the job tracker's all-or-nothing gate
 # --------------------------------------------------------------------------
 
-def test_unauthorized_answer_still_offers_the_full_public_tool_set(db_ready, app):
-    """Before this wiring, job_tools_authorized=False meant zero tools of
-    any kind were offered. Now the five public domains are unconditional --
-    only the job-tracker six stay gated."""
+def test_unauthorized_plain_question_offers_no_public_tools(db_ready, app):
+    """A question with no domain-relevant words (build spec / commit
+    a6d47fd's incident: free-tier Groq's per-minute token cap couldn't
+    absorb ~3.6k tokens of unconditional tool schemas on top of the system
+    prompt and retrieved passages) should carry zero public tool schemas,
+    not just zero job-tracker ones."""
     _set_scripted(app)
     with app.app_context():
         SCRIPTED_BACKEND.push({"text": "just chatting"})
@@ -75,6 +80,19 @@ def test_unauthorized_answer_still_offers_the_full_public_tool_set(db_ready, app
             "hi", [], config=app.config, job_tools_authorized=False
         )
         assert ans.reply == "just chatting"
+        assert SCRIPTED_BACKEND.calls[0]["tools"] == []
+
+
+def test_unauthorized_domain_question_offers_only_that_domains_tools(db_ready, app):
+    """A trading-shaped question offers exactly the trading tools -- not
+    pipeline/scorer/timedsquares/traffic, and not the job-tracker six."""
+    _set_scripted(app)
+    with app.app_context():
+        SCRIPTED_BACKEND.push({"text": "AAPL is at $150."})
+        ans = assistant.answer(
+            "what's the quote on AAPL", [], config=app.config, job_tools_authorized=False
+        )
+        assert ans.reply == "AAPL is at $150."
 
         offered = {t["function"]["name"] for t in SCRIPTED_BACKEND.calls[0]["tools"]}
         assert offered == {
@@ -84,16 +102,7 @@ def test_unauthorized_answer_still_offers_the_full_public_tool_set(db_ready, app
             "get_projection",
             "preview_open_position",
             "open_position",
-            "preview_join_pipeline_world",
-            "join_pipeline_world",
-            "check_character_status",
-            "score_company",
-            "run_backtest",
-            "get_leaderboard",
-            "get_traffic_summary",
         }
-        # the job-tracker six are still nowhere to be seen
-        assert "add_application" not in offered
 
 
 # --------------------------------------------------------------------------

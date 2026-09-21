@@ -11,12 +11,23 @@ never built, so there is nothing for a crafted message or a retrieved
 passage to invoke there.
 
 The **public** tool domains (trading, Pipeline World, Company Scorer,
-Timed-Squares, Site Traffic Analytics) are different: they wrap actions that are already public,
-unauthenticated web features, so their schemas are built and offered on
-every single call, regardless of `job_tools_authorized` -- there is no
-gate to check. That means the tool-calling model path (the LangGraph
-StateGraph built below and driven by `answer()`) is now always used;
-there is no more plain single-call fallback.
+Timed-Squares, Site Traffic Analytics) are different from the job tracker
+in *why* they're gated: there's no authorization check, since they wrap
+actions that are already public, unauthenticated web features -- every
+domain's schemas are still built and its dispatcher registered on every
+call, but each one's ~1.5k-token schema set is only *offered to the
+model* (added to the request `tools` actually sent to Groq) when
+`_select_tool_domains()` finds this turn's own words actually relevant to
+it (see that function for why: the previous "always offer all five"
+behavior put ~3.6k tokens of schemas on every single call before the
+system prompt or a single retrieved passage was added, which alone
+exceeded free-tier Groq's per-minute token cap once retrieval and a
+longer system prompt pushed past it). A plain question that matches no
+domain gets zero public tool schemas in the request. The tool-calling
+model path (the LangGraph StateGraph built below and driven by
+`answer()`) still always runs -- there is no plain single-call fallback
+-- it just isn't billing Groq tokens for schemas the question gave no
+sign of needing.
 """
 from __future__ import annotations
 
@@ -174,6 +185,47 @@ def _pick_sources(chunks, reply_text: str) -> list[dict]:
 
     chosen = [c for c in candidates if mentioned(c)] or candidates[:1]
     return [{"title": c.title, "source": c.source} for c in chosen[:_MAX_SOURCES]]
+
+
+# Which public tool domain each _SOURCE_TERMS project maps to -- reusing
+# those same keyword lists (already tuned to tell one project's content
+# apart from another's) rather than maintaining a second, parallel list.
+# A few terms are added per domain for words a tool needs but a citation
+# never did (e.g. "projection" doesn't appear in _SOURCE_TERMS, which
+# already has "price projection" under market-warehouse for a different
+# project's citation, but the trading tool get_projection wraps this
+# demo's own projection feature).
+_TOOL_DOMAIN_SOURCE_KEYS = {
+    "trading": "projects/trading-simulator",
+    "pipeline": "projects/pipeline-world",
+    "scorer": "projects/company-scorer",
+    "timedsquares": "projects/timed-squares",
+    "traffic": "projects/site-traffic",
+}
+_TOOL_DOMAIN_EXTRA_TERMS = {
+    "trading": ("projection", "quote", "ticker", "portfolio", "position", "stock"),
+    "pipeline": ("icebreaker",),
+    "scorer": ("fundamentals",),
+    "timedsquares": (),
+    "traffic": ("traffic", "sniffer"),
+}
+
+
+def _select_tool_domains(question: str, history: list[dict]) -> set[str]:
+    """Which of the always-public tool domains this turn's own words
+    actually suggest -- see the module docstring for why this exists.
+    Deliberately generous (a false positive costs ~0.1-1.6k tokens of
+    unused schemas; a false negative costs the model a tool it actually
+    needed), so it errs toward including a domain whenever a term for it
+    shows up anywhere in the current question or recent history, not just
+    an exact intent match."""
+    text = " ".join([question] + [h["content"] for h in history]).lower()
+    matched = set()
+    for domain, source_key in _TOOL_DOMAIN_SOURCE_KEYS.items():
+        terms = _SOURCE_TERMS[source_key] + _TOOL_DOMAIN_EXTRA_TERMS[domain]
+        if any(term in text for term in terms):
+            matched.add(domain)
+    return matched
 
 
 def _clean_history(history, max_turns: int) -> list[dict]:
@@ -503,9 +555,14 @@ def _prepare_initial_state(
     embedder = build_embedder(config)
     store = build_store(config)
 
-    # The public tool sets are always built and offered -- no authorization
-    # gate, unlike the job tracker. Build each domain's schemas once and
-    # remember which dispatcher handles which tool name.
+    # The public tool sets have no authorization gate, unlike the job
+    # tracker. Every domain's schemas are still built and its dispatcher
+    # registered unconditionally -- that's cheap, pure-Python bookkeeping
+    # with no token cost of its own, and keeps dispatch working even if a
+    # model call somehow names a tool this turn didn't offer. What's
+    # actually gated is which specs get added to `tools` below, i.e. what
+    # gets serialized into the request Groq bills tokens for (see
+    # _select_tool_domains for why).
     trading_specs = build_trading_tools()
     pipeline_specs = build_pipeline_tools()
     scorer_specs = build_scorer_tools()
@@ -524,7 +581,18 @@ def _prepare_initial_state(
     for spec in traffic_specs:
         dispatch_map[spec["function"]["name"]] = dispatch_traffic_tool
 
-    tools = trading_specs + pipeline_specs + scorer_specs + timedsquares_specs + traffic_specs
+    domains = _select_tool_domains(q, history)
+    tools = []
+    if "trading" in domains:
+        tools += trading_specs
+    if "pipeline" in domains:
+        tools += pipeline_specs
+    if "scorer" in domains:
+        tools += scorer_specs
+    if "timedsquares" in domains:
+        tools += timedsquares_specs
+    if "traffic" in domains:
+        tools += traffic_specs
 
     if job_tools_authorized:
         job_specs = build_job_tools(True)
