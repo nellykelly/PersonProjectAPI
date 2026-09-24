@@ -31,7 +31,7 @@ from werkzeug.security import check_password_hash
 
 from app.blueprints.job_tracker import bp
 from app.extensions import limiter
-from app.services import job_discovery, job_tracker
+from app.services import application_drafter, job_discovery, job_tracker
 
 SESSION_KEY = "job_tracker_unlocked"
 
@@ -193,6 +193,36 @@ def edit_application(app_id: int):
         application=application,
         events=application.events.limit(50).all(),
         match_label=job_tracker.match_label,
+        drafts=application.drafts.limit(10).all(),
+        has_stored_posting=bool(application_drafter.stored_posting_text(application)),
+    )
+
+
+@bp.route("/<int:app_id>/draft", methods=["POST"])
+@limiter.limit(lambda: current_app.config["JOB_DISCOVERY_RUN_RATE_LIMIT"])
+def start_draft(app_id: int):
+    """Queue a drafter -> reviewer -> revise pass (see
+    app/services/application_drafter.py) and go watch it."""
+    try:
+        draft_id = application_drafter.start_draft(app_id, request.form.get("posting_text"))
+    except application_drafter.DraftError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("job_tracker.edit_application", app_id=app_id) + "#drafts")
+    return redirect(url_for("job_tracker.view_draft", app_id=app_id, draft_id=draft_id))
+
+
+@bp.route("/<int:app_id>/drafts/<int:draft_id>", methods=["GET"])
+def view_draft(app_id: int, draft_id: int):
+    try:
+        draft = application_drafter.get_draft(app_id, draft_id)
+    except application_drafter.DraftError:
+        abort(404)
+    application_drafter.refresh_status(draft)
+    return render_template(
+        "job_tracker/draft.html",
+        application=draft.application,
+        draft=draft,
+        plain_text=application_drafter.as_plain_text(draft),
     )
 
 

@@ -257,8 +257,43 @@ body.jt {
 .jt-grade--worth { color: var(--warn); }
 .jt-grade--reach { color: var(--ink-3); }
 
+/* ---- application drafts ---- */
+.jt-drafts { margin-top: 2rem; }
+.jt-drafts h2 { font-size: 1rem; margin: 0 0 .4rem; }
+.jt-drafts .jt-sub { margin: 0 0 1rem; max-width: 70ch; }
+.jt-drafts .jt-form-actions { margin-top: 1rem; }
+.jt-draft-list { list-style: none; margin: 1rem 0 0; padding: 0; font-size: .85rem; }
+.jt-draft-list li { padding: .35rem 0; border-bottom: 1px solid var(--rule-soft); }
+
+.jt-draft-fit {
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 6px;
+  padding: 1.25rem 1.5rem; box-shadow: var(--shadow); margin-bottom: 1rem;
+}
+.jt-draft-verdict { font-weight: 600; margin: 0 0 .75rem; }
+.jt-draft-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+.jt-draft-cols h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); margin: 0 0 .4rem; }
+.jt-draft-cols ul, .jt-draft-review ul { margin: 0; padding-left: 1.1rem; font-size: .88rem; line-height: 1.5; }
+
+.jt-draft-review {
+  font-size: .85rem; background: var(--surface-2); border: 1px solid var(--rule);
+  border-radius: 4px; padding: .6rem .8rem; margin-bottom: 1rem;
+}
+.jt-draft-review summary { cursor: pointer; font-weight: 600; color: var(--ink-2); }
+.jt-draft-review ul, .jt-draft-review .jt-draft-text { margin-top: .6rem; }
+
+.jt-draft-part { margin-bottom: 1.25rem; }
+.jt-draft-part-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .4rem; }
+.jt-draft-part-head h2 { font-size: .95rem; margin: 0; }
+.jt .jt-copy { font-size: .75rem; padding: .25rem .6rem; }
+.jt-draft-text {
+  white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; font-size: .92rem;
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; padding: .9rem 1rem;
+  max-width: 80ch;
+}
+
 @media (max-width: 720px) {
   .jt-stats { grid-template-columns: repeat(2, 1fr); }
   .jt-grid { grid-template-columns: 1fr; }
   .jt-discover-head { flex-direction: column; align-items: stretch; }
+  .jt-draft-cols { grid-template-columns: 1fr; }
 }

@@ -11,7 +11,7 @@ submodules, so importing this package -- and booting the app, and running
 the test suite -- works without them installed.
 """
 from .backends import backend_available
-from .errors import AssistantError, AssistantInputError, AssistantUnavailable
+from .errors import AssistantBusy, AssistantError, AssistantInputError, AssistantUnavailable
 from .orchestrator import AssistantAnswer, answer, stream_answer
 from .reindex import reindex
 
@@ -24,4 +24,5 @@ __all__ = [
     "AssistantError",
     "AssistantInputError",
     "AssistantUnavailable",
+    "AssistantBusy",
 ]

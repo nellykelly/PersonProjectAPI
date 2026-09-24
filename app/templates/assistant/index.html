@@ -28,7 +28,8 @@
     {% else %}
     <div class="asst-window" id="asst-window"
          data-max-input="{{ config['ASSISTANT_MAX_INPUT_CHARS'] }}"
-         data-max-history="{{ config['ASSISTANT_MAX_HISTORY_TURNS'] }}">
+         data-max-history="{{ config['ASSISTANT_MAX_HISTORY_TURNS'] }}"
+         data-stream-url="{{ url_for('assistant.chat_stream') }}">
 
         <div class="asst-scroll" id="asst-scroll">
             <div class="asst-thread" id="asst-thread" aria-live="polite"></div>

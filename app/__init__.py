@@ -328,12 +328,72 @@ def _register_cli(app: Flask) -> None:
     def assistant_reindex() -> None:
         """Re-embed app/assistant_content/ into the content_chunks table."""
         from app.services import assistant as assistant_service
+        from app.services.assistant.cache import invalidate_all
 
         info = assistant_service.reindex()
         click.echo(
             f"Reindexed {info['chunks']} chunks from {info['files']} files "
             f"(embedder: {info['embedder']})."
         )
+        # A cached answer's key already folds in a content-version hash (see
+        # cache.py), so a reindex alone would naturally miss the old cache
+        # entries rather than serve them -- but that only helps once TTL
+        # (ASSISTANT_CACHE_TTL_SECONDS, default 6h) has actually passed.
+        # Clear explicitly so a content change takes effect immediately
+        # instead of Hera serving pre-reindex answers for up to that TTL.
+        cleared = invalidate_all()
+        click.echo(f"Cleared {cleared} cached answer(s).")
+
+    @assistant_cli.command("eval")
+    @click.option(
+        "--case",
+        "cases",
+        multiple=True,
+        help="Run only this case name (repeatable). Default: every case in eval_cases.json.",
+    )
+    @click.option(
+        "--no-pace",
+        is_flag=True,
+        help="Skip the inter-case pacing sleep (faster, but risks the tokens/minute cap).",
+    )
+    def assistant_eval(cases: tuple[str, ...], no_pace: bool) -> None:
+        """Run Hera's regression eval suite against the configured backend.
+
+        Hits the real model (whatever ASSISTANT_LLM_BACKEND is set to --
+        normally "groq") and spends real quota, paced against
+        ASSISTANT_EVAL_TPM by default. See
+        app/services/assistant/evals.py for what a case is and how to add
+        one; this command just runs them and prints a table.
+        """
+        from app.services.assistant import evals
+
+        names = list(cases) or None
+        results = evals.run_suite(app.config, names=names, pace=not no_pace)
+
+        header = (
+            f"{'NAME':<40} {'RESULT':<6} {'MS':>7} {'TOKENS':>7} {'MODEL':<24} "
+            f"{'GUARD':<5} {'FB':<3} FIRST FAILURE"
+        )
+        click.echo(header)
+        click.echo("-" * len(header))
+        failed = 0
+        for r in results:
+            if not r.passed:
+                failed += 1
+            status = "PASS" if r.passed else "FAIL"
+            tokens = (r.prompt_tokens or 0) + (r.completion_tokens or 0)
+            guard = "FLAG" if r.guard_flagged else ""
+            fallback = "Y" if r.fell_back else ""
+            first_failure = r.failures[0] if r.failures else ""
+            click.echo(
+                f"{r.name:<40} {status:<6} {r.latency_ms:>7.0f} {tokens:>7} "
+                f"{r.model:<24} {guard:<5} {fallback:<3} {first_failure}"
+            )
+
+        click.echo("-" * len(header))
+        click.echo(f"{len(results) - failed}/{len(results)} passed")
+        if failed:
+            raise SystemExit(1)
 
     @app.cli.group("job-tracker")
     def job_tracker_cli() -> None:

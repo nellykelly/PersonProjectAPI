@@ -13,7 +13,7 @@
     </label>
     <label class="jt-check">
       <input type="checkbox" name="include_remote" {{ 'checked' if profile.include_remote }}>
-      Also include nationwide remote jobs (also feeds RemoteOK)
+      Also include nationwide remote jobs (also feeds RemoteOK, Arbeitnow, Remotive, and freehire's remote results)
     </label>
     <label>Greenhouse company watchlist (one board slug per line, e.g. "stripe")
       <textarea name="company_boards" rows="2">{{ profile.company_boards or '' }}</textarea>
@@ -74,6 +74,14 @@
   {{ quota.remotive_remaining_today }} left.
   {% if quota.remotive_remaining_today == 0 %}
     <span class="jt-quota-warn">Today's Remotive budget is spent -- skipped automatically until this resets.</span>
+  {% endif %}
+  <br>
+  <strong>First pass:</strong>
+  {% if quota.jev_enabled %}
+    Jev (TypeSafe, paid per input token, ~$0.0001 per listing) grades up to {{ quota.jev_max_new_per_run }} listings;
+    Groq writes notes for the best {{ quota.max_llm_per_run }}.
+  {% else %}
+    Keyword pre-score (free). Jev is available but off; set <code>TYPESAFE_API_KEY</code> to turn it on.
   {% endif %}
 </div>
 

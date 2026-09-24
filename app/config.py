@@ -208,6 +208,30 @@ class Config:
     # that account's real number for that model, not a guess -- if the
     # model or account changes, or Groq changes its limits, override this.
     GROQ_DAILY_TOKEN_LIMIT = int(os.environ.get("GROQ_DAILY_TOKEN_LIMIT", "200000"))
+    # The per-minute cap, which a run hits long before the daily one: 8,000
+    # on the free tier for openai/gpt-oss-120b (x-ratelimit-limit-tokens,
+    # read live 2026-09-23). Scoring and drafting pace themselves to it --
+    # see job_discovery.pace_for_token_budget.
+    JOB_DISCOVERY_GROQ_TPM = int(os.environ.get("JOB_DISCOVERY_GROQ_TPM", "8000"))
+    # gpt-oss reasons before answering and that reasoning counts against
+    # max_tokens; "low" answers a score in ~150 tokens where the default
+    # used 300+ and returned nothing. Set empty for non-reasoning models.
+    JOB_DISCOVERY_REASONING_EFFORT = os.environ.get("JOB_DISCOVERY_REASONING_EFFORT", "low")
+    JOB_DISCOVERY_SCORE_MAX_TOKENS = int(os.environ.get("JOB_DISCOVERY_SCORE_MAX_TOKENS", "1000"))
+
+    # Jev (TypeSafe AI) first-pass evaluation -- see app/services/jev.py.
+    # Unset TYPESAFE_API_KEY -> Job Discovery keeps the keyword pre-score
+    # and scores up to JOB_DISCOVERY_MAX_NEW_PER_RUN listings with Groq, as
+    # before. Set -> Jev grades up to JEV_MAX_NEW_PER_RUN listings (input-
+    # token priced, ~$0.0001 each, no Groq spend) and only the best
+    # JOB_DISCOVERY_MAX_LLM_PER_RUN at or above JEV_LLM_THRESHOLD get a
+    # Groq-written note.
+    TYPESAFE_API_KEY = os.environ.get("TYPESAFE_API_KEY", "")
+    TYPESAFE_BASE_URL = os.environ.get("TYPESAFE_BASE_URL", "https://api.typesafe.ai")
+    JEV_MODEL = os.environ.get("JEV_MODEL", "jev-latest")
+    JEV_MAX_NEW_PER_RUN = int(os.environ.get("JEV_MAX_NEW_PER_RUN", "60"))
+    JEV_LLM_THRESHOLD = int(os.environ.get("JEV_LLM_THRESHOLD", "55"))
+    JOB_DISCOVERY_MAX_LLM_PER_RUN = int(os.environ.get("JOB_DISCOVERY_MAX_LLM_PER_RUN", "15"))
     # A dedicated Groq API key for scoring only, separate from GROQ_API_KEY
     # (the public /assistant chat) and GROQ_TOOL_MODEL (Hera's owner
     # job-tracker tool-calls) -- Groq's daily token cap is scoped to an
@@ -287,6 +311,13 @@ class Config:
     # provider-stated ceiling, not a guess. See
     # job_discovery._today_remotive_calls() / JobDiscoveryRun.remotive_calls.
     REMOTIVE_DAILY_CALL_LIMIT = int(os.environ.get("REMOTIVE_DAILY_CALL_LIMIT", "4"))
+    # freehire.me aggregator (app/services/job_sources/freehire.py): keyless,
+    # one call per keyword. FREEHIRE_API_URL can point at a self-hosted
+    # instance (github.com/strelov1/freehire); FREEHIRE_COUNTRIES is a
+    # comma-separated ISO alpha-2 list.
+    FREEHIRE_API_URL = os.environ.get("FREEHIRE_API_URL", "https://freehire.me")
+    FREEHIRE_COUNTRIES = os.environ.get("FREEHIRE_COUNTRIES", "US")
+    FREEHIRE_POSTED_WITHIN_DAYS = int(os.environ.get("FREEHIRE_POSTED_WITHIN_DAYS", "30"))
 
     # ------------------------------------------------------------------
     # /family -- private household suite (app/blueprints/family)
@@ -447,6 +478,82 @@ class Config:
     # one) per hit, so it draws from a tighter bucket than a normal chat message.
     STOCK_ANALYSIS_RATE_LIMIT = os.environ.get("STOCK_ANALYSIS_RATE_LIMIT", "10 per hour")
 
+    # Total characters of conversation history sent with a turn, on top of
+    # the per-turn 2,000-char cap and ASSISTANT_MAX_HISTORY_TURNS. Oldest
+    # turns are dropped first. 4 turns x 2 messages x 2,000 chars was ~4k
+    # tokens of history in the worst case -- half the chat model's 8,000
+    # tokens/minute on its own. 3,000 chars is roughly 750 tokens.
+    ASSISTANT_MAX_HISTORY_CHARS = int(os.environ.get("ASSISTANT_MAX_HISTORY_CHARS", "3000"))
+    # Wall-clock budget for one chat turn, measured from the start of
+    # answer(). Checked before every model round trip: once it's spent, the
+    # turn ends with a short "that took too long, ask me to keep going"
+    # reply instead of starting another call. It can't interrupt a call
+    # already in flight -- ASSISTANT_GROQ_TIMEOUT_SECONDS bounds that.
+    ASSISTANT_TURN_DEADLINE_SECONDS = float(
+        os.environ.get("ASSISTANT_TURN_DEADLINE_SECONDS", "40")
+    )
+
+    # Rate-limit resilience (app/services/assistant/backends.py). The Groq
+    # SDK's own defaults (60s read timeout, 2 retries) once held a gunicorn
+    # thread for 124s on one turn; these apply to the assistant's chat path
+    # only (job discovery and /family keep the SDK defaults). A 429 on the
+    # primary model falls through to each ASSISTANT_FALLBACK_MODELS entry
+    # in order -- each Groq model has its own tokens/minute bucket -- and
+    # only when every one is rate-limited does the visitor get a "busy,
+    # try again in N seconds" 429.
+    ASSISTANT_GROQ_TIMEOUT_SECONDS = float(os.environ.get("ASSISTANT_GROQ_TIMEOUT_SECONDS", "15"))
+    ASSISTANT_GROQ_MAX_RETRIES = int(os.environ.get("ASSISTANT_GROQ_MAX_RETRIES", "0"))
+    ASSISTANT_FALLBACK_MODELS = os.environ.get(
+        "ASSISTANT_FALLBACK_MODELS", "openai/gpt-oss-20b,openai/gpt-oss-120b"
+    )
+
+    # Retrieval trimming (app/services/assistant/retrieval.py). A passage
+    # is kept only if it scores at least MIN_SCORE and within SCORE_MARGIN
+    # of the best hit, and the whole context block is capped at
+    # MAX_CONTEXT_CHARS. Greetings and "who are you" questions skip
+    # retrieval entirely -- there's nothing in the corpus they need.
+    ASSISTANT_RETRIEVAL_MIN_SCORE = float(os.environ.get("ASSISTANT_RETRIEVAL_MIN_SCORE", "0.4"))
+    ASSISTANT_RETRIEVAL_SCORE_MARGIN = float(
+        os.environ.get("ASSISTANT_RETRIEVAL_SCORE_MARGIN", "0.08")
+    )
+    ASSISTANT_MAX_CONTEXT_CHARS = int(os.environ.get("ASSISTANT_MAX_CONTEXT_CHARS", "2600"))
+    ASSISTANT_SKIP_RETRIEVAL_FOR_SMALL_TALK = _bool(
+        "ASSISTANT_SKIP_RETRIEVAL_FOR_SMALL_TALK", True
+    )
+
+    # Prompt Guard pre-screen (app/services/assistant/guard.py): a tiny
+    # classifier on Groq, billed in its own bucket, that turns away obvious
+    # prompt-injection attempts before any chat-model tokens are spent.
+    # Fails open -- a guard outage never blocks a visitor.
+    #
+    # None (not True) when the env var is unset, on purpose: guard.screen()
+    # treats None as "on" in real use but "off" under TESTING, and only an
+    # explicit True opts a test back in. A literal True here would be
+    # inherited by TestingConfig and switch the guard on for the whole
+    # suite. Not overridden in TestingConfig for the same reason.
+    ASSISTANT_GUARD_ENABLED = (
+        _bool("ASSISTANT_GUARD_ENABLED", True)
+        if os.environ.get("ASSISTANT_GUARD_ENABLED") is not None
+        else None
+    )
+    ASSISTANT_GUARD_MODEL = os.environ.get(
+        "ASSISTANT_GUARD_MODEL", "meta-llama/llama-prompt-guard-2-86m"
+    )
+    ASSISTANT_GUARD_TIMEOUT_SECONDS = float(os.environ.get("ASSISTANT_GUARD_TIMEOUT_SECONDS", "3"))
+    ASSISTANT_GUARD_THRESHOLD = float(os.environ.get("ASSISTANT_GUARD_THRESHOLD", "0.9"))
+
+    # Repeat-answer cache (app/services/assistant/cache.py), on the shared
+    # Redis connection. Only first-turn, anonymous, tool-free answers are
+    # ever stored; the key includes the corpus and prompt versions, so a
+    # reindex or a prompt edit retires every old entry on its own.
+    ASSISTANT_CACHE_ENABLED = _bool("ASSISTANT_CACHE_ENABLED", True)
+    ASSISTANT_CACHE_TTL_SECONDS = int(os.environ.get("ASSISTANT_CACHE_TTL_SECONDS", "21600"))
+
+    # `flask assistant eval` paces itself to stay under this many prompt +
+    # completion tokens per minute (the chat model's cap is 8,000; this
+    # leaves headroom for real visitors during a live run).
+    ASSISTANT_EVAL_TPM = int(os.environ.get("ASSISTANT_EVAL_TPM", "7000"))
+
 
 class DevelopmentConfig(Config):
     DEBUG = True
@@ -493,6 +600,9 @@ class TestingConfig(Config):
     # /family Hera chatbot: canned backend, no network. FAMILY_PASSWORD_HASH
     # is left unset so gated tests inject it per fixture (like job-tracker).
     FAMILY_LLM_BACKEND = "fake"
+    # Never a live Jev call from the suite, even with a key in .env --
+    # Jev tests set their own fake key and stub the HTTP call.
+    TYPESAFE_API_KEY = ""
 
     # No real per-stage delay in tests -- queue.py already makes RQ
     # execute jobs synchronously under TESTING, so this just keeps that

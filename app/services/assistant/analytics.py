@@ -302,10 +302,13 @@ def compute_stats(days: int = 30) -> dict:
     latency = {
         "p50": round(_percentile(lat, 50)) if lat else None,
         "p90": round(_percentile(lat, 90)) if lat else None,
+        "p95": round(_percentile(lat, 95)) if lat else None,
         "max": max(lat) if lat else None,
     }
     tokens_in = sum(r.prompt_tokens_est or 0 for r in rows)
     tokens_out = sum(r.completion_tokens_est or 0 for r in rows)
+
+    reliability = _reliability(rows)
 
     # --- tone ---
     sent = Counter(r.sentiment for r in rows if r.sentiment)
@@ -398,6 +401,66 @@ def compute_stats(days: int = 30) -> dict:
         "volume": volume,
         "busiest_hours": busiest_hours,
         "answered_pct": _pct(kind.get("answered", 0), total),
+        "reliability": reliability,
+    }
+
+
+def _tracked(r) -> bool:
+    """Rows logged after the observability columns existed (migration
+    b7d3e5f1a9c2). Older rows have NULL in every one of them, and counting
+    them in a denominator would make every rate below look better than it
+    is -- so the rates are computed over tracked rows only."""
+    return any(
+        v is not None
+        for v in (r.request_id, r.busy, r.cache_hit, r.fell_back, r.guard_flagged, r.deadline_hit)
+    )
+
+
+def _reliability(rows) -> dict:
+    """How the production-grade plumbing is doing, as aggregates only:
+    rates and counts, never a question or a reply (this page is public).
+
+    - cache_hit_pct: share of tracked messages answered from the repeat-
+      answer cache (zero tokens spent).
+    - fallback_pct: share of *model-answered* turns (not a cache hit, not a
+      guard redirect, not busy, not errored) where a fallback model had to
+      step in because the primary was rate-limited or failing.
+    - busy_pct: share of tracked messages that got "busy, try again" (every
+      model rate-limited, HTTP 429).
+    - guard_flagged: how many messages Prompt Guard turned away.
+    - deadline_hits: how many turns ran out of time and stopped early.
+    - avg_prompt_tokens: mean prompt tokens per model-answered turn, i.e.
+      what one real answer costs against the tokens/minute cap. Cache hits
+      and guard redirects spend none and are left out, or they'd make the
+      average look cheaper than an actual answer is.
+    """
+    tracked = [r for r in rows if _tracked(r)]
+    n = len(tracked)
+    cache_hits = sum(1 for r in tracked if r.cache_hit)
+    busy = sum(1 for r in tracked if r.busy)
+    flagged = sum(1 for r in tracked if r.guard_flagged)
+    deadline_hits = sum(1 for r in tracked if r.deadline_hit)
+
+    model_answered = [
+        r
+        for r in tracked
+        if not r.error and not r.cache_hit and not r.guard_flagged and not r.busy
+    ]
+    fell_back = sum(1 for r in model_answered if r.fell_back)
+    prompt_counts = [r.prompt_tokens_est for r in model_answered if r.prompt_tokens_est]
+    return {
+        "tracked": n,
+        "cache_hits": cache_hits,
+        "cache_hit_pct": _pct(cache_hits, n),
+        "fallback_count": fell_back,
+        "fallback_pct": _pct(fell_back, len(model_answered)),
+        "busy_count": busy,
+        "busy_pct": _pct(busy, n),
+        "guard_flagged": flagged,
+        "deadline_hits": deadline_hits,
+        "avg_prompt_tokens": (
+            round(sum(prompt_counts) / len(prompt_counts)) if prompt_counts else None
+        ),
     }
 
 

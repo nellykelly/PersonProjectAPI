@@ -127,4 +127,16 @@ def enqueue_risk_pricing(risk_request_id: int):
 def enqueue_job_discovery_run(run_id: int):
     from app.services.job_discovery import execute_run
 
-    return get_job_discovery_queue().enqueue(execute_run, run_id, job_timeout=600)
+    # 30 minutes: scoring is paced to Groq's tokens-per-minute cap (see
+    # job_discovery.pace_for_token_budget), so a full 25-listing run takes
+    # ~11 minutes of scoring on its own -- past the old 600s timeout.
+    return get_job_discovery_queue().enqueue(execute_run, run_id, job_timeout=1800)
+
+
+def enqueue_application_draft(draft_id: int):
+    """Same queue as Job Discovery runs: both are Groq-bound job-tracker
+    work, and sharing it keeps a draft from racing a scoring run for the
+    same per-minute rate limit."""
+    from app.services.application_drafter import execute_draft
+
+    return get_job_discovery_queue().enqueue(execute_draft, draft_id, job_timeout=600)

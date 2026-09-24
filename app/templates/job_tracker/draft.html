@@ -1,0 +1,98 @@
+{% extends "job_tracker/_layout.html" %}
+{% block title %}Draft: {{ application.company_name }}{% endblock %}
+{% block head %}{% if draft.status == 'running' %}<meta http-equiv="refresh" content="4">{% endif %}{% endblock %}
+
+{% macro copy_block(label, text, id) %}
+<section class="jt-draft-part">
+  <div class="jt-draft-part-head">
+    <h2>{{ label }}</h2>
+    <button type="button" class="jt-btn jt-copy" data-copy="{{ id }}">Copy</button>
+  </div>
+  <div class="jt-draft-text" id="{{ id }}">{{ text }}</div>
+</section>
+{% endmacro %}
+
+{% block content %}
+<div class="jt-form-head">
+  <h1>{{ application.role_title }} at {{ application.company_name }}</h1>
+  <a class="jt-link" href="{{ url_for('job_tracker.edit_application', app_id=application.id) }}#drafts">&larr; Back to application</a>
+</div>
+
+{% if draft.status == 'running' %}
+  <div class="jt-run-status" role="status">
+    <div class="jt-progress"><div class="jt-progress-bar"></div></div>
+    <p>{{ draft.phase or 'Queued' }}. Drafting, then a review pass, then a revision. This page refreshes by itself.</p>
+  </div>
+
+{% elif draft.status == 'failed' %}
+  <div class="jt-err" role="alert">Drafting failed: {{ draft.error_message or 'unknown error' }}</div>
+
+{% else %}
+  <section class="jt-draft-fit">
+    <p class="jt-draft-verdict">{{ draft.fit_verdict }}</p>
+    <div class="jt-draft-cols">
+      {% if draft.strengths %}
+      <div>
+        <h2>Strengths</h2>
+        <ul>{% for s in draft.strengths.splitlines() %}<li>{{ s }}</li>{% endfor %}</ul>
+      </div>
+      {% endif %}
+      {% if draft.gaps %}
+      <div>
+        <h2>Gaps</h2>
+        <ul>{% for g in draft.gaps.splitlines() %}<li>{{ g }}</li>{% endfor %}</ul>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
+  {% if draft.review_notes %}
+  <details class="jt-draft-review">
+    <summary>Reviewer flagged {{ draft.review_notes.splitlines()|length }} issue{{ '' if draft.review_notes.splitlines()|length == 1 else 's' }} in the first draft (addressed below)</summary>
+    <ul>{% for n in draft.review_notes.splitlines() %}<li>{{ n }}</li>{% endfor %}</ul>
+  </details>
+  {% endif %}
+
+  <p class="jt-sub">Read every line before you use it. The review pass catches most overreach, not all of it.</p>
+
+  {% if draft.headline %}{{ copy_block('Resume headline', draft.headline, 'd-headline') }}{% endif %}
+  {% if draft.resume_summary %}{{ copy_block('Resume summary', draft.resume_summary, 'd-summary') }}{% endif %}
+  {% if draft.resume_bullets %}
+    {% set bullets %}{% for b in draft.resume_bullets.splitlines() %}- {{ b }}
+{% endfor %}{% endset %}
+    {{ copy_block('Resume bullets', bullets.strip(), 'd-bullets') }}
+  {% endif %}
+  {% if draft.cover_letter %}{{ copy_block('Cover letter', draft.cover_letter, 'd-cover') }}{% endif %}
+  {% if draft.why_company %}{{ copy_block('Why this company', draft.why_company, 'd-why') }}{% endif %}
+  {% if draft.short_pitch %}{{ copy_block('Short pitch (' ~ draft.short_pitch|length ~ ' chars)', draft.short_pitch, 'd-pitch') }}{% endif %}
+
+  <div class="jt-form-actions">
+    <button type="button" class="jt-btn jt-btn-primary jt-copy" data-copy="d-all">Copy everything</button>
+  </div>
+  <div id="d-all" hidden>{{ plain_text }}</div>
+
+  <details class="jt-draft-review">
+    <summary>Posting text this draft used</summary>
+    <div class="jt-draft-text">{{ draft.posting_text }}</div>
+  </details>
+
+  <p class="jt-when">
+    Groq tokens: {{ draft.groq_prompt_tokens + draft.groq_completion_tokens }}
+    {% if draft.finished_at %}&middot; finished {{ draft.finished_at.strftime('%Y-%m-%d %H:%M') }} UTC{% endif %}
+  </p>
+
+<script>
+document.querySelectorAll(".jt-copy").forEach(function (btn) {
+  btn.addEventListener("click", function () {
+    var el = document.getElementById(btn.dataset.copy);
+    if (!el || !navigator.clipboard) return;
+    navigator.clipboard.writeText(el.textContent.trim()).then(function () {
+      var label = btn.textContent;
+      btn.textContent = "Copied";
+      setTimeout(function () { btn.textContent = label; }, 1500);
+    });
+  });
+});
+</script>
+{% endif %}
+{% endblock %}

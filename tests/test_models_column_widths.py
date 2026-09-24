@@ -63,8 +63,9 @@ ENUMERABLE_COLUMNS = [
     # graded_by is who/what actually produced match_grade; every other
     # string-ish column on JobListing is db.Text (unbounded).
     (models.JobListing, "status", list(models.JOB_LISTING_STATUSES)),
-    (models.JobListing, "graded_by", ["llm", "keyword"]),
+    (models.JobListing, "graded_by", ["llm", "keyword", "jev"]),
     (models.JobDiscoveryRun, "status", list(models.JOB_DISCOVERY_RUN_STATUSES)),
+    (models.ApplicationDraft, "status", list(models.APPLICATION_DRAFT_STATUSES)),
     # Personal AI assistant. kind is the fixed content vocabulary; backend
     # is the small set of generation backends the orchestrator can pick;
     # the rest are the token-free heuristic classification vocabularies.
@@ -117,6 +118,9 @@ BOUNDED_COLUMNS = [
     # AssistantQuery.ip_hash is sha256(ip + SECRET_KEY).hexdigest() -- a
     # 64-char hex string, or NULL. Never the raw IP.
     (models.AssistantQuery, "ip_hash", 64),
+    # request_id is uuid.uuid4().hex, always exactly 32 hex chars, set by
+    # the orchestrator -- never visitor input.
+    (models.AssistantQuery, "request_id", 32),
     # /family. name is truncated to FAMILY_MEMBER_NAME_MAX by `flask family
     # rename`; accent holds a token name or a #hex; tool_call_id is a
     # provider id truncated to the column width on write.

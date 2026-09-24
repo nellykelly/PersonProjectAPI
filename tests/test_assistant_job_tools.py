@@ -372,7 +372,11 @@ def test_response_shape_unchanged_on_the_tool_path(owner_unlocked_client):
         "/api/assistant/chat", json={"message": "hi Hera", "history": []}
     )
     body = json.loads(resp.data)
-    assert set(body) == {"reply", "sources", "charts", "backend", "error"}
+    # "request_id" was added to every chat() response by the T5b streaming
+    # work (app/blueprints/assistant/routes.py) so a visitor-reported
+    # problem can be matched to its AssistantQuery log row -- not a change
+    # to the tool-call path this test is actually guarding.
+    assert set(body) == {"reply", "sources", "charts", "backend", "error", "request_id"}
     assert isinstance(body["sources"], list)
 
 

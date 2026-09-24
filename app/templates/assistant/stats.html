@@ -43,6 +43,7 @@
     <div class="stx-tile"><span class="stx-n stx-bad">{{ stats.cursing_pct }}%</span><span class="stx-l">Contained cursing</span></div>
     <div class="stx-tile"><span class="stx-n">{{ stats.error_rate }}%</span><span class="stx-l">Errored</span></div>
     <div class="stx-tile"><span class="stx-n">{{ stats.latency.p50 if stats.latency.p50 is not none else "-" }}<small>ms</small></span><span class="stx-l">Median response</span></div>
+    <div class="stx-tile"><span class="stx-n">{{ stats.latency.p95 if stats.latency.p95 is not none else "-" }}<small>ms</small></span><span class="stx-l">95th percentile response</span></div>
   </div>
 
   <p class="muted stx-sub">
@@ -51,6 +52,28 @@
     answering those messages (this page adds none). Average message:
     {{ stats.avg_words_per_message }} words.
   </p>
+
+  {% set rel = stats.reliability %}
+  <div class="stx-panel stx-wide stx-reliability">
+    <h2>Under load</h2>
+    {% if rel.tracked %}
+    <div class="stx-tiles">
+      <div class="stx-tile"><span class="stx-n">{{ "{:,}".format(rel.avg_prompt_tokens) if rel.avg_prompt_tokens is not none else "-" }}</span><span class="stx-l">Avg prompt tokens per answer</span></div>
+      <div class="stx-tile"><span class="stx-n stx-good">{{ rel.cache_hit_pct }}%</span><span class="stx-l">Served from cache</span></div>
+      <div class="stx-tile"><span class="stx-n">{{ rel.fallback_pct }}%</span><span class="stx-l">Answered by a fallback model</span></div>
+      <div class="stx-tile"><span class="stx-n stx-warn">{{ rel.busy_pct }}%</span><span class="stx-l">Told "busy, try again"</span></div>
+      <div class="stx-tile"><span class="stx-n">{{ rel.guard_flagged }}</span><span class="stx-l">Flagged by Prompt Guard</span></div>
+      <div class="stx-tile"><span class="stx-n">{{ rel.deadline_hits }}</span><span class="stx-l">Ran out of time</span></div>
+    </div>
+    <p class="muted stx-sub">
+      Over the {{ rel.tracked }} message{{ "" if rel.tracked == 1 else "s" }} logged since this
+      tracking started. A cached answer costs no tokens at all. A fallback model steps in when
+      the main one hits its per-minute limit, and "busy" means every model was at its limit.
+      Prompt Guard is a small classifier that turns away prompt-injection attempts before the
+      chat model sees them. Counts only; no message text is shown here.
+    </p>
+    {% else %}<p class="muted">Nothing tracked yet.</p>{% endif %}
+  </div>
 
   <div class="stx-grid">
     <div class="stx-panel">

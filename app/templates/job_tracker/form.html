@@ -84,6 +84,45 @@
   </div>
 </form>
 
+{% if application %}
+<section class="jt-drafts" id="drafts">
+  <h2>Draft this application</h2>
+  <p class="jt-sub">
+    Writes a fit check, resume headline, summary and bullets, a cover letter, and two form answers,
+    grounded in your resume and finished projects. A second pass checks every claim against them before
+    the final revision. Nothing is submitted; copy what you want.
+  </p>
+  <form class="jt-form" method="post" action="{{ url_for('job_tracker.start_draft', app_id=application.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Job posting text
+      <span class="jt-hint">
+        {% if has_stored_posting %}Leave blank to use the posting text saved from Discover, or paste the full posting to replace it.
+        {% else %}Paste the full posting. The drafter never fetches the URL itself.{% endif %}
+      </span>
+      <textarea name="posting_text" rows="6" {{ '' if has_stored_posting else 'required minlength=200' }}></textarea>
+    </label>
+    <div class="jt-form-actions">
+      <button type="submit" class="jt-btn jt-btn-primary">Draft application</button>
+    </div>
+  </form>
+
+  {% if drafts %}
+  <ul class="jt-draft-list">
+    {% for d in drafts %}
+    <li>
+      <a class="jt-link" href="{{ url_for('job_tracker.view_draft', app_id=application.id, draft_id=d.id) }}">
+        <span class="jt-when">{{ d.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+        {% if d.status == 'completed' %}{{ d.fit_verdict or 'Draft' }}
+        {% elif d.status == 'running' %}In progress{% if d.phase %}: {{ d.phase }}{% endif %}
+        {% else %}Failed{% endif %}
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endif %}
+
 {% if application and events %}
 <section class="jt-history">
   <h2>Recent changes</h2>

@@ -229,7 +229,9 @@ def test_answer_happy_path_uses_the_fake_backend_and_dedupes_sources(app):
         )
     assert ans.backend == "fake"
     assert ans.reply.startswith("[fake-backend]")
-    assert ans.n_chunks == app.config["ASSISTANT_RETRIEVAL_TOP_K"]
+    # Top-k is now a ceiling, not a count: retrieval drops passages below
+    # the relevance floor / outside the score margin (retrieval_params).
+    assert 1 <= ans.n_chunks <= app.config["ASSISTANT_RETRIEVAL_TOP_K"]
     assert len(ans.sources) == len({s["source"] for s in ans.sources})
 
 

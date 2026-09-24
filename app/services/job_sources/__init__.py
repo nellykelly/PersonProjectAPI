@@ -46,6 +46,28 @@ def is_excluded_title(title: str | None) -> bool:
     return bool(_EXCLUDED_TITLE_RE.search(title or ""))
 
 
+_NON_SLUG_RE = re.compile(r"[^a-z0-9]+")
+# Legal-entity suffixes that one board includes and another drops
+# ("Acme, Inc." on Adzuna vs "Acme" on Greenhouse).
+_COMPANY_SUFFIX_RE = re.compile(r"\b(inc|llc|ltd|corp|corporation|co|gmbh|plc)\b")
+
+
+def dedupe_key(company: str | None, title: str | None) -> str:
+    """Company+title key for spotting one posting surfaced by two sources
+    under two different URLs (an Adzuna redirect link and the company's own
+    Greenhouse link, say), which the URL-only check can't catch. Adapted
+    from MadsLorentzen/ai-job-search's tools/job_key.py.
+
+    Deliberately exact after normalization: "Software Engineer" and
+    "Senior Software Engineer" at the same company stay distinct. The
+    tradeoff is that one company's same title in two cities collapses to
+    one listing -- the score would be the same for both anyway."""
+    company_slug = _NON_SLUG_RE.sub(" ", (company or "").lower())
+    company_slug = _COMPANY_SUFFIX_RE.sub(" ", company_slug)
+    title_slug = _NON_SLUG_RE.sub(" ", (title or "").lower())
+    return f"{'-'.join(company_slug.split())}|{'-'.join(title_slug.split())}"
+
+
 def matches_any_keyword(title: str, keywords: list[str]) -> str | None:
     """For sources with no server-side keyword search: does this title
     plausibly match one of the configured search titles? A loose word-

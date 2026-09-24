@@ -1165,6 +1165,69 @@ class JobDiscoveryRun(db.Model):
         return f"<JobDiscoveryRun {self.started_at} [{self.status}] calls={self.adzuna_calls}>"
 
 
+APPLICATION_DRAFT_STATUSES = ("running", "completed", "failed")
+
+
+class ApplicationDraft(db.Model):
+    """One drafter -> reviewer -> revise pass over a tracked application
+    (see app/services/application_drafter.py), adapted from
+    MadsLorentzen/ai-job-search's /apply workflow. Holds the tailored
+    text only: nothing here is ever sent anywhere, Nelson copies what he
+    wants and submits the application himself.
+
+    Several drafts per application are fine (re-draft after editing the
+    posting text, say); the page shows the newest first. Groq usage is
+    tracked here the same way JobDiscoveryRun tracks it, and counted
+    against the same daily cap (see job_discovery._today_groq_tokens),
+    since both spend the same key.
+    """
+
+    __tablename__ = "application_drafts"
+
+    id = db.Column(db.Integer, primary_key=True)
+    application_id = db.Column(
+        db.Integer, db.ForeignKey("job_applications.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow, index=True)
+    finished_at = db.Column(db.DateTime, nullable=True)
+    status = db.Column(db.String(16), nullable=False, default="running")  # APPLICATION_DRAFT_STATUSES
+    phase = db.Column(db.Text, nullable=True)
+    error_message = db.Column(db.Text, nullable=True)
+
+    # The posting text the draft was grounded against -- pasted, or the
+    # promoted JobListing's description. Untrusted third-party text.
+    posting_text = db.Column(db.Text, nullable=False)
+
+    fit_verdict = db.Column(db.Text, nullable=True)
+    strengths = db.Column(db.Text, nullable=True)  # newline-separated
+    gaps = db.Column(db.Text, nullable=True)  # newline-separated
+    headline = db.Column(db.Text, nullable=True)
+    resume_summary = db.Column(db.Text, nullable=True)
+    resume_bullets = db.Column(db.Text, nullable=True)  # newline-separated
+    cover_letter = db.Column(db.Text, nullable=True)
+    why_company = db.Column(db.Text, nullable=True)
+    short_pitch = db.Column(db.Text, nullable=True)
+    # What the reviewer pass flagged, newline-separated -- kept even after
+    # the revision addressed it, so what changed and why stays visible.
+    review_notes = db.Column(db.Text, nullable=True)
+
+    groq_prompt_tokens = db.Column(db.Integer, nullable=False, default=0)
+    groq_completion_tokens = db.Column(db.Integer, nullable=False, default=0)
+
+    application = db.relationship(
+        "JobApplication",
+        backref=db.backref(
+            "drafts",
+            lazy="dynamic",
+            cascade="all, delete-orphan",
+            order_by="ApplicationDraft.created_at.desc()",
+        ),
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover - debug aid only
+        return f"<ApplicationDraft app={self.application_id} [{self.status}]>"
+
+
 # Kinds of source a content chunk can come from -- display-only grouping
 # for citations, and what `flask assistant reindex` scans. Shared with
 # app/services/assistant/content.py.
@@ -1256,6 +1319,22 @@ class AssistantQuery(db.Model):
     profanity_count = db.Column(db.Integer, nullable=True)
     category = db.Column(db.String(24), nullable=True)  # ASSISTANT_MESSAGE_CATEGORIES
     reply_kind = db.Column(db.String(20), nullable=True)  # ASSISTANT_REPLY_KINDS
+
+    # Observability (migration b7d3e5f1a9c2). All nullable: rows written
+    # before these existed have no answer, and the stats page reads NULL
+    # as "not recorded", never as False. `model` above already records
+    # which model actually answered (the fallback one, when fell_back).
+    #
+    # request_id is AssistantAnswer.request_id -- uuid4().hex, exactly 32
+    # chars -- so a visitor-reported problem can be matched to its row.
+    request_id = db.Column(db.String(32), nullable=True, index=True)
+    fell_back = db.Column(db.Boolean, nullable=True)  # a fallback model answered
+    cache_hit = db.Column(db.Boolean, nullable=True)  # served from the answer cache
+    guard_flagged = db.Column(db.Boolean, nullable=True)  # Prompt Guard turned it away
+    guard_score = db.Column(db.Float, nullable=True)  # Prompt Guard probability, 0..1
+    guard_error = db.Column(db.Text, nullable=True)  # why the guard failed open, if it did
+    busy = db.Column(db.Boolean, nullable=True)  # every model rate-limited -> HTTP 429
+    deadline_hit = db.Column(db.Boolean, nullable=True)  # ran out of turn time
 
     def __repr__(self) -> str:  # pragma: no cover - debug aid only
         return f"<AssistantQuery {self.created_at:%Y-%m-%d %H:%M} {self.backend} err={bool(self.error)}>"
