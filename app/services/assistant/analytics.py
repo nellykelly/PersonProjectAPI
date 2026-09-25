@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import hashlib
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import timedelta
+
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
 from app.models import (
@@ -472,3 +474,224 @@ def _date_range(start, end) -> list[str]:
         out.append(d.strftime("%Y-%m-%d"))
         d += timedelta(days=1)
     return out[-60:]  # cap the x-axis
+
+
+# --------------------------------------------------------------------------
+# day-by-day trends (eval-run history + usage/reliability), for the
+# /assistant/stats trend charts. Same shape of work as compute_stats /
+# _reliability above -- read the rows once, bucket by day, return counts
+# and rates only -- just sliced by day instead of rolled up over the whole
+# window. Never touches compute_stats or _reliability itself.
+# --------------------------------------------------------------------------
+
+
+def compute_usage_trend(days: int = 30) -> dict:
+    """Day-by-day usage/reliability time series over `AssistantQuery`, for
+    the same public stats page compute_stats already feeds. Every field is
+    a count or a rate -- no question/reply text ever leaves this function.
+
+    Returns:
+        {
+            "days": int,
+            "generated_at": str,
+            "daily": [
+                {
+                    "date": "YYYY-MM-DD",
+                    "message_count": int,
+                    "cache_hit_pct": float,
+                    "guard_flagged_pct": float,
+                    "fallback_pct": float,
+                    "busy_pct": float,
+                    "deadline_hit_pct": float,
+                    "avg_latency_ms": float | None,
+                    "avg_tokens": float | None,
+                },
+                ...
+            ],
+        }
+    """
+    since = utcnow() - timedelta(days=days)
+    generated_at = utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    empty = {"days": days, "generated_at": generated_at, "daily": []}
+
+    rows = (
+        AssistantQuery.query.filter(AssistantQuery.created_at >= since)
+        .order_by(AssistantQuery.created_at.asc())
+        .all()
+    )
+    if not rows:
+        return empty
+
+    by_day: dict[str, list] = defaultdict(list)
+    for r in rows:
+        by_day[r.created_at.strftime("%Y-%m-%d")].append(r)
+
+    daily = []
+    for d in _date_range(since, utcnow()):
+        day_rows = by_day.get(d, [])
+        n = len(day_rows)
+
+        tracked = [r for r in day_rows if _tracked(r)]
+        nt = len(tracked)
+        cache_hits = sum(1 for r in tracked if r.cache_hit)
+        flagged = sum(1 for r in tracked if r.guard_flagged)
+        busy = sum(1 for r in tracked if r.busy)
+        deadline_hits = sum(1 for r in tracked if r.deadline_hit)
+        model_answered = [
+            r
+            for r in tracked
+            if not r.error and not r.cache_hit and not r.guard_flagged and not r.busy
+        ]
+        fell_back = sum(1 for r in model_answered if r.fell_back)
+
+        lat = [r.latency_ms for r in day_rows if r.latency_ms is not None]
+        tok = [
+            (r.prompt_tokens_est or 0) + (r.completion_tokens_est or 0)
+            for r in day_rows
+            if r.prompt_tokens_est is not None or r.completion_tokens_est is not None
+        ]
+
+        daily.append(
+            {
+                "date": d,
+                "message_count": n,
+                "cache_hit_pct": _pct(cache_hits, nt),
+                "guard_flagged_pct": _pct(flagged, nt),
+                "fallback_pct": _pct(fell_back, len(model_answered)),
+                "busy_pct": _pct(busy, nt),
+                "deadline_hit_pct": _pct(deadline_hits, nt),
+                "avg_latency_ms": round(sum(lat) / len(lat)) if lat else None,
+                "avg_tokens": round(sum(tok) / len(tok)) if tok else None,
+            }
+        )
+
+    return {"days": days, "generated_at": generated_at, "daily": daily}
+
+
+def compute_eval_trend(days: int = 30) -> dict:
+    """Day-by-day eval-run history, persisted by the (separately-owned)
+    eval-run recorder into `AssistantEvalRun` / `AssistantEvalCaseResult`.
+
+    Imported lazily and guarded because this function may run before that
+    schema lands, or against a database where the migration hasn't been
+    applied yet -- in either case this returns the same empty shape a zero-
+    row window would, rather than raising.
+
+    Never returns `failures` text or any request/reply content -- only
+    case names, counts, and booleans.
+
+    Returns:
+        {
+            "days": int,
+            "generated_at": str,
+            "daily": [
+                {
+                    "date": "YYYY-MM-DD",
+                    "run_count": int,
+                    "total_cases": int,
+                    "passed_cases": int,
+                    "failed_cases": int,
+                    "pass_rate": float,
+                },
+                ...
+            ],
+            "cases": [
+                {
+                    "case_name": str,
+                    "latest_passed": bool,
+                    "streak": int,          # consecutive runs, back from the latest
+                    "streak_is_pass": bool, # whether that streak is passes or fails
+                },
+                ...
+            ],
+        }
+    """
+    since = utcnow() - timedelta(days=days)
+    generated_at = utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    empty = {"days": days, "generated_at": generated_at, "daily": [], "cases": []}
+
+    try:
+        from app.models import AssistantEvalCaseResult, AssistantEvalRun
+    except ImportError:
+        # Argyll's schema hasn't landed in app/models.py yet.
+        return empty
+
+    try:
+        runs = (
+            AssistantEvalRun.query.filter(AssistantEvalRun.started_at >= since)
+            .order_by(AssistantEvalRun.started_at.asc())
+            .all()
+        )
+    except SQLAlchemyError:
+        # Model exists but the table/migration doesn't (yet).
+        db.session.rollback()
+        return empty
+
+    if not runs:
+        return empty
+
+    run_by_id = {r.id: r for r in runs}
+
+    try:
+        case_results = (
+            AssistantEvalCaseResult.query.filter(
+                AssistantEvalCaseResult.run_id.in_(run_by_id.keys())
+            )
+            .order_by(AssistantEvalCaseResult.id.asc())
+            .all()
+        )
+    except SQLAlchemyError:
+        db.session.rollback()
+        case_results = []
+
+    # --- per-day run rollup (from the run-level rollup columns only) ---
+    daily_runs: dict[str, list] = defaultdict(list)
+    for r in runs:
+        daily_runs[r.started_at.strftime("%Y-%m-%d")].append(r)
+
+    daily = []
+    for d in _date_range(since, utcnow()):
+        day_runs = daily_runs.get(d, [])
+        total_cases = sum(r.total_cases or 0 for r in day_runs)
+        passed = sum(r.passed_cases or 0 for r in day_runs)
+        failed = sum(r.failed_cases or 0 for r in day_runs)
+        daily.append(
+            {
+                "date": d,
+                "run_count": len(day_runs),
+                "total_cases": total_cases,
+                "passed_cases": passed,
+                "failed_cases": failed,
+                "pass_rate": _pct(passed, total_cases),
+            }
+        )
+
+    # --- per-case latest status + current streak ---
+    by_case: dict[str, list] = defaultdict(list)
+    for cr in case_results:
+        run = run_by_id.get(cr.run_id)
+        if run is None:
+            continue
+        by_case[cr.case_name].append((run.started_at, cr.passed))
+
+    cases = []
+    for name, entries in by_case.items():
+        entries.sort(key=lambda pair: pair[0])  # ascending by run start time
+        streak_is_pass = bool(entries[-1][1])
+        streak = 0
+        for _started_at, passed in reversed(entries):
+            if bool(passed) == streak_is_pass:
+                streak += 1
+            else:
+                break
+        cases.append(
+            {
+                "case_name": name,
+                "latest_passed": streak_is_pass,
+                "streak": streak,
+                "streak_is_pass": streak_is_pass,
+            }
+        )
+    cases.sort(key=lambda c: c["case_name"])
+
+    return {"days": days, "generated_at": generated_at, "daily": daily, "cases": cases}
