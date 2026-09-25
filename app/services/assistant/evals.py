@@ -73,8 +73,10 @@ wording, since either is a correct outcome for those cases.
 """
 from __future__ import annotations
 
+import subprocess
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -324,3 +326,83 @@ def run_suite(config: Any, names: list[str] | None = None, pace: bool = True) ->
                 time.sleep(prev_tokens / tpm * 60.0)
         results.append(run_case(case, config))
     return results
+
+
+def _git_commit() -> str | None:
+    """Best-effort short commit hash for the checkout that ran the suite,
+    e.g. so a later regression can be lined up against what changed. Must
+    never raise or abort a real eval run over something this cosmetic --
+    a missing `git` binary, a non-repo checkout (some deploy images), or
+    any other failure all just mean "unknown", not a crash."""
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except Exception:  # noqa: BLE001 - never let this abort a real run
+        return None
+    if proc.returncode != 0:
+        return None
+    commit = proc.stdout.strip()
+    return commit or None
+
+
+def record_run(
+    results: list[CaseResult],
+    config: Any,
+    started_at: datetime,
+    finished_at: datetime,
+) -> "AssistantEvalRun":  # noqa: F821 - imported lazily below
+    """Persist one `flask assistant eval` invocation: one AssistantEvalRun
+    row summarizing the whole run, plus one AssistantEvalCaseResult row
+    per case in `results`. Purely additive -- this is the eval suite's
+    only write path into the database; nothing above (`run_case`,
+    `run_suite`, the existing checks) changes.
+
+    `model` on the run is the last case result's model (whatever answered
+    last), or "unknown" if `results` is empty -- there is no single
+    "the" model otherwise (a run could span a fallback mid-suite).
+    """
+    from app.extensions import db
+    from app.models import AssistantEvalCaseResult, AssistantEvalRun
+
+    total = len(results)
+    passed = sum(1 for r in results if r.passed)
+    failed = total - passed
+    total_tokens = sum((r.prompt_tokens or 0) + (r.completion_tokens or 0) for r in results)
+    avg_latency_ms = (sum(r.latency_ms for r in results) / total) if total else None
+    model = results[-1].model if results else "unknown"
+
+    run = AssistantEvalRun(
+        started_at=started_at,
+        finished_at=finished_at,
+        git_commit=_git_commit(),
+        model=model,
+        total_cases=total,
+        passed_cases=passed,
+        failed_cases=failed,
+        avg_latency_ms=avg_latency_ms,
+        total_tokens=total_tokens,
+    )
+    db.session.add(run)
+    db.session.flush()  # assign run.id before writing the case rows
+
+    for r in results:
+        db.session.add(
+            AssistantEvalCaseResult(
+                run_id=run.id,
+                case_name=r.name,
+                passed=r.passed,
+                failures="\n".join(r.failures) if r.failures else None,
+                latency_ms=r.latency_ms,
+                tokens=(r.prompt_tokens or 0) + (r.completion_tokens or 0),
+                request_id=r.request_id or None,
+                cache_hit=r.cache_hit,
+                guard_flagged=r.guard_flagged,
+                fell_back=r.fell_back,
+            )
+        )
+    db.session.commit()
+    return run

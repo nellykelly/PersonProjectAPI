@@ -356,7 +356,12 @@ def _register_cli(app: Flask) -> None:
         is_flag=True,
         help="Skip the inter-case pacing sleep (faster, but risks the tokens/minute cap).",
     )
-    def assistant_eval(cases: tuple[str, ...], no_pace: bool) -> None:
+    @click.option(
+        "--no-record",
+        is_flag=True,
+        help="Skip persisting this run to the database (console output only).",
+    )
+    def assistant_eval(cases: tuple[str, ...], no_pace: bool, no_record: bool) -> None:
         """Run Hera's regression eval suite against the configured backend.
 
         Hits the real model (whatever ASSISTANT_LLM_BACKEND is set to --
@@ -364,11 +369,23 @@ def _register_cli(app: Flask) -> None:
         ASSISTANT_EVAL_TPM by default. See
         app/services/assistant/evals.py for what a case is and how to add
         one; this command just runs them and prints a table.
+
+        Also persists the run (one AssistantEvalRun + one
+        AssistantEvalCaseResult per case) so the /assistant/stats page can
+        show eval history day-by-day, unless --no-record is given. Nothing
+        runs this automatically -- wire it to cron, e.g. daily:
+            docker compose exec web flask assistant eval
         """
+        from app.models import utcnow
         from app.services.assistant import evals
 
         names = list(cases) or None
+        started_at = utcnow()
         results = evals.run_suite(app.config, names=names, pace=not no_pace)
+        finished_at = utcnow()
+
+        if not no_record:
+            evals.record_run(results, app.config, started_at, finished_at)
 
         header = (
             f"{'NAME':<40} {'RESULT':<6} {'MS':>7} {'TOKENS':>7} {'MODEL':<24} "

@@ -1340,6 +1340,76 @@ class AssistantQuery(db.Model):
         return f"<AssistantQuery {self.created_at:%Y-%m-%d %H:%M} {self.backend} err={bool(self.error)}>"
 
 
+class AssistantEvalRun(db.Model):
+    """One row per `flask assistant eval` invocation -- gives the eval
+    suite (app/services/assistant/evals.py) the memory it didn't have
+    before: it used to just print a table and forget. Written by
+    `evals.record_run`, read by the /assistant/stats trend view.
+
+    `git_commit` is best-effort only -- `record_run` shells out to `git
+    rev-parse --short HEAD` and stores whatever comes back, but a missing
+    git binary, a non-repo checkout (e.g. some deploy images), or any
+    other failure must never abort a real eval run over something this
+    cosmetic, so it's NULL in that case rather than raised.
+    """
+
+    __tablename__ = "assistant_eval_runs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    started_at = db.Column(db.DateTime, nullable=False, default=utcnow, index=True)
+    finished_at = db.Column(db.DateTime, nullable=True)
+    git_commit = db.Column(db.String(40), nullable=True)
+    model = db.Column(db.Text, nullable=False)
+    total_cases = db.Column(db.Integer, nullable=False)
+    passed_cases = db.Column(db.Integer, nullable=False)
+    failed_cases = db.Column(db.Integer, nullable=False)
+    avg_latency_ms = db.Column(db.Float, nullable=True)
+    total_tokens = db.Column(db.Integer, nullable=False)
+
+    def __repr__(self) -> str:  # pragma: no cover - debug aid only
+        return (
+            f"<AssistantEvalRun {self.started_at:%Y-%m-%d %H:%M} "
+            f"{self.passed_cases}/{self.total_cases} passed>"
+        )
+
+
+class AssistantEvalCaseResult(db.Model):
+    """One row per case within an AssistantEvalRun -- the per-case detail
+    a rolled-up run row can't carry (which case failed, and why). Mirrors
+    the fields evals.CaseResult already computes in memory; this table
+    just gives them somewhere to live after the process exits.
+    """
+
+    __tablename__ = "assistant_eval_case_results"
+
+    id = db.Column(db.Integer, primary_key=True)
+    run_id = db.Column(
+        db.Integer, db.ForeignKey("assistant_eval_runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    case_name = db.Column(db.String(120), nullable=False)
+    passed = db.Column(db.Boolean, nullable=False)
+    failures = db.Column(db.Text, nullable=True)  # newline-separated
+    latency_ms = db.Column(db.Float, nullable=False)
+    tokens = db.Column(db.Integer, nullable=False)
+    request_id = db.Column(db.String(32), nullable=True)
+    cache_hit = db.Column(db.Boolean, nullable=True)
+    guard_flagged = db.Column(db.Boolean, nullable=True)
+    fell_back = db.Column(db.Boolean, nullable=True)
+
+    run = db.relationship(
+        "AssistantEvalRun",
+        backref=db.backref(
+            "case_results",
+            lazy="dynamic",
+            cascade="all, delete-orphan",
+            order_by="AssistantEvalCaseResult.id.asc()",
+        ),
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover - debug aid only
+        return f"<AssistantEvalCaseResult run={self.run_id} {self.case_name} passed={self.passed}>"
+
+
 # The /family suite's models live in their own module for size; pull them
 # into this namespace so `flask db` and db.create_all() register them.
 from app.models_family import *  # noqa: E402,F401,F403

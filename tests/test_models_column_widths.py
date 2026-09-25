@@ -24,6 +24,7 @@ from werkzeug.security import generate_password_hash
 from app import models
 from app.blueprints.leetcode.problems import iter_problems
 from app.services import risk_models, validators
+from app.services.assistant import evals as assistant_evals
 
 # Columns whose values come from a fixed, known set. The list on the right
 # is the full set of values the app can write, so max(len) is the real
@@ -127,6 +128,19 @@ BOUNDED_COLUMNS = [
     (models.FamilyMember, "name", models.FAMILY_MEMBER_NAME_MAX),
     (models.FamilyMember, "accent", models.FAMILY_MEMBER_ACCENT_MAX),
     (models.FamilyChatMessage, "tool_call_id", models.FAMILY_CHAT_TOOL_CALL_ID_MAX),
+    # Eval-run history (evals.record_run). git_commit is `git rev-parse
+    # --short HEAD` -- an abbreviated hash that can never exceed a full
+    # SHA-1's 40 hex chars. request_id mirrors AssistantQuery.request_id
+    # exactly (uuid4().hex from the orchestrator, never visitor input).
+    # case_name comes from eval_cases.json, read from the file itself so a
+    # longer case name added there fails here rather than in production.
+    (models.AssistantEvalRun, "git_commit", 40),
+    (models.AssistantEvalCaseResult, "request_id", 32),
+    (
+        models.AssistantEvalCaseResult,
+        "case_name",
+        max(len(c["name"]) for c in assistant_evals.load_cases()),
+    ),
 ]
 
 
