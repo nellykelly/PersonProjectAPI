@@ -147,4 +147,87 @@
   </p>
   {% endif %}
 </section>
+
+<section>
+  <div class="section-title">
+    <h2>Eval history</h2>
+  </div>
+  <p class="muted">
+    Day-by-day results from the gold-standard eval suite (<code>flask assistant eval</code>),
+    run on demand against the real model and compared against its own past runs.
+    Case names and pass/fail only -- no reply text, no request IDs, no commit hashes
+    are shown on this page. Generated {{ eval_trend.generated_at }}.
+  </p>
+  {% if not eval_trend.daily %}
+  <p class="stx-empty">Nothing tracked yet.</p>
+  {% else %}
+  <div class="stx-panel stx-wide">
+    <h2>Pass rate per day</h2>
+    <canvas id="eval-trend-chart" data-trend='{{ eval_trend.daily | tojson }}' height="90"></canvas>
+  </div>
+
+  <div class="stx-panel stx-wide">
+    <h2>Latest status per case</h2>
+    {% if eval_trend.cases %}
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr><th>Case</th><th>Latest</th><th>Current streak</th></tr>
+        </thead>
+        <tbody>
+          {% for c in eval_trend.cases %}
+          <tr>
+            <td class="mono">{{ c.case_name }}</td>
+            <td>
+              {% if c.latest_passed %}<span class="stx-good">&#10003; Pass</span>
+              {% else %}<span class="stx-bad">&#10007; Fail</span>{% endif %}
+            </td>
+            <td>
+              {% if c.streak_is_pass %}{{ c.streak }} {{ "pass" if c.streak == 1 else "passes" }}
+              {% else %}{{ c.streak }} {{ "fail" if c.streak == 1 else "fails" }}{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}<p class="muted">Not enough data yet.</p>{% endif %}
+  </div>
+  {% endif %}
+</section>
+
+<section>
+  <div class="section-title">
+    <h2>Usage &amp; reliability trend</h2>
+  </div>
+  <p class="muted">
+    The same "under load" signals as above, day by day instead of rolled up over
+    the whole window. Counts and rates only -- no message or reply text. Generated
+    {{ usage_trend.generated_at }}.
+  </p>
+  {% if not usage_trend.daily %}
+  <p class="stx-empty">Nothing tracked yet.</p>
+  {% else %}
+  <div class="stx-panel stx-wide">
+    <h2>Messages per day</h2>
+    <canvas id="usage-volume-chart" data-trend='{{ usage_trend.daily | tojson }}' height="90"></canvas>
+  </div>
+
+  <div class="stx-panel stx-wide">
+    <h2>Reliability rates per day</h2>
+    <canvas id="usage-rates-chart" data-trend='{{ usage_trend.daily | tojson }}' height="90"></canvas>
+    <p class="muted stx-sub">
+      Cache hit, guard flagged, fallback, busy, and deadline-hit rates, each computed
+      over that day's tracked messages -- same definitions as the tiles above.
+    </p>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if eval_trend.daily or usage_trend.daily %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="{{ url_for('static', filename='js/assistant_stats.js') }}"></script>
+{% endif %}
 {% endblock %}

@@ -265,10 +265,28 @@ def stats():
     """Public, aggregate-only usage stats for the assistant. Built by a
     plain query over `assistant_queries` -- the per-row heuristic signals
     were written at chat time, so this page runs no model and costs no
-    tokens (see app/services/assistant/analytics.py)."""
-    from app.services.assistant.analytics import compute_stats
+    tokens (see app/services/assistant/analytics.py).
 
-    return render_template("assistant/stats.html", stats=compute_stats(days=30))
+    Also feeds the page two day-by-day trend series alongside the rolled-up
+    snapshot above: `compute_eval_trend` (gold-standard eval-suite history,
+    from AssistantEvalRun/AssistantEvalCaseResult) and `compute_usage_trend`
+    (the same usage/reliability signals `compute_stats` already rolls up,
+    sliced by day instead). Both return counts, rates, and case names/
+    booleans only -- never reply text, request IDs, or commit hashes (see
+    their docstrings) -- and this route only ever reaches them through
+    those two functions, never by querying the eval tables directly."""
+    from app.services.assistant.analytics import (
+        compute_eval_trend,
+        compute_stats,
+        compute_usage_trend,
+    )
+
+    return render_template(
+        "assistant/stats.html",
+        stats=compute_stats(days=30),
+        eval_trend=compute_eval_trend(days=30),
+        usage_trend=compute_usage_trend(days=30),
+    )
 
 
 # Shared between /api/assistant/chat and /api/assistant/chat/stream: one
