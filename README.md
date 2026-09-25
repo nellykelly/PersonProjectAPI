@@ -234,6 +234,45 @@ is what's needed when only `.env` changed and no image layer did -- Compose can
 otherwise reasonably decide nothing needs recreating and leave the previous
 environment in place.
 
+### Scheduled jobs (cron)
+
+Three commands exist only as manual CLI entry points and don't run themselves:
+Hera's regression eval suite, and Job Discovery's sweep and rescore. Each one's
+`--help` text already says so ("Nothing runs this automatically -- wire it to
+cron"). `scripts/cron/hera-crontab` + `scripts/cron/install-cron.sh` do the
+wiring:
+
+```bash
+ssh nelson@<host>
+cd ~/PersonProjectAPI && ./scripts/cron/install-cron.sh
+```
+
+| Job | Schedule | Command |
+|---|---|---|
+| `flask assistant eval` | daily, 03:00 | Runs the 12-case gold-standard suite against the real model and persists it (`AssistantEvalRun`/`AssistantEvalCaseResult`), so `/assistant/stats` can show pass-rate history day-by-day instead of only the latest console run. |
+| `flask job-tracker sweep` | daily, 03:20 | Job Discovery's multi-source search + LLM match-scoring. |
+| `flask job-tracker rescore` | hourly, on the hour | Re-scores tracked listings without re-fetching postings. |
+
+**Why real cron, not an app-level poller.** The host is a Hetzner CX22 -- 2
+vCPU, 4GB RAM total, shared across `web`, `worker`, `postgres`, `redis`, and
+`caddy` (see Hosting above). cron itself is a small long-running daemon that
+costs a few hundred KB of RAM and does nothing between firings. Something
+like APScheduler running inside the Flask process would instead need a live
+app context, DB pool, and Redis connection checking the clock every minute
+just to decide "not yet yet" -- real, continuous memory and CPU that this box
+doesn't have to spare. Each cron line above only pays any cost at the moment
+its job actually runs, not once a minute waiting for that moment.
+
+The install script is idempotent (safe to re-run after pulling an updated
+`hera-crontab` -- it replaces its own marked block, never duplicates entries
+or touches any other cron job already on the host) and staggers the three
+jobs so they don't stack concurrent `docker compose exec` processes on a
+2-vCPU box. Each job's log (`logs/cron-*.log`) is overwritten every run
+rather than appended, so it never grows without bound and needs no logrotate
+setup -- the trade-off is that only the latest run's output is kept; switch
+to append + logrotate later if run history turns out to matter more than
+that.
+
 ### A `.env` gotcha worth knowing before it happens again
 
 Docker Compose interpolates `$` inside `.env`. Adding a password hash

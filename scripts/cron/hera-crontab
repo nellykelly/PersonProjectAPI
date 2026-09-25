@@ -1,0 +1,45 @@
+# Scheduled jobs for nelsonkoskela.dev, installed by scripts/cron/install-cron.sh.
+#
+# Why real cron and not an app-level poller: the host is a Hetzner CX22
+# (2 vCPU / 4GB total, shared across web/worker/postgres/redis/caddy --
+# see README.md's Hosting section). cron itself is a tiny long-running
+# daemon (a few hundred KB resident) that wakes on its own schedule and
+# does nothing between firings. An in-process scheduler (APScheduler or
+# similar) would instead need a live Python interpreter with the Flask
+# app context, DB pool, and Redis connection all loaded and checking the
+# clock every minute just to decide "not yet" -- real, continuous memory
+# and CPU on a box that doesn't have much of either to spare. Each line
+# below only pays that cost at the moment the job actually runs.
+#
+# MAILTO="" -- Hetzner's minimal images don't ship a configured mail
+# transport, so cron's default "email the job's output" behavior would
+# silently fail (or spam a local mailbox nobody reads) instead of costing
+# nothing. Output goes to the log files below instead.
+MAILTO=""
+
+# Each job's log is OVERWRITTEN on every run (`>`, not `>>`), on purpose:
+# always shows the most recent run's output, never grows without bound,
+# and needs no logrotate setup on a disk-constrained box. Trade-off: only
+# the latest run's output is kept. If run history matters more than that
+# later, switch to `>>` and add a logrotate config for $HOME/PersonProjectAPI/logs/*.log.
+
+# Hera's regression eval suite -- 12 gold-standard cases against the real
+# model, now persisted (AssistantEvalRun/AssistantEvalCaseResult) so
+# /assistant/stats can show day-by-day pass-rate history. Runs at 03:00,
+# before the two Job Discovery jobs below, so it isn't competing with
+# them for host CPU (each hits a *different* Groq API key/quota, so
+# there's no token-budget collision -- this is purely about not stacking
+# three concurrent `docker compose exec` processes on a 2-vCPU box).
+0 3 * * * cd "$HOME/PersonProjectAPI" && docker compose exec -T web flask assistant eval > "$HOME/PersonProjectAPI/logs/cron-assistant-eval.log" 2>&1
+
+# Job Discovery -- daily multi-source search + LLM match-scoring against
+# the resume and this site's own projects. See
+# app/services/job_discovery.py and app/__init__.py's job_tracker_sweep
+# docstring. 03:20, after the eval run above finishes.
+20 3 * * * cd "$HOME/PersonProjectAPI" && docker compose exec -T web flask job-tracker sweep > "$HOME/PersonProjectAPI/logs/cron-job-sweep.log" 2>&1
+
+# Job Discovery -- rescore listings already in the tracker (picks up
+# resume/site changes without re-fetching postings). See
+# app/__init__.py's job_tracker_rescore docstring, which recommends
+# hourly. Runs on the hour, every hour.
+0 * * * * cd "$HOME/PersonProjectAPI" && docker compose exec -T web flask job-tracker rescore > "$HOME/PersonProjectAPI/logs/cron-job-rescore.log" 2>&1
