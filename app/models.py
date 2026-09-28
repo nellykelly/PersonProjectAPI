@@ -916,6 +916,18 @@ class JobApplication(db.Model):
     match_notes = db.Column(db.Text, nullable=True)
     notes = db.Column(db.Text, nullable=True)
 
+    # What the hourly `flask job-tracker rescore` grader reads: a condensed
+    # summary of the posting (responsibilities, requirements, seniority,
+    # stack, location), not the full description -- the grader only reads
+    # the first 3000 chars anyway. An ungraded card with a summary gets an
+    # LLM grade on the next cron tick; see job_discovery.grade_pending_applications.
+    posting_summary = db.Column(db.Text, nullable=True)
+    # 'llm' when the cron grader set match_grade, 'manual' when a person or
+    # client set it, NULL while ungraded. An 'llm' grade is re-done when
+    # the summary changes; a 'manual' one is never overwritten.
+    graded_by = db.Column(db.String(16), nullable=True)
+    grade_attempts = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)
 

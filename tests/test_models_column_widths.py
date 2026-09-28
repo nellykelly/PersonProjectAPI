@@ -58,6 +58,7 @@ ENUMERABLE_COLUMNS = [
     # table's action/source are tiny fixed sets. Every other string-ish
     # column on those two models is db.Text (unbounded) on purpose.
     (models.JobApplication, "status", list(models.JOB_APPLICATION_STATUSES)),
+    (models.JobApplication, "graded_by", ["llm", "manual"]),
     (models.JobApplicationEvent, "action", ["create", "update", "delete"]),
     (models.JobApplicationEvent, "source", ["web", "assistant", "cli", "api"]),
     # Job Discovery. status is the tiny fixed new/dismissed/promoted set;

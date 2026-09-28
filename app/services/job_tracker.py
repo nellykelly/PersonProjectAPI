@@ -52,7 +52,12 @@ _EDITABLE_FIELDS = (
     "match_grade",
     "match_notes",
     "notes",
+    "posting_summary",
 )
+
+# What the grader reads is capped here, not just truncated at scoring
+# time, so a card never *looks* graded against text the grader never saw.
+POSTING_SUMMARY_MAX_CHARS = 3000
 
 _VALID_SOURCES = ("web", "assistant", "cli", "api")
 
@@ -280,6 +285,15 @@ def _coerce(field: str, value: Any) -> Any:
             )
         return text
 
+    if field == "posting_summary":
+        text = str(value).strip()
+        if len(text) > POSTING_SUMMARY_MAX_CHARS:
+            raise JobTrackerError(
+                f"posting_summary must be at most {POSTING_SUMMARY_MAX_CHARS} characters "
+                f"(got {len(text)}) -- summarise the posting, don't paste all of it."
+            )
+        return text or None
+
     if field == "match_grade":
         text = str(value).strip()
         if text == "":
@@ -308,7 +322,11 @@ def _display(value: Any) -> str | None:
     return str(value)
 
 
-def create_application(data: dict[str, Any], *, source: str = "web") -> JobApplication:
+def create_application(
+    data: dict[str, Any], *, source: str = "web", graded_by: str | None = None
+) -> JobApplication:
+    """`graded_by` says who produced a match_grade passed in `data`
+    ('llm' for a promoted listing's LLM grade); defaults to 'manual'."""
     _check_source(source)
 
     company = _coerce("company_name", data.get("company_name"))
@@ -334,6 +352,8 @@ def create_application(data: dict[str, Any], *, source: str = "web") -> JobAppli
     if app.status is None:
         app.status = "Applied"
     app.status_updated_at = utcnow()
+    app.graded_by = (graded_by or "manual") if app.match_grade is not None else None
+    app.grade_attempts = 0
 
     db.session.add(app)
     db.session.flush()  # assign app.id before writing the event
@@ -351,10 +371,19 @@ def create_application(data: dict[str, Any], *, source: str = "web") -> JobAppli
 
 
 def update_application(
-    app_id: int, data: dict[str, Any], *, source: str = "web"
+    app_id: int, data: dict[str, Any], *, source: str = "web", graded_by: str | None = None
 ) -> JobApplication:
     """Apply a partial update. Only keys present in `data` are touched.
-    Writes one audit event per field that actually changed value."""
+    Writes one audit event per field that actually changed value.
+
+    Grade bookkeeping, so the cron grader stays correct:
+    - match_grade changed to a number -> graded_by = `graded_by` or 'manual'
+      (a manual grade is never overwritten by the cron).
+    - match_grade cleared (None) -> ungraded; the cron grades it again.
+    - posting_summary changed on a card whose grade isn't manual -> the
+      old LLM grade and its notes are cleared, since they describe a
+      posting that no longer matches; the cron re-grades from the new text.
+    """
     _check_source(source)
     app = get_application(app_id)
 
@@ -384,6 +413,18 @@ def update_application(
         if new_value != old_value:
             changes.append((field, old_value, new_value))
             setattr(app, field, new_value)
+
+    changed = {field for field, _, _ in changes}
+    if "match_grade" in changed:
+        app.graded_by = (graded_by or "manual") if app.match_grade is not None else None
+        app.grade_attempts = 0
+    elif "posting_summary" in changed and app.graded_by != "manual":
+        for field in ("match_grade", "match_notes"):
+            if getattr(app, field) is not None and field not in changed:
+                changes.append((field, getattr(app, field), None))
+                setattr(app, field, None)
+        app.graded_by = None
+        app.grade_attempts = 0
 
     for field, old_value, new_value in changes:
         db.session.add(
@@ -453,6 +494,10 @@ def application_as_dict(app: JobApplication) -> dict[str, Any]:
         "match_grade": app.match_grade,
         "match_label": match_label(app.match_grade),
         "match_notes": app.match_notes,
+        "graded_by": app.graded_by,
+        # The summary itself is only in the single-card API view -- on a
+        # 75-card list it would be most of the payload.
+        "has_posting_summary": bool(app.posting_summary),
         "notes": app.notes,
         "created_at": _display(app.created_at),
         "updated_at": _display(app.updated_at),

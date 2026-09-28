@@ -503,11 +503,13 @@ def _register_cli(app: Flask) -> None:
         "--dry-run", is_flag=True, help="Show what would be retried without spending any Groq quota."
     )
     def job_tracker_rescore(limit: int | None, dry_run: bool) -> None:
-        """Retry scoring for Job Discovery listings still at match_grade=NULL.
+        """Grade everything still at match_grade=NULL: Job Discovery listings
+        whose first score failed, then tracker cards that have a
+        posting_summary (e.g. added through /api/job-tracker) but no grade.
 
-        Almost always means Groq's daily token quota was already exhausted
-        when execute_run first tried to score them. Nothing runs this
-        automatically -- wire it to cron, e.g. hourly:
+        A listing is almost always pending because Groq's daily token quota
+        was already exhausted when execute_run first tried to score it.
+        Runs hourly from scripts/cron/hera-crontab:
             docker compose exec web flask job-tracker rescore
         """
         from app.models import JobListing
@@ -524,25 +526,42 @@ def _register_cli(app: Flask) -> None:
                 .limit(batch_limit)
                 .all()
             )
-            if not pending:
-                click.echo("Nothing pending rescore.")
-                return
             click.echo(f"Would retry {len(pending)} listing(s):")
             for listing in pending:
                 click.echo(
                     f"  - {listing.company_name} - {listing.role_title} "
                     f"(attempt {listing.score_attempts + 1}/{max_attempts})"
                 )
+            apps = job_discovery.pending_application_grades(limit)
+            click.echo(f"Would grade {len(apps)} application(s):")
+            for a in apps:
+                click.echo(
+                    f"  - {a.company_name} - {a.role_title} "
+                    f"(attempt {a.grade_attempts + 1}/{max_attempts})"
+                )
             return
 
         run = job_discovery.rescore_pending_listings(limit=limit)
         if run is None:
-            click.echo("Nothing to do -- either no listings are pending, or today's Groq quota is spent.")
-            return
-        click.echo(
-            f"Rescored {run.scored}/{run.progress_total} listing(s) "
-            f"({run.groq_prompt_tokens + run.groq_completion_tokens} tokens spent)."
-        )
+            click.echo("Listings: nothing to do -- none pending, or today's Groq quota is spent.")
+        else:
+            click.echo(
+                f"Rescored {run.scored}/{run.progress_total} listing(s) "
+                f"({run.groq_prompt_tokens + run.groq_completion_tokens} tokens spent)."
+            )
+
+        # Listings first: they feed Discover, and a listing retry is the
+        # older backlog. Applications get whatever quota is left.
+        run = job_discovery.grade_pending_applications(limit=limit)
+        if run is None:
+            click.echo("Applications: nothing to do -- none pending, or today's Groq quota is spent.")
+        elif run.status == "failed":
+            click.echo(f"Application grading failed: {run.error_message}")
+        else:
+            click.echo(
+                f"Graded {run.scored}/{run.progress_total} application(s) "
+                f"({run.groq_prompt_tokens + run.groq_completion_tokens} tokens spent)."
+            )
 
     @app.cli.group("family")
     def family_cli() -> None:

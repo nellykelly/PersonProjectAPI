@@ -117,8 +117,15 @@ def describe():
                 "location_remote_policy": "string, e.g. 'Remote (US)' or 'Hybrid, Austin'",
                 "tech_stack": "list of strings, or one comma-separated string",
                 "salary_range": "string",
-                "match_grade": "integer 0-100",
-                "match_notes": "string: why the grade",
+                "posting_summary": "string, max 3000 chars: a condensed summary of the "
+                "posting (role, responsibilities, must-have requirements, seniority/years, "
+                "stack, location/remote, salary). The hourly grader reads this, so "
+                "send it on every card. Changing it re-grades an automatic grade.",
+                "match_grade": "integer 0-100. Usually leave it out: the hourly grader "
+                "sets it from posting_summary using the site's calibrated rubric. A value "
+                "you send is kept as a manual grade and never overwritten; send null to "
+                "hand a card back to the grader.",
+                "match_notes": "string: why the grade (the grader writes its own)",
                 "notes": "string (replaces existing notes)",
             },
             "create_only": {
@@ -285,5 +292,6 @@ def _str_or_none(value: Any) -> str | None:
 
 def _with_link(row) -> dict:
     d = job_tracker.application_as_dict(row)
+    d["posting_summary"] = row.posting_summary
     d["board_url"] = url_for("job_tracker.edit_application", app_id=row.id, _external=True)
     return d

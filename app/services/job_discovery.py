@@ -1005,6 +1005,100 @@ def rescore_pending_listings(*, limit: int | None = None) -> JobDiscoveryRun | N
         return run
 
 
+def pending_application_grades(limit: int | None = None) -> list[JobApplication]:
+    """Tracker cards the cron can grade: no grade yet, a posting summary
+    to grade from, and retries left. Oldest first."""
+    max_attempts = current_app.config.get("JOB_DISCOVERY_MAX_SCORE_ATTEMPTS", 5)
+    batch_limit = limit if limit is not None else current_app.config.get(
+        "JOB_DISCOVERY_RESCORE_BATCH_SIZE", 20
+    )
+    return (
+        JobApplication.query.filter(
+            JobApplication.match_grade.is_(None),
+            JobApplication.posting_summary.isnot(None),
+            JobApplication.posting_summary != "",
+            JobApplication.grade_attempts < max_attempts,
+        )
+        .order_by(JobApplication.created_at.asc(), JobApplication.id.asc())
+        .limit(batch_limit)
+        .all()
+    )
+
+
+def grade_pending_applications(*, limit: int | None = None) -> JobDiscoveryRun | None:
+    """Grade tracker cards (not Discover listings) with the same LLM
+    scorer, candidate profile and calibration as Job Discovery, from each
+    card's posting_summary. Run by the same hourly `flask job-tracker
+    rescore` cron, after the listing retries.
+
+    The grade is written through job_tracker.update_application, so it
+    lands in the audit log (source='cli') and is marked graded_by='llm' --
+    which means a later posting_summary edit clears and re-grades it, and
+    a grade Nelson sets by hand is never touched. A failed call only
+    bumps grade_attempts (capped by JOB_DISCOVERY_MAX_SCORE_ATTEMPTS).
+
+    Returns None, spending nothing, when nothing is pending or today's
+    Groq budget is already gone. Token spend is recorded on a
+    JobDiscoveryRun row so it counts toward quota_status like any run."""
+    if quota_status()["groq_remaining_today"] <= 0:
+        return None
+    pending = pending_application_grades(limit)
+    if not pending:
+        return None
+
+    run = JobDiscoveryRun(status="running", phase=f"Grading applications 0/{len(pending)}")
+    db.session.add(run)
+    run.progress_total = len(pending)
+    db.session.commit()
+
+    try:
+        candidate_profile = build_candidate_profile()
+        graded = 0
+        for i, application in enumerate(pending, start=1):
+            call_started = time.monotonic()
+            grade, notes, prompt_tokens, completion_tokens = _score_listing(
+                candidate_profile,
+                {
+                    "company_name": application.company_name,
+                    "role_title": application.role_title,
+                    "location": application.location_remote_policy,
+                    "description": application.posting_summary,
+                },
+            )
+            if grade is not None:
+                job_tracker.update_application(
+                    application.id,
+                    {"match_grade": grade, "match_notes": notes},
+                    source="cli",
+                    graded_by="llm",
+                )
+                graded += 1
+            else:
+                application.grade_attempts = (application.grade_attempts or 0) + 1
+            run.groq_prompt_tokens += prompt_tokens
+            run.groq_completion_tokens += completion_tokens
+            run.progress_current = i
+            run.scored = graded
+            run.phase = f"Grading applications {i}/{len(pending)}"
+            db.session.commit()
+
+            if i < len(pending):
+                pace_for_token_budget(max(1, prompt_tokens + completion_tokens), call_started)
+
+        run.status = "completed"
+        run.finished_at = utcnow()
+        db.session.commit()
+        return run
+
+    except Exception as exc:  # noqa: BLE001 - a cron job; must never crash silently
+        db.session.rollback()
+        run.status = "failed"
+        run.error_message = str(exc)
+        run.finished_at = utcnow()
+        db.session.commit()
+        return run
+
+
 # --------------------------------------------------------------------------
 # reviewing results
 # --------------------------------------------------------------------------
@@ -1095,6 +1189,10 @@ def promote_listing(listing_id: int) -> JobApplication:
     if listing.status == "promoted":
         raise JobDiscoveryError("This listing has already been added to the tracker.")
 
+    # Carry a real (LLM/Jev) grade across; drop a keyword pre-score so the
+    # rescore cron gives the card a proper grade from the posting instead.
+    real_grade = listing.graded_by in ("llm", "jev") and listing.match_grade is not None
+    summary = (listing.description or "").strip()[: job_tracker.POSTING_SUMMARY_MAX_CHARS]
     try:
         application = job_tracker.create_application(
             {
@@ -1105,10 +1203,12 @@ def promote_listing(listing_id: int) -> JobApplication:
                 "source": listing.source,
                 "location_remote_policy": listing.location,
                 "salary_range": listing.salary_range,
-                "match_grade": listing.match_grade,
-                "match_notes": listing.match_notes,
+                "match_grade": listing.match_grade if real_grade else None,
+                "match_notes": listing.match_notes if real_grade else None,
+                "posting_summary": summary or None,
             },
             source="web",
+            graded_by="llm" if real_grade else None,
         )
     except job_tracker.JobTrackerError as exc:
         # e.g. a scraped listing whose URL isn't http(s) -- surface it as a
