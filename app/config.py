@@ -159,6 +159,12 @@ class Config:
     JOB_TRACKER_UNLOCK_RATE_LIMIT = os.environ.get(
         "JOB_TRACKER_UNLOCK_RATE_LIMIT", "10 per hour"
     )
+    # Bearer-token JSON API at /api/job-tracker (Nelson's local Claude
+    # Code creating/filling cards). Only the token's SHA-256 hex lives
+    # here -- mint a pair with `flask job-tracker api-token`. Unset means
+    # the API is closed (503), never open.
+    JOB_TRACKER_API_TOKEN_SHA256 = os.environ.get("JOB_TRACKER_API_TOKEN_SHA256")
+    JOB_TRACKER_API_RATE_LIMIT = os.environ.get("JOB_TRACKER_API_RATE_LIMIT", "120 per hour")
     # `flask job-tracker sweep` moves an application that has sat in
     # "Applied" this many weeks (measured from status_updated_at) to
     # "Ghosted". Wire the command to cron; nothing runs it automatically.

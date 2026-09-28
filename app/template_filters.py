@@ -52,5 +52,15 @@ def format_money(value: float | None) -> str:
     return f"${value:,.2f}"
 
 
+def http_url(value: str | None) -> str:
+    """The URL if it's an absolute http(s) link, else "" -- for any
+    stored, externally-sourced URL rendered into an href. Autoescaping
+    stops markup injection but not a `javascript:` scheme."""
+    from app.services.job_tracker import is_http_url
+
+    return str(value).strip() if is_http_url(value) else ""
+
+
 def register_filters(app: Flask) -> None:
     app.jinja_env.filters["money"] = format_money
+    app.jinja_env.filters["http_url"] = http_url

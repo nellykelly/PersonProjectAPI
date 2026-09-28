@@ -9,7 +9,7 @@ regardless of who made it.
 Nothing here does access control. The blueprint enforces the password
 gate; the assistant enforces the admin-session check. This module trusts
 its caller and just records *which* caller it was, via the `source`
-argument ("web" / "assistant" / "cli").
+argument ("web" / "assistant" / "cli" / "api").
 
 Plain SQLAlchemy ORM against portable column types -- works identically on
 SQLite (the app default) and Postgres.
@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 from typing import Any, Iterable
+from urllib.parse import urlparse
 
 from app.extensions import db
 from app.models import (
@@ -53,7 +54,11 @@ _EDITABLE_FIELDS = (
     "notes",
 )
 
-_VALID_SOURCES = ("web", "assistant", "cli")
+_VALID_SOURCES = ("web", "assistant", "cli", "api")
+
+# The editable fields as a public name -- the token API validates incoming
+# JSON keys against this so a typo'd field is a 400, not silently dropped.
+EDITABLE_FIELDS: tuple[str, ...] = _EDITABLE_FIELDS
 
 # Columns the dashboard's ?sort= is allowed to order by. A plain
 # getattr(JobApplication, name) is not enough on its own -- it also
@@ -210,6 +215,18 @@ def recent_events(limit: int = 100) -> list[JobApplicationEvent]:
 # --------------------------------------------------------------------------
 
 
+def is_http_url(value: str | None) -> bool:
+    """True only for an absolute http:// or https:// URL with a host.
+    Also the template filter's rule (see template_filters.http_url)."""
+    if not value:
+        return False
+    text = str(value).strip()
+    if any(ord(c) < 0x20 or c.isspace() for c in text):
+        return False
+    parsed = urlparse(text)
+    return parsed.scheme.lower() in ("http", "https") and bool(parsed.netloc)
+
+
 def _check_source(source: str) -> None:
     if source not in _VALID_SOURCES:
         raise JobTrackerError(f"source must be one of {_VALID_SOURCES}, got {source!r}.")
@@ -247,6 +264,21 @@ def _coerce(field: str, value: Any) -> Any:
         if isinstance(value, bool):
             return value
         return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+    if field == "job_posting_url":
+        # Rendered straight into an href on the board, and the site's CSP
+        # is report-only -- a `javascript:` URL here would be stored XSS
+        # inside the unlocked tracker. Postings can arrive from scraped
+        # boards and from an LLM client reading untrusted pages, so only
+        # an absolute http(s) URL is accepted, from every writer.
+        text = str(value).strip()
+        if not text:
+            return None
+        if not is_http_url(text):
+            raise JobTrackerError(
+                f"job_posting_url must be an absolute http(s) URL, got {value!r}."
+            )
+        return text
 
     if field == "match_grade":
         text = str(value).strip()
@@ -422,7 +454,32 @@ def application_as_dict(app: JobApplication) -> dict[str, Any]:
         "match_label": match_label(app.match_grade),
         "match_notes": app.match_notes,
         "notes": app.notes,
+        "created_at": _display(app.created_at),
+        "updated_at": _display(app.updated_at),
     }
+
+
+def find_duplicate(
+    company_name: str | None, role_title: str | None, job_posting_url: str | None
+) -> JobApplication | None:
+    """An existing row that is almost certainly the same job: the same
+    posting URL, or the same company *and* role (case-insensitive exact
+    match, not substring -- "Stripe" / "Backend Engineer" must not collide
+    with "Stripe" / "Senior Backend Engineer"). The token API uses this to
+    answer a repeat create with 409 instead of a second card."""
+    url = (job_posting_url or "").strip()
+    if url:
+        row = JobApplication.query.filter(JobApplication.job_posting_url == url).first()
+        if row is not None:
+            return row
+    company = (company_name or "").strip().lower()
+    role = (role_title or "").strip().lower()
+    if company and role:
+        return JobApplication.query.filter(
+            db.func.lower(JobApplication.company_name) == company,
+            db.func.lower(JobApplication.role_title) == role,
+        ).first()
+    return None
 
 
 def find_application(company: str, role: str | None = None) -> JobApplication | None:

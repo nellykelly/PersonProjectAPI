@@ -135,7 +135,7 @@
       </td>
       <td><span class="jt-company">{{ l.company_name }}</span></td>
       <td>
-        <a href="{{ l.job_posting_url }}" target="_blank" rel="noopener">{{ l.role_title }}</a>
+        {% if l.job_posting_url|http_url %}<a href="{{ l.job_posting_url|http_url }}" target="_blank" rel="noopener noreferrer">{{ l.role_title }}</a>{% else %}{{ l.role_title }}{% endif %}
         {% if l.match_notes %}<span class="jt-sub">{{ l.match_notes }}</span>{% endif %}
       </td>
       <td>{{ l.location or "-" }}</td>

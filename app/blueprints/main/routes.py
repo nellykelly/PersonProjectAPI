@@ -163,6 +163,7 @@ def robots():
         "Allow: /\n"
         "Disallow: /documentation\n"
         "Disallow: /job-tracker\n"
+        "Disallow: /api/job-tracker\n"
         "Disallow: /family\n"
         "Disallow: /auth/\n"
         f"\nSitemap: {sitemap_url}\n"

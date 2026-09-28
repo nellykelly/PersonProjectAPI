@@ -1095,20 +1095,25 @@ def promote_listing(listing_id: int) -> JobApplication:
     if listing.status == "promoted":
         raise JobDiscoveryError("This listing has already been added to the tracker.")
 
-    application = job_tracker.create_application(
-        {
-            "company_name": listing.company_name,
-            "role_title": listing.role_title,
-            "job_posting_url": listing.job_posting_url,
-            "status": "Saved",
-            "source": listing.source,
-            "location_remote_policy": listing.location,
-            "salary_range": listing.salary_range,
-            "match_grade": listing.match_grade,
-            "match_notes": listing.match_notes,
-        },
-        source="web",
-    )
+    try:
+        application = job_tracker.create_application(
+            {
+                "company_name": listing.company_name,
+                "role_title": listing.role_title,
+                "job_posting_url": listing.job_posting_url,
+                "status": "Saved",
+                "source": listing.source,
+                "location_remote_policy": listing.location,
+                "salary_range": listing.salary_range,
+                "match_grade": listing.match_grade,
+                "match_notes": listing.match_notes,
+            },
+            source="web",
+        )
+    except job_tracker.JobTrackerError as exc:
+        # e.g. a scraped listing whose URL isn't http(s) -- surface it as a
+        # flash message on /discover, not a 500.
+        raise JobDiscoveryError(str(exc)) from exc
     listing.status = "promoted"
     listing.promoted_application_id = application.id
     db.session.commit()

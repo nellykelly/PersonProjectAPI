@@ -225,6 +225,7 @@ def _register_blueprints(app: Flask) -> None:
     from app.blueprints.leetcode import bp as leetcode_bp
     from app.blueprints.auth import bp as auth_bp
     from app.blueprints.job_tracker import bp as job_tracker_bp
+    from app.blueprints.job_tracker_api import bp as job_tracker_api_bp
     from app.blueprints.assistant import bp as assistant_bp
     from app.blueprints.legal import bp as legal_bp
     from app.blueprints.family import bp as family_bp
@@ -254,6 +255,12 @@ def _register_blueprints(app: Flask) -> None:
     # never linked anywhere, noindex. NOT csrf-exempt -- its forms carry a
     # token, unlike the older public-write blueprints below.
     app.register_blueprint(job_tracker_bp, url_prefix="/job-tracker")
+    # Bearer-token JSON API over the same tracker, for Nelson's local
+    # Claude Code (absolute /api/job-tracker rule paths). Fails closed
+    # without JOB_TRACKER_API_TOKEN_SHA256. csrf-exempt below: auth is a
+    # header, not a cookie, so there is no session for CSRF to ride.
+    app.register_blueprint(job_tracker_api_bp)
+    csrf.exempt(job_tracker_api_bp)
     # Personal AI assistant: GET /assistant + POST /api/assistant/chat
     # (absolute rule paths, so no url_prefix). NOT csrf-exempt -- the
     # fetch() sends an X-CSRFToken header.
@@ -415,6 +422,25 @@ def _register_cli(app: Flask) -> None:
     @app.cli.group("job-tracker")
     def job_tracker_cli() -> None:
         """Private job-application tracker maintenance."""
+
+    @job_tracker_cli.command("api-token")
+    def job_tracker_api_token() -> None:
+        """Mint a bearer token for the /api/job-tracker JSON API.
+
+        Prints the token (give it to the client; it is shown once) and the
+        JOB_TRACKER_API_TOKEN_SHA256 line for the server's environment. Only
+        the hash is stored server-side. Re-running mints a new pair; the old
+        token stops working once the new hash is deployed.
+        """
+        import secrets
+
+        from app.blueprints.job_tracker_api.routes import token_hash
+
+        token = secrets.token_urlsafe(32)
+        click.echo("Token (client side, e.g. JOB_TRACKER_API_TOKEN in your shell):")
+        click.echo(f"  {token}")
+        click.echo("Server environment (.env):")
+        click.echo(f"  JOB_TRACKER_API_TOKEN_SHA256={token_hash(token)}")
 
     @job_tracker_cli.command("sweep")
     @click.option(

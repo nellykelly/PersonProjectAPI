@@ -59,7 +59,7 @@ ENUMERABLE_COLUMNS = [
     # column on those two models is db.Text (unbounded) on purpose.
     (models.JobApplication, "status", list(models.JOB_APPLICATION_STATUSES)),
     (models.JobApplicationEvent, "action", ["create", "update", "delete"]),
-    (models.JobApplicationEvent, "source", ["web", "assistant", "cli"]),
+    (models.JobApplicationEvent, "source", ["web", "assistant", "cli", "api"]),
     # Job Discovery. status is the tiny fixed new/dismissed/promoted set;
     # graded_by is who/what actually produced match_grade; every other
     # string-ish column on JobListing is db.Text (unbounded).

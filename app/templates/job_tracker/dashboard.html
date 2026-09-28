@@ -48,8 +48,8 @@
         {% if a.company_industry %}<span class="jt-sub">{{ a.company_industry }}</span>{% endif %}
       </td>
       <td>
-        {% if a.job_posting_url %}
-          <a href="{{ a.job_posting_url }}" target="_blank" rel="noopener">{{ a.role_title }}</a>
+        {% if a.job_posting_url|http_url %}
+          <a href="{{ a.job_posting_url|http_url }}" target="_blank" rel="noopener noreferrer">{{ a.role_title }}</a>
         {% else %}{{ a.role_title }}{% endif %}
         {% if a.location_remote_policy %}<span class="jt-sub">{{ a.location_remote_policy }}</span>{% endif %}
       </td>

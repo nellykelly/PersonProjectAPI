@@ -949,7 +949,8 @@ class JobApplication(db.Model):
 class JobApplicationEvent(db.Model):
     """Audit trail for JobApplication. One row per change: `action` is
     'create' / 'update' / 'delete', `source` is 'web' (the gated form),
-    'assistant' (the AI assistant, admin session only) or 'cli'. For an
+    'assistant' (the AI assistant, admin session only), 'cli', or 'api'
+    (the bearer-token JSON API at /api/job-tracker). For an
     'update' there is one event per changed field, carrying the old and
     new value as text; 'create' and 'delete' carry a NULL field and a
     human-readable `summary`.
@@ -965,7 +966,7 @@ class JobApplicationEvent(db.Model):
         index=True,
     )
     action = db.Column(db.String(8), nullable=False)  # 'create' | 'update' | 'delete'
-    source = db.Column(db.String(12), nullable=False)  # 'web' | 'assistant' | 'cli'
+    source = db.Column(db.String(12), nullable=False)  # 'web' | 'assistant' | 'cli' | 'api'
     field_name = db.Column(db.Text, nullable=True)
     old_value = db.Column(db.Text, nullable=True)
     new_value = db.Column(db.Text, nullable=True)
