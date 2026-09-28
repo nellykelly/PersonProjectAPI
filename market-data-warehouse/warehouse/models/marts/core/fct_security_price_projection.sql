@@ -205,7 +205,9 @@ meanrev_fit_{{ L }} as (
         -- series isn't behaving as mean-reverting over this window at
         -- all (oscillating or explosive) -- clip rather than let phi^h
         -- blow up or flip sign every step.
-        least(greatest(regr_slope(deviation, prior_deviation), 0), 0.999) as phi,
+        -- coalesce: regr_slope is NULL with too few points; greatest(NULL, 0)
+        -- is 0 on DuckDB but NULL on Snowflake. Same answer on both this way.
+        least(greatest(coalesce(regr_slope(deviation, prior_deviation), 0), 0), 0.999) as phi,
         regr_r2(deviation, prior_deviation) as r_squared
     from meanrev_lagged_{{ L }}
     where prior_deviation is not null

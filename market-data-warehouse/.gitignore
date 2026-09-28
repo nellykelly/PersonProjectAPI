@@ -1,5 +1,11 @@
 .env
 .venv/
+
+# Snowflake key-pair auth -- keys live outside the repo (S:\.secrets\snowflake
+# by default, see tools/snowflake_keygen.py); these are a backstop.
+*.p8
+*.pem
+.secrets/
 __pycache__/
 *.pyc
 

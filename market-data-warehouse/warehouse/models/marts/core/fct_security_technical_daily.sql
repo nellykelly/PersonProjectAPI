@@ -33,8 +33,11 @@ with_prior_close as (
 gains_losses as (
     select
         *,
-        greatest(close - prior_close, 0) as gain,
-        greatest(prior_close - close, 0) as loss
+        -- coalesce: greatest()/least() skip NULLs on DuckDB but return NULL
+        -- on Snowflake if any argument is NULL (first row has no prior_close).
+        -- Coalescing first gives both warehouses DuckDB's existing answer.
+        greatest(coalesce(close - prior_close, 0), 0) as gain,
+        greatest(coalesce(prior_close - close, 0), 0) as loss
     from with_prior_close
 ),
 

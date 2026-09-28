@@ -86,14 +86,21 @@ class SnowflakeLoader(Loader):
             )
         self.database = cfg.database
         self.schema = cfg.schema
+        if cfg.private_key_path:
+            # Key-pair (JWT) auth: the connector reads the PEM itself.
+            auth = {"private_key_file": cfg.private_key_path}
+            if cfg.private_key_passphrase:
+                auth["private_key_file_pwd"] = cfg.private_key_passphrase
+        else:
+            auth = {"password": cfg.password}
         self._con = snowflake.connector.connect(
             account=cfg.account,
             user=cfg.user,
-            password=cfg.password,
             role=cfg.role or None,
             warehouse=cfg.warehouse,
             database=cfg.database,
             schema=cfg.schema,
+            **auth,
         )
         cur = self._con.cursor()
         # `connect(schema=...)` against a schema that doesn't exist yet
@@ -108,46 +115,61 @@ class SnowflakeLoader(Loader):
         log.info("snowflake: %s.%s", cfg.database, cfg.schema)
 
     def load(self, table: str, df: pd.DataFrame) -> int:
+        """Stage, then swap in one transaction.
+
+        1. write_pandas bulk-loads the batch (Parquet -> PUT -> COPY INTO)
+           into a session-scoped TEMPORARY table, `<TABLE>__INCOMING`.
+        2. The target is created from the stage's shape if it's missing
+           (DDL auto-commits in Snowflake, so it happens before BEGIN).
+        3. BEGIN; DELETE this batch's tickers; INSERT from the stage; COMMIT.
+           Both are plain DML, so they commit or roll back together -- the
+           old delete-then-COPY had a window where a crash lost a ticker's
+           rows (HARDENING.md H4 residual risk). A failure now leaves the
+           target exactly as it was.
+
+        use_logical_type=True makes pandas datetimes land as real
+        TIMESTAMP/DATE columns instead of epoch integers.
+        """
         if df.empty:
             return 0
         from snowflake.connector.pandas_tools import write_pandas
 
         name = table.upper()
         fq = f"{self.database}.{self.schema}.{name}"
+        stage = f"{name}__INCOMING"
+        fq_stage = f"{self.database}.{self.schema}.{stage}"
         frame = df.copy()
         frame.columns = [c.upper() for c in frame.columns]
-        cur = self._con.cursor()
-        exists = cur.execute(
-            "SELECT COUNT(*) FROM {}.INFORMATION_SCHEMA.TABLES "
-            "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s".format(self.database),
-            (self.schema.upper(), name),
-        ).fetchone()[0]
-        if exists:
-            tickers = sorted(frame["TICKER"].unique().tolist())
-            binds = ",".join(["%s"] * len(tickers))
-            # NOTE: this DELETE is transactional, but write_pandas's COPY
-            # INTO is its own operation and is not known to participate in
-            # an open Snowflake transaction the same way DML does -- so a
-            # crash between the DELETE and the write below can still leave
-            # a ticker's rows gone with nothing re-inserted. Documented as
-            # a residual risk in HARDENING.md rather than claimed as fixed
-            # (an unverifiable claim without a live account to test it on).
-            cur.execute("BEGIN")
-            try:
-                cur.execute(f"DELETE FROM {fq} WHERE TICKER IN ({binds})", tickers)
-                cur.execute("COMMIT")
-            except Exception:
-                cur.execute("ROLLBACK")
-                raise
+        cols = ", ".join(frame.columns)
+
         write_pandas(
             self._con,
             frame,
-            name,
+            stage,
             database=self.database,
             schema=self.schema,
-            auto_create_table=not exists,
+            auto_create_table=True,
+            overwrite=True,
+            table_type="temporary",
+            use_logical_type=True,
             quote_identifiers=False,
         )
+        cur = self._con.cursor()
+        try:
+            cur.execute(f"CREATE TABLE IF NOT EXISTS {fq} AS SELECT * FROM {fq_stage} WHERE 1 = 0")
+            cur.execute("BEGIN")
+            try:
+                cur.execute(
+                    f"DELETE FROM {fq} WHERE TICKER IN (SELECT DISTINCT TICKER FROM {fq_stage})"
+                )
+                cur.execute(f"INSERT INTO {fq} ({cols}) SELECT {cols} FROM {fq_stage}")
+            except Exception:
+                cur.execute("ROLLBACK")
+                raise
+            else:
+                cur.execute("COMMIT")
+        finally:
+            cur.execute(f"DROP TABLE IF EXISTS {fq_stage}")
         return len(frame)
 
     def close(self) -> None:

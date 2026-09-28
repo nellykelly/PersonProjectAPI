@@ -54,8 +54,20 @@ class DuckDBConfig:
 
 @dataclass(frozen=True)
 class SnowflakeConfig:
+    """Key-pair auth is the intended path: a TYPE=SERVICE user with an RSA
+    key (see snowflake/setup.sql). Snowflake is phasing out password-only
+    sign-in and a service user can't have a password at all, so a script
+    that logs in with one can stall on MFA. A password still works as a
+    fallback for a plain trial user, but the key wins when both are set."""
+
     account: str = field(default_factory=lambda: os.environ.get("SNOWFLAKE_ACCOUNT", ""))
     user: str = field(default_factory=lambda: os.environ.get("SNOWFLAKE_USER", ""))
+    private_key_path: str = field(
+        default_factory=lambda: os.environ.get("SNOWFLAKE_PRIVATE_KEY_PATH", "")
+    )
+    private_key_passphrase: str = field(
+        default_factory=lambda: os.environ.get("SNOWFLAKE_PRIVATE_KEY_PASSPHRASE", "")
+    )
     password: str = field(default_factory=lambda: os.environ.get("SNOWFLAKE_PASSWORD", ""))
     role: str = field(default_factory=lambda: os.environ.get("SNOWFLAKE_ROLE", ""))
     warehouse: str = field(default_factory=lambda: os.environ.get("SNOWFLAKE_WAREHOUSE", ""))
@@ -63,8 +75,11 @@ class SnowflakeConfig:
     schema: str = field(default_factory=raw_schema)
 
     def missing(self) -> list[str]:
-        required = ("account", "user", "password", "warehouse", "database")
-        return [name for name in required if not getattr(self, name)]
+        required = ("account", "user", "warehouse", "database")
+        gaps = [name for name in required if not getattr(self, name)]
+        if not (self.private_key_path or self.password):
+            gaps.append("private_key_path")
+        return gaps
 
 
 @dataclass(frozen=True)

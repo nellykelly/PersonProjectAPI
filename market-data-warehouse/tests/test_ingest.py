@@ -241,25 +241,23 @@ snowflake_connector = pytest.importorskip("snowflake.connector")
 
 
 class _FakeSnowCursor:
-    def __init__(self, existing=frozenset()):
+    def __init__(self, fail_on: str | None = None):
         self.calls: list[tuple[str, object]] = []
-        self._existing = existing
+        self._fail_on = fail_on
 
     def execute(self, sql, params=None):
         self.calls.append((sql, params))
+        if self._fail_on and sql.startswith(self._fail_on):
+            raise RuntimeError(f"simulated failure on {self._fail_on}")
         return self
 
     def fetchone(self):
-        sql, params = self.calls[-1]
-        if "INFORMATION_SCHEMA.TABLES" in sql:
-            schema, name = params
-            return (1 if (schema, name) in self._existing else 0,)
         return (0,)
 
 
 class _FakeSnowConnection:
-    def __init__(self, existing=frozenset()):
-        self.cursor_obj = _FakeSnowCursor(existing)
+    def __init__(self, fail_on: str | None = None):
+        self.cursor_obj = _FakeSnowCursor(fail_on)
 
     def cursor(self):
         return self.cursor_obj
@@ -268,66 +266,109 @@ class _FakeSnowConnection:
         pass
 
 
-def _set_snowflake_env(monkeypatch):
+def _set_snowflake_env(monkeypatch, *, key_path="S:/keys/rsa_key.p8", password=""):
     monkeypatch.setenv("SNOWFLAKE_ACCOUNT", "acct")
     monkeypatch.setenv("SNOWFLAKE_USER", "user")
-    monkeypatch.setenv("SNOWFLAKE_PASSWORD", "pw")
+    monkeypatch.setenv("SNOWFLAKE_PRIVATE_KEY_PATH", key_path)
+    monkeypatch.setenv("SNOWFLAKE_PRIVATE_KEY_PASSPHRASE", "")
+    monkeypatch.setenv("SNOWFLAKE_PASSWORD", password)
     monkeypatch.setenv("SNOWFLAKE_WAREHOUSE", "wh")
     monkeypatch.setenv("SNOWFLAKE_DATABASE", "MARKET")
     monkeypatch.setenv("RAW_SCHEMA", "RAW")
 
 
-def test_snowflake_loader_first_run_creates_and_uses_schema_then_writes_qualified(monkeypatch):
-    from ingest.config import SnowflakeConfig
-    from ingest.load import SnowflakeLoader
+def _fake_snowflake(monkeypatch, fail_on=None):
+    """Fake connect + write_pandas; returns (connection, connect kwargs, write calls)."""
+    fake_con = _FakeSnowConnection(fail_on)
+    connect_kwargs: dict = {}
 
-    _set_snowflake_env(monkeypatch)
-    fake_con = _FakeSnowConnection()  # table does not exist yet
-    monkeypatch.setattr(snowflake_connector, "connect", lambda **_kw: fake_con)
-    write_calls = []
+    def _connect(**kw):
+        connect_kwargs.update(kw)
+        return fake_con
+
+    monkeypatch.setattr(snowflake_connector, "connect", _connect)
+    write_calls: list[dict] = []
     monkeypatch.setattr(
         "snowflake.connector.pandas_tools.write_pandas",
-        lambda _con, df, table_name, **kw: write_calls.append(
-            {"table_name": table_name, **kw}
-        )
+        lambda _con, df, table_name, **kw: write_calls.append({"table_name": table_name, "rows": len(df), **kw})
         or (True, 1, len(df), None),
     )
-
-    loader = SnowflakeLoader(SnowflakeConfig())
-    loader.load("price_history", _frame("AAPL", 2))
-
-    setup_sql = [sql for sql, _ in fake_con.cursor_obj.calls]
-    assert any(s.startswith("CREATE SCHEMA IF NOT EXISTS MARKET.RAW") for s in setup_sql)
-    assert any(s == "USE SCHEMA MARKET.RAW" for s in setup_sql), setup_sql
-    assert not any(s.startswith("DELETE") for s in setup_sql), "nothing to delete on first run"
-
-    assert write_calls[0]["database"] == "MARKET"
-    assert write_calls[0]["schema"] == "RAW"
-    assert write_calls[0]["table_name"] == "PRICE_HISTORY"
-    assert write_calls[0]["auto_create_table"] is True
+    return fake_con, connect_kwargs, write_calls
 
 
-def test_snowflake_loader_existing_table_deletes_qualified_and_commits(monkeypatch):
+def test_snowflake_loader_uses_key_pair_auth_not_a_password(monkeypatch):
+    from ingest.config import SnowflakeConfig
+    from ingest.load import SnowflakeLoader
+
+    _set_snowflake_env(monkeypatch, password="also-set")
+    _, connect_kwargs, _ = _fake_snowflake(monkeypatch)
+    SnowflakeLoader(SnowflakeConfig())
+    assert connect_kwargs["private_key_file"] == "S:/keys/rsa_key.p8"
+    assert "password" not in connect_kwargs, "the key must win when both are configured"
+
+
+def test_snowflake_config_requires_a_key_or_password(monkeypatch):
+    from ingest.config import SnowflakeConfig
+
+    _set_snowflake_env(monkeypatch, key_path="", password="")
+    assert "private_key_path" in SnowflakeConfig().missing()
+
+
+def test_snowflake_loader_creates_and_uses_schema_before_writing(monkeypatch):
     from ingest.config import SnowflakeConfig
     from ingest.load import SnowflakeLoader
 
     _set_snowflake_env(monkeypatch)
-    fake_con = _FakeSnowConnection(existing={("RAW", "PRICE_HISTORY")})
-    monkeypatch.setattr(snowflake_connector, "connect", lambda **_kw: fake_con)
-    monkeypatch.setattr(
-        "snowflake.connector.pandas_tools.write_pandas",
-        lambda *_a, **_kw: (True, 1, 1, None),
-    )
+    fake_con, _, _ = _fake_snowflake(monkeypatch)
+    SnowflakeLoader(SnowflakeConfig())
+    setup_sql = [sql for sql, _ in fake_con.cursor_obj.calls]
+    assert setup_sql[0] == "CREATE SCHEMA IF NOT EXISTS MARKET.RAW"
+    assert setup_sql[1] == "USE SCHEMA MARKET.RAW"
 
+
+def test_snowflake_loader_stages_then_swaps_in_one_transaction(monkeypatch):
+    from ingest.config import SnowflakeConfig
+    from ingest.load import SnowflakeLoader
+
+    _set_snowflake_env(monkeypatch)
+    fake_con, _, write_calls = _fake_snowflake(monkeypatch)
     loader = SnowflakeLoader(SnowflakeConfig())
+    fake_con.cursor_obj.calls.clear()
     loader.load("price_history", _frame("AAPL", 2))
 
-    delete_calls = [c for c in fake_con.cursor_obj.calls if c[0].startswith("DELETE")]
-    assert len(delete_calls) == 1
-    sql, params = delete_calls[0]
-    assert sql.startswith("DELETE FROM MARKET.RAW.PRICE_HISTORY"), sql
-    assert params == ["AAPL"]
-    assert any(sql == "COMMIT" for sql, _ in fake_con.cursor_obj.calls)
+    # Bulk load goes to a session-scoped temp stage, fully qualified, typed.
+    (write,) = write_calls
+    assert write["table_name"] == "PRICE_HISTORY__INCOMING"
+    assert write["database"] == "MARKET" and write["schema"] == "RAW"
+    assert write["table_type"] == "temporary"
+    assert write["overwrite"] is True
+    assert write["use_logical_type"] is True
+
+    sql = [s for s, _ in fake_con.cursor_obj.calls]
+    stage = "MARKET.RAW.PRICE_HISTORY__INCOMING"
+    assert sql[0] == f"CREATE TABLE IF NOT EXISTS MARKET.RAW.PRICE_HISTORY AS SELECT * FROM {stage} WHERE 1 = 0"
+    assert sql[1] == "BEGIN"
+    assert sql[2] == f"DELETE FROM MARKET.RAW.PRICE_HISTORY WHERE TICKER IN (SELECT DISTINCT TICKER FROM {stage})"
+    assert sql[3].startswith("INSERT INTO MARKET.RAW.PRICE_HISTORY (TICKER, ")
+    assert sql[3].endswith(f"FROM {stage}")
+    assert sql[4] == "COMMIT"
+    assert sql[5] == f"DROP TABLE IF EXISTS {stage}"
+
+
+def test_snowflake_loader_rolls_back_the_delete_when_the_insert_fails(monkeypatch):
+    from ingest.config import SnowflakeConfig
+    from ingest.load import SnowflakeLoader
+
+    _set_snowflake_env(monkeypatch)
+    fake_con, _, _ = _fake_snowflake(monkeypatch, fail_on="INSERT INTO")
+    loader = SnowflakeLoader(SnowflakeConfig())
+    with pytest.raises(RuntimeError, match="simulated failure"):
+        loader.load("price_history", _frame("AAPL", 2))
+
+    sql = [s for s, _ in fake_con.cursor_obj.calls]
+    assert "ROLLBACK" in sql, "a failed insert must undo the delete"
+    assert "COMMIT" not in sql
+    assert sql[-1] == "DROP TABLE IF EXISTS MARKET.RAW.PRICE_HISTORY__INCOMING", "stage cleaned up even on failure"
 
 
 # --------------------------------------------------------------------------

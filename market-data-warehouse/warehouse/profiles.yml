@@ -26,11 +26,16 @@ market_warehouse:
       schema: main
       threads: 4
 
+    # Key-pair auth (same key as ingest/, see snowflake/setup.sql). dbt
+    # uses whichever of private_key_path / password is non-empty; the key
+    # is the intended one -- a TYPE=SERVICE user has no password at all.
     snowflake:
       type: snowflake
       account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
       user: "{{ env_var('SNOWFLAKE_USER') }}"
-      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH', '') }}"
+      private_key_passphrase: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PASSPHRASE', '') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD', '') }}"
       role: "{{ env_var('SNOWFLAKE_ROLE', '') }}"
       warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE') }}"
       database: "{{ env_var('SNOWFLAKE_DATABASE', 'MARKET') }}"

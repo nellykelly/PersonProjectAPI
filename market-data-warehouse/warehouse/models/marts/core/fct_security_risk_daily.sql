@@ -109,7 +109,10 @@ windows as (
             ) * 252 - {{ rf }}
         ) / nullif(
             sqrt(
-                avg(power(least(daily_return, 0), 2)) over (
+                -- coalesce keeps DuckDB and Snowflake identical: least(NULL, 0)
+                -- is 0 on DuckDB but NULL on Snowflake, which would drop the
+                -- row from avg() and shift Sortino on Snowflake only.
+                avg(power(least(coalesce(daily_return, 0), 0), 2)) over (
                     partition by security_key order by trade_date
                     rows between 251 preceding and current row
                 )

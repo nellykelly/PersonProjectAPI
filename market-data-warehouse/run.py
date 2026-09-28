@@ -5,6 +5,7 @@
     python run.py build                  # dbt deps + seed + run + snapshot + test
     python run.py all                    # ingest, then build
     python run.py all --target duckdb    # force the DuckDB profile
+    python run.py check --target snowflake  # connection + dbt debug, writes nothing
 
 `make` isn't available on the target machine, so this is the task runner.
 `build` shells out to whatever `dbt` is on PATH (see README for install).
@@ -83,6 +84,27 @@ def cmd_build(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_check(args: argparse.Namespace) -> int:
+    """Prove the connection before loading anything: who we are, which role/
+    warehouse/database we landed in, and that dbt's profile connects too."""
+    if args.target == "snowflake":
+        import snowflake.connector  # noqa: F401 -- fail here if not installed
+
+        from ingest.config import get_settings
+        from ingest.load import SnowflakeLoader
+
+        with SnowflakeLoader(get_settings().snowflake) as loader:
+            row = loader._con.cursor().execute(
+                "SELECT CURRENT_USER(), CURRENT_ROLE(), CURRENT_WAREHOUSE(), "
+                "CURRENT_DATABASE(), CURRENT_SCHEMA(), CURRENT_VERSION()"
+            ).fetchone()
+        labels = ("user", "role", "warehouse", "database", "schema", "version")
+        print("\nSnowflake connection OK:")
+        for label, value in zip(labels, row):
+            print(f"  {label:10} {value}")
+    return _dbt(["debug"], args.target)
+
+
 def cmd_all(args: argparse.Namespace) -> int:
     rc = cmd_ingest(args)
     if rc != 0:
@@ -116,6 +138,7 @@ def main() -> int:
     sub.add_parser("ingest", parents=[common], help="pull yfinance into RAW")
     sub.add_parser("build", parents=[common], help="dbt deps + seed + run + snapshot + test")
     sub.add_parser("all", parents=[common], help="ingest then build")
+    sub.add_parser("check", parents=[common], help="test the connection + dbt debug (no data written)")
     args = parser.parse_args()
 
     # keep env and flag in sync so ingest.config and dbt agree
@@ -125,7 +148,8 @@ def main() -> int:
     # --project-dir, so an unqualified name would split them)
     os.environ.setdefault("DUCKDB_PATH", str(WAREHOUSE_DIR / "market.duckdb"))
 
-    return {"ingest": cmd_ingest, "build": cmd_build, "all": cmd_all}[args.command](args)
+    commands = {"ingest": cmd_ingest, "build": cmd_build, "all": cmd_all, "check": cmd_check}
+    return commands[args.command](args)
 
 
 if __name__ == "__main__":

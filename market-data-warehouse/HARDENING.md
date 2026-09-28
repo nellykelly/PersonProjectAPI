@@ -66,6 +66,14 @@ before it propagates. Verified with
 table) and asserts the table still holds its pre-load row count rather
 than being left empty.
 
+**Update (2026-09-28): fixed.** The Snowflake loader now `write_pandas`es
+into a temporary `<TABLE>__INCOMING` stage and swaps it in with
+`BEGIN; DELETE; INSERT ... SELECT FROM stage; COMMIT;` — the delete and
+the insert are both ordinary DML in one transaction, so the COPY INTO
+never sits between them. Verified against the faked connector
+(`test_snowflake_loader_rolls_back_the_delete_when_the_insert_fails`);
+still to confirm on a live account. The original note, kept for history:
+
 **Residual risk, documented rather than claimed fixed:** the Snowflake
 loader's `DELETE` is wrapped in `BEGIN`/`COMMIT` the same way, but
 `write_pandas`'s `COPY INTO` is a separate operation from the DML

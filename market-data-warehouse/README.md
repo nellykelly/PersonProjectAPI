@@ -132,14 +132,26 @@ Same dbt code — only the adapter and connection change.
 
 ```bash
 pip install dbt-snowflake "snowflake-connector-python[pandas]"
-# fill the SNOWFLAKE_* vars in .env
+python tools/snowflake_keygen.py          # RSA key pair, written OUTSIDE the repo
+# paste the printed public key into snowflake/setup.sql, run it in Snowsight
+# fill the SNOWFLAKE_* vars in .env (see .env.example)
+python run.py check --target snowflake    # connection + dbt debug, loads nothing
 python run.py all --target snowflake
 ```
 
-`ingest/load.py` uses `write_pandas` (explicitly targeting
-`SNOWFLAKE_DATABASE`/`RAW_SCHEMA`, not relying on connection session
-state) and a transactional delete-by-ticker before each load, so re-runs
-replace rather than duplicate.
+`snowflake/setup.sql` creates a least-privilege `MARKET_ETL` role, an
+X-Small `MARKET_WH` warehouse (60s auto-suspend) under a 20-credit/month
+resource monitor, the `MARKET` database, and a `TYPE=SERVICE` user that
+can only log in with the key pair — no password, so no MFA prompt can
+stall a scheduled run.
+
+`ingest/load.py` bulk-loads each batch with `write_pandas` into a
+temporary `<TABLE>__INCOMING` stage (`use_logical_type=True`, so
+timestamps land as timestamps), then swaps it in with
+`BEGIN; DELETE <batch tickers>; INSERT FROM stage; COMMIT;` — both plain
+DML in one transaction, so a failure leaves the target untouched. Every
+statement names `SNOWFLAKE_DATABASE.RAW_SCHEMA` explicitly rather than
+relying on session state.
 
 `SNOWFLAKE_DATABASE` is the one database everything lives in. Inside it,
 dbt always builds into fixed schema names — `staging`, `marts`,
