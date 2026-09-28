@@ -60,6 +60,22 @@ with_drawdown as (
     from with_running_peak
 ),
 
+-- Inputs for beta. Snowflake rejects REGR_SLOPE over a sliding window
+-- frame ("Sliding window frame unsupported for function REGR_SLOPE" --
+-- found on the first live run; DuckDB allows it), but AVG slides fine on
+-- both. So beta is built from moments instead:
+--   beta = covar_pop(r, b) / var_pop(b)
+--        = (avg(r*b) - avg(r)*avg(b)) / (avg(b*b) - avg(b)^2)
+-- over only the days where BOTH returns exist -- the same pairwise-null
+-- rule REGR_SLOPE applies -- which is what the paired_* columns enforce.
+with_beta_inputs as (
+    select
+        *,
+        case when bench_return is not null then daily_return end as paired_r,
+        case when daily_return is not null then bench_return end as paired_b
+    from with_drawdown
+),
+
 windows as (
     select
         security_key,
@@ -119,17 +135,20 @@ windows as (
             ) * sqrt(252), 0
         )                                                           as sortino_ratio_252d,
 
-        -- Beta vs the benchmark: covariance / variance of returns,
-        -- equivalent to a linear regression slope.
-        regr_slope(daily_return, bench_return) over (
-            partition by security_key order by trade_date
-            rows between 59 preceding and current row
-        )                                                           as beta_60d,
-        regr_slope(daily_return, bench_return) over (
-            partition by security_key order by trade_date
-            rows between 251 preceding and current row
-        )                                                           as beta_252d
-    from with_drawdown
+        -- Beta vs the benchmark: covariance / variance of returns (the
+        -- regression slope), from moments -- see with_beta_inputs.
+        -- (Frames spelled out per call: Snowflake has no named WINDOW clause.)
+        {% for n in [60, 252] %}
+        {% set w = "over (partition by security_key order by trade_date rows between " ~ (n - 1) ~ " preceding and current row)" %}
+        (
+            avg(paired_r * paired_b) {{ w }}
+            - avg(paired_r) {{ w }} * avg(paired_b) {{ w }}
+        ) / nullif(
+            avg(paired_b * paired_b) {{ w }}
+            - power(avg(paired_b) {{ w }}, 2), 0
+        )                                                           as beta_{{ n }}d{{ "," if not loop.last }}
+        {% endfor %}
+    from with_beta_inputs
 ),
 
 final as (
