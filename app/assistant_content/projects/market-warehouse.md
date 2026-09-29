@@ -7,11 +7,28 @@ kind: project
 
 A Kimball-style dimensional data warehouse built with dbt over real market data,
 pulled through an idempotent ingestion job from the free `yfinance` feed. It runs the
-identical dbt code, unchanged, against three different database engines --
-DuckDB (a local file, the dev default), MotherDuck (a real, permanent free-tier
-cloud account, not a trial), and Snowflake (code-complete, verified with `dbt parse`
-against a dummy token, never run live since there's no free tier to test it on) --
-with no engine-specific code paths anywhere in the models.
+identical dbt code against three different database engines, and all three have been
+run live: DuckDB (a local file, the dev default), MotherDuck (a real, permanent
+free-tier cloud account), and Snowflake (a 30-day trial account, first run end to end
+on 2026-09-28 -- non-production, and described as exactly that). There are no
+engine-specific code paths anywhere in the models.
+
+# Running it on Snowflake
+
+The Snowflake setup is least-privilege and cost-capped: a pipeline role that can only
+create schemas in one database, an X-Small warehouse that suspends after 60 seconds
+idle, a resource monitor that stops it at 20 credits a month, and a service user that
+can only sign in with an RSA key pair (no password, so no MFA prompt can stall a
+scheduled run). Loads land in a temporary staging table first and are swapped in with
+a single delete-and-insert transaction, so a failed load leaves the old data intact.
+
+The first live run surfaced two real differences between DuckDB and Snowflake. First,
+Snowflake doesn't allow `REGR_SLOPE` over a sliding window, which the rolling beta
+used. Beta was rewritten as covariance over variance using plain moving averages,
+and the old and new outputs were compared row by row: across 94,346 rows the largest
+difference was zero. Second, `GREATEST`/`LEAST` treat NULLs differently on the two
+engines, which would have silently changed RSI and Sortino. That was fixed before it
+could ship wrong numbers.
 
 # The schema
 
@@ -35,7 +52,8 @@ a trading signal.
 
 # Data quality
 
-85 automated data-quality tests back the fact tables' quant and risk metrics. The
+91 automated dbt data-quality tests back the models and the fact tables' quant and risk
+metrics. The
 ticker universe is AAPL, MSFT, AMZN, GOOGL, NVDA, JPM, KO, XOM, plus SPY as the
 benchmark used for beta calculations. A hardening pass found and fixed ten real bugs
 along the way (documented as H1 through H10 in the project's own `HARDENING.md`),
@@ -57,8 +75,9 @@ into the main assistant chat's budget.
 
 # What it demonstrates
 
-Dimensional/Kimball modeling from first principles, a real dbt project (12+ models
+Dimensional/Kimball modeling from first principles, a real dbt project (12 models
 plus a snapshot), portability across three database engines with zero engine-specific
-branching, and a hardening discipline that treats "it built successfully" as different
+branching, hands-on Snowflake setup (roles, key-pair auth, cost controls, transactional
+loads), and a hardening discipline that treats "it built successfully" as different
 from "it's correct" -- the kind of validation work this project's builder also did
 professionally, reconciling risk-data systems record-for-record before every release.

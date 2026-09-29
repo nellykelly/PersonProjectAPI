@@ -9,9 +9,8 @@ dbt-core>=1.9,<1.10
 dbt-duckdb>=1.9,<1.10
 duckdb>=0.10
 
-# Uncomment for the Snowflake target:
-# dbt-snowflake>=1.9,<1.10
-# snowflake-connector-python[pandas]>=3.5
+# Snowflake target: pip install -r requirements-snowflake.txt (adds the
+# adapter + connector on top of this file).
 
 # Tests
 pytest>=8.0

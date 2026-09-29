@@ -4,15 +4,17 @@
 
 ## One-paragraph summary
 
-Nelson built a full data warehouse from scratch: a Python ETL pipeline pulling real market data from Yahoo Finance, landing it in a raw layer, then a dbt project transforming it into a proper Kimball-style star schema (dimensions, fact tables, surrogate keys, SCD tracking, a five-table fact family sharing conformed dimensions). It runs identically against three engines — DuckDB locally, MotherDuck in the cloud (live-verified, not just built), and Snowflake (schema-validated, code-complete) — using the same dbt models with only the adapter swapped. A Flask dashboard reads the resulting warehouse read-only. The whole thing was then put through a deliberate adversarial "hardening" pass that found and fixed nine real correctness bugs before calling it done.
+Nelson built a full data warehouse from scratch: a Python ETL pipeline pulling real market data from Yahoo Finance, landing it in a raw layer, then a dbt project transforming it into a proper Kimball-style star schema (dimensions, fact tables, surrogate keys, SCD tracking, a five-table fact family sharing conformed dimensions). It runs against three engines — DuckDB locally, MotherDuck in the cloud, and Snowflake (run end to end on a live trial account on 2026-09-28; non-production) — all three live-verified, using the same dbt models with only the adapter swapped. A Flask dashboard reads the resulting warehouse read-only. The whole thing was then put through a deliberate adversarial "hardening" pass that found and fixed nine real correctness bugs before calling it done.
 
 ## Concrete numbers (resume-bullet material)
 
 - **94,346** raw price rows, **1,071** dividend rows, **43** split rows, ingested for a 9-ticker universe (8 tracked securities + SPY as a benchmark), full history (`period="max"`).
 - **12 dbt models + 1 snapshot**, built into a 3-dimension / 5-fact star schema.
-- **85/85 dbt tests passing** — not just "tests exist": uniqueness/not-null/relationship tests on every key, range checks on financial measures, grain-uniqueness tests, orphan-row guards, a singular `high >= low` sanity test.
-- **14 Python unit tests** for the ingestion layer (retry/backoff, idempotency, transactional rollback, schema targeting), independent of the dbt tests.
-- **Three target engines, one codebase**: DuckDB (local dev), MotherDuck (cloud — actually run live against a real free-tier account, not just structurally supported: ingested, built, tested, and queried back from the cloud), Snowflake (dbt-validated with `dbt parse`, code-complete, deliberately not run live since there's no free tier to test against).
+- **91 dbt tests** (count per `dbt ls`, 2026-09-28), all passing on DuckDB and on the live Snowflake run — not just "tests exist": uniqueness/not-null/relationship tests on every key, range checks on financial measures, grain-uniqueness tests, orphan-row guards, a singular `high >= low` sanity test.
+- **17 Python unit tests** for the ingestion layer (retry/backoff, idempotency, transactional rollback, schema targeting, Snowflake key-pair auth and staged load against a faked connector), independent of the dbt tests.
+- **Three target engines, one codebase, all run live**: DuckDB (local dev), MotherDuck (a real free-tier cloud account: ingested, built, tested, and queried back), and Snowflake (a 30-day trial account, 2026-09-28: ingested, built, snapshotted and tested end to end). Snowflake is **non-production** experience; say exactly that.
+- **Snowflake setup done by hand**: least-privilege `MARKET_ETL` role (USAGE + CREATE SCHEMA on one database), `TYPE=SERVICE` user with RSA key-pair auth only, X-Small warehouse with 60s auto-suspend under a 20-credit/month resource monitor, and a staged load (temp table, then one DELETE+INSERT transaction). See `snowflake/setup.sql`, `ingest/load.py`.
+- **Two cross-engine bugs found and proven fixed** on the first live run: Snowflake rejects `REGR_SLOPE` over a sliding window (rolling beta rewritten as covariance/variance from moving averages; 0.0 max difference across 94,346 rows versus the old output), and `GREATEST`/`LEAST` NULL handling differs between engines (would have silently changed RSI and Sortino; fixed with `coalesce`, row hashes identical before/after). Commits `1fab000`, `7a62061`.
 - **9 real bugs found and fixed** in a self-directed adversarial review pass after the initial build was "done" (see below) — a demonstrated debugging/code-review habit, not just a build habit.
 
 ## Technical skills this demonstrates
@@ -53,6 +55,7 @@ All paths relative to the `PersonProjectAPI` repo root:
 ## Suggested resume bullet drafts (starting points, not final copy)
 
 - Designed and built a Kimball-style dimensional data warehouse (dbt, 3 conformed dimensions, 5-table fact family, SCD-1/SCD-2) from a live external market-data API, portable across DuckDB, MotherDuck, and Snowflake with no engine-specific code paths.
-- Implemented a financial risk/technical-indicator data pipeline (moving averages, RSI, Sharpe/Sortino/beta, three-method price projection) as tested dbt models, with 85 automated data-quality tests covering uniqueness, referential integrity, and business-rule ranges.
+- Implemented a financial risk/technical-indicator data pipeline (moving averages, RSI, Sharpe/Sortino/beta, three-method price projection) as tested dbt models, with 91 automated data-quality tests covering uniqueness, referential integrity, and business-rule ranges.
 - Ran a self-directed adversarial hardening pass on a completed data pipeline, finding and fixing nine correctness bugs (transactional integrity, retry handling, type-safety, schema targeting) before they could surface in production.
-- Verified a data warehouse design's portability by deploying the identical dbt codebase live against a cloud data warehouse (MotherDuck), with schema-only validation against Snowflake.
+- Verified a data warehouse design's portability by running the identical dbt codebase live on two cloud warehouses, MotherDuck and Snowflake (trial account).
+- Deployed a dbt + Python pipeline to Snowflake with least-privilege RBAC, key-pair service authentication, and credit guardrails; diagnosed a Snowflake-specific window-function failure on the first live run and proved the rewrite exact across 94,346 rows.

@@ -1,0 +1,9 @@
+# Snowflake target, on top of the base requirements:
+#   pip install -r requirements-snowflake.txt
+# Floors are the versions the live run on 2026-09-28 used (dbt-snowflake
+# 1.9.4, snowflake-connector-python 3.18.1). ingest/load.py relies on
+# write_pandas(table_type=..., use_logical_type=...) and key-pair auth via
+# private_key_file, so don't go below the tested connector.
+-r requirements.txt
+dbt-snowflake>=1.9.4,<1.10
+snowflake-connector-python[pandas]>=3.18,<4

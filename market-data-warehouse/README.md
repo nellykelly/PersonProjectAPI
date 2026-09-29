@@ -3,6 +3,8 @@
 yfinance → `RAW` → **dbt** → a dimensional (star-schema) warehouse.
 Snowflake is the intended target; a local **DuckDB** profile runs the
 whole thing with no account so it can be developed and tested anywhere.
+All three targets (DuckDB, MotherDuck, Snowflake) have been run live —
+see [Verified](#verified).
 
 See [`PROMPT.md`](PROMPT.md) for the original brief,
 [`DIMENSIONAL_MODELING.md`](DIMENSIONAL_MODELING.md) for exactly how dbt
@@ -131,7 +133,7 @@ behind a first-run check.
 Same dbt code — only the adapter and connection change.
 
 ```bash
-pip install dbt-snowflake "snowflake-connector-python[pandas]"
+pip install -r requirements-snowflake.txt
 python tools/snowflake_keygen.py          # RSA key pair, written OUTSIDE the repo
 # paste the printed public key into snowflake/setup.sql, run it in Snowsight
 # fill the SNOWFLAKE_* vars in .env (see .env.example)
@@ -165,7 +167,8 @@ into `marts` — that's the macro. `RAW_SCHEMA` (default `RAW`) is the one
 that matters for where `ingest/load.py` lands raw tables and where the
 dbt sources look for them.
 
-Validate the profile without a live account:
+Validate the profile without a live account (useful in CI, or before
+you've run `setup.sql`):
 
 ```bash
 dbt parse --project-dir warehouse --profiles-dir warehouse --target snowflake
@@ -177,15 +180,17 @@ credentials.
 
 ## Tests
 
-- `pytest` (in this directory, 14 tests) — yfinance normalisation (network
+- `pytest` (in this directory, 17 tests) — yfinance normalisation (network
   faked), retry/backoff behaviour, config reads the environment live
   rather than at import time, an all-null metadata row still lands
   string-typed, DuckDB loader idempotency **and** transactional rollback
-  on a failed insert, the Snowflake loader's schema/database targeting
-  and transactional delete against a fully faked `snowflake.connector`,
-  and the MotherDuck target routing to `md:<database>` and failing fast
-  without a token — none of the last two need a live account.
-- `python run.py build` runs the dbt tests (64): `unique` / `not_null` on
+  on a failed insert; against a fully faked `snowflake.connector`: key-pair
+  auth winning over a password, schema creation and targeting, the
+  staged load (temp stage → one DELETE+INSERT transaction → stage dropped)
+  and its rollback when the insert fails; and the MotherDuck target
+  routing to `md:<database>` and failing fast without a token — none of
+  the Snowflake or MotherDuck tests need a live account.
+- `python run.py build` runs the dbt tests (91 per `dbt ls`): `unique` / `not_null` on
   every key, `relationships` from both facts to all three dims,
   `accepted_values` on `action_type`, range checks on volume / dividend /
   ratio, a `ticker × date` uniqueness test on `stg_prices`, a direct
@@ -241,22 +246,30 @@ so an SCD-2 dimension can be added later without touching ingestion.
 `python run.py all --target duckdb` against the default 9-ticker universe
 (8 tracked securities + the `SPY` benchmark, full `period="max"`):
 94,346 RAW price rows, 1,071 dividends, 43 splits, 9 metadata rows →
-12 models + 1 snapshot built → **85/85 dbt tests pass**. Re-running
-`ingest` leaves row counts unchanged (idempotent). `pytest` (14 tests,
-`market-data-warehouse/tests/`) passes.
+12 models + 1 snapshot built → all dbt tests pass (91 as of 2026-09-28;
+85 when this was first verified). Re-running `ingest` leaves row counts
+unchanged (idempotent). `pytest` (17 tests, `market-data-warehouse/tests/`)
+passes.
 
 **MotherDuck, live** (not just parsed): the exact same universe was
 ingested into a real free-tier MotherDuck account, built, and tested —
-identical numbers, **85/85 dbt tests pass**, idempotency held on a second
-live ingest, and the resulting `dim_security`/`fct_security_price` were
-queried straight back from MotherDuck's cloud to confirm it. `dbt parse
---target snowflake` succeeds with a dummy token (no connection attempted,
-Snowflake has no free tier to run this against live). See
-[`HARDENING.md`](HARDENING.md) for the adversarial pass this all came
-out of.
+identical numbers, **85/85 dbt tests pass** (the count at the time),
+idempotency held on a second live ingest, and the resulting
+`dim_security`/`fct_security_price` were queried straight back from
+MotherDuck's cloud to confirm it.
 
-`dbt parse --target snowflake` succeeds with dummy credentials (no
-connection attempted); `dbt compile`/`run` correctly attempt a real
-connection and fail only on the dummy hostname — the expected boundary
-without a real account. See [`HARDENING.md`](HARDENING.md) for the full
-hole-list this pass found and fixed, and what's deliberately deferred.
+**Snowflake, live** (2026-09-28, a 30-day trial account — non-production):
+`python run.py all --target snowflake` ingested the same universe, then
+built, snapshotted and tested end to end, all green, using the key-pair
+service user from `snowflake/setup.sql`. The first run built 10 of 12
+models and then hit a real dialect difference: Snowflake rejects
+`REGR_SLOPE` over a sliding window frame (error 002303). Rolling beta was
+rewritten as covariance / variance from moving averages, which both
+engines support; against the old DuckDB output it matches to a maximum
+absolute difference of 0.0 across 94,346 rows (the only 9 differing rows
+were each ticker's first day, NaN → NULL). A second difference was caught
+before the run: `GREATEST`/`LEAST` skip NULLs on DuckDB but return NULL on
+Snowflake, which would have silently changed RSI and Sortino; fixed with
+`coalesce`, with identical row hashes before and after. See
+[`HARDENING.md`](HARDENING.md) for the adversarial pass this all came out
+of, the full hole-list, and what's deliberately deferred.

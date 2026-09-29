@@ -73,10 +73,11 @@ The two projects he lists on his resume are both live on this site:
 - **Market Data Warehouse** (`/projects/market-warehouse`) — a Kimball-style dimensional
   data warehouse built with dbt: three conformed dimensions, a five-table fact family,
   and SCD-1/SCD-2 history, fed from a live external market-data API. It runs unchanged
-  across DuckDB, MotherDuck, and Snowflake, with no engine-specific code paths. The
-  fact tables include tested quant and risk metrics — Sharpe ratio, Sortino ratio, beta,
-  volatility, and a three-method price-projection model (OLS trend, random-walk drift,
-  AR(1) mean reversion) — backed by 85 automated data-quality tests.
+  across DuckDB, MotherDuck, and Snowflake (run live on a Snowflake trial account), with
+  no engine-specific code paths. The fact tables include tested quant and risk metrics
+  — Sharpe ratio, Sortino ratio, beta, volatility, and a three-method price-projection
+  model (OLS trend, random-walk drift, AR(1) mean reversion) — backed by 91 automated
+  data-quality tests.
 - **This portfolio site** (`nelsonkoskela.dev`) — an independently scoped, built, and
   shipped, containerized Flask/Python application, including Pipeline World (a live
   SDLC visualizer streaming pipeline runs over WebSockets, built by authoring detailed
