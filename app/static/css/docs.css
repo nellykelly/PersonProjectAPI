@@ -147,7 +147,7 @@
     display: block;
     text-transform: uppercase;
     letter-spacing: .12em;
-    font-size: .66rem;
+    font-size: .7rem;
     margin-bottom: .3rem;
   }
 
@@ -212,7 +212,7 @@
   .part:first-of-type { padding-top: .5rem; }
   .part-label {
     font-family: "IBM Plex Mono", ui-monospace, monospace;
-    font-size: .68rem;
+    font-size: .7rem;
     letter-spacing: .18em;
     text-transform: uppercase;
     color: var(--ink-3);
@@ -305,7 +305,7 @@
   th, td { text-align: left; padding: .6rem .85rem; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
   thead th {
     font-family: "IBM Plex Mono", ui-monospace, monospace;
-    font-size: .68rem; text-transform: uppercase; letter-spacing: .1em;
+    font-size: .7rem; text-transform: uppercase; letter-spacing: .1em;
     color: var(--ink-3); font-weight: 500; background: var(--surface-2);
     border-bottom: 1px solid var(--rule); white-space: nowrap;
   }
@@ -426,7 +426,7 @@
   }
   .broader b {
     font-family: "IBM Plex Mono", ui-monospace, monospace;
-    font-size: .64rem; letter-spacing: .13em; text-transform: uppercase;
+    font-size: .7rem; letter-spacing: .13em; text-transform: uppercase;
     color: var(--warn); display: block; margin-bottom: .2rem; font-weight: 500;
   }
   .story-table td:first-child { white-space: nowrap; font-weight: 600; }

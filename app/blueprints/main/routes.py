@@ -154,9 +154,10 @@ def robots():
     # everyone, INCLUDING AI crawlers (GPTBot, ClaudeBot, PerplexityBot,
     # Google-Extended, ...): this is a public portfolio and being
     # summarisable is the point -- see /llms.txt. The only Disallows are
-    # the two password-gated private sections and the auth pages, which
-    # have nothing to index. This is a hint to well-behaved crawlers, not
-    # access control -- that's the server-side gate.
+    # the password-gated private sections (documentation, job-tracker,
+    # family, trading-bot) and the auth pages, which have nothing to
+    # index. This is a hint to well-behaved crawlers, not access control
+    # -- that's the server-side gate.
     sitemap_url = url_for("main.sitemap", _external=True)
     body = (
         "User-agent: *\n"
@@ -165,6 +166,7 @@ def robots():
         "Disallow: /job-tracker\n"
         "Disallow: /api/job-tracker\n"
         "Disallow: /family\n"
+        "Disallow: /projects/trading-bot\n"
         "Disallow: /auth/\n"
         f"\nSitemap: {sitemap_url}\n"
     )

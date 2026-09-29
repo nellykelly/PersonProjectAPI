@@ -828,7 +828,7 @@ html.js-reveal .reveal-up.is-visible {
 }
 
 .tag {
-  font-size: 0.65rem;
+  font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.05rem;
   border: 1px solid var(--border);
@@ -1498,7 +1498,7 @@ section + section {
 
 .stage-duration {
   display: block;
-  font-size: 0.62rem;
+  font-size: 0.7rem;
   color: var(--fg-light);
   margin-top: 0.15rem;
 }
@@ -1716,7 +1716,7 @@ section + section {
 .ts-tip-title {
   display: block;
   margin-bottom: 0.35rem;
-  font-size: 0.68rem;
+  font-size: 0.7rem;
   letter-spacing: 0.08rem;
   text-transform: uppercase;
   color: #facc15;
@@ -2301,7 +2301,7 @@ html.skip-welcome #welcome-gate {
 .bio-node-label small {
   display: block;
   color: var(--fg-light);
-  font-size: 0.68rem;
+  font-size: 0.7rem;
   margin-top: 0.15rem;
 }
 .bio-node-satellite:hover .bio-node-label,
@@ -2404,7 +2404,7 @@ html.skip-welcome #welcome-gate {
 }
 
 .lc-stat-label {
-  font-size: 0.68rem;
+  font-size: 0.7rem;
   color: var(--fg-light);
   text-transform: uppercase;
   letter-spacing: 0.04rem;
@@ -2550,7 +2550,7 @@ html.skip-welcome #welcome-gate {
 
 .lc-diff {
   display: inline-block;
-  font-size: 0.6rem;
+  font-size: 0.7rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04rem;
@@ -2577,7 +2577,7 @@ html.skip-welcome #welcome-gate {
   border: 1px solid var(--surface-border);
   background: var(--surface);
   color: var(--fg-light) !important;
-  font-size: 0.66rem;
+  font-size: 0.7rem;
   padding: 0.12rem 0.45rem;
   border-radius: 4px;
   margin-left: 0.55rem;

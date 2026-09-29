@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Trading Bot{% endblock %}
+{% block content_class %}wide{% endblock %}
+
+{% block content %}
+<section>
+    <h1 class="major"><img class="page-icon" src="{{ url_for('static', filename='assets/img/icons/trading-bot.svg') }}" alt="">Trading Bot</h1>
+    <p><a href="{{ url_for('trading_bot.lock') }}">Lock this section</a></p>
+
+    <div class="disclaimer-banner">
+        <strong>Not a simulator.</strong> This is a systematic trend-following stock strategy trading a
+        real Alpaca brokerage account -- monthly rebalance, currently running on
+        <strong>{{ (data.mode or "unknown") | upper }}</strong> money (possibly small real money later),
+        with real broker infrastructure underneath. Not investment advice, and past backtested
+        performance (see <a href="{{ url_for('trading_bot.research') }}">research</a>) is not a guarantee
+        of future results.
+    </div>
+
+    {% if not data.available %}
+    <div class="disclaimer-banner">
+        {{ data.reason }}
+    </div>
+    {% else %}
+
+    {% if data.stale %}
+    <div class="flash flash-error">
+        This snapshot is stale (generated {{ data.generated_at }}) -- the bot's sync job may not have run
+        recently. Numbers below are the last known state, not necessarily current.
+    </div>
+    {% endif %}
+
+    <p class="muted">
+        Snapshot generated {{ data.generated_at }}. Mode: <span class="mono">{{ data.mode }}</span>.
+        <a href="{{ url_for('trading_bot.research') }}">See the research behind this strategy &rarr;</a>
+    </p>
+
+    <div class="stat-grid">
+        <div class="stat-tile">
+            <div class="value mono">${{ "{:,.2f}".format(data.live.equity) if data.live.equity is not none else "n/a" }}</div>
+            <div class="label">Equity</div>
+        </div>
+        <div class="stat-tile">
+            <div class="value mono {{ 'pnl-positive' if data.live.day_change_pct is not none and data.live.day_change_pct >= 0 else 'pnl-negative' }}">
+                {{ "%+.2f"|format(data.live.day_change_pct) if data.live.day_change_pct is not none else "n/a" }}%
+            </div>
+            <div class="label">Day Change</div>
+        </div>
+        <div class="stat-tile">
+            <div class="value mono">${{ "{:,.2f}".format(data.live.cash) if data.live.cash is not none else "n/a" }}</div>
+            <div class="label">Cash</div>
+        </div>
+        <div class="stat-tile">
+            <div class="value">{{ data.live.position_count }}</div>
+            <div class="label">Open Positions</div>
+        </div>
+    </div>
+
+    <p class="muted">
+        Last trend rebalance: <span class="mono">{{ data.live.last_trend_rebalance or "n/a" }}</span> &middot;
+        next due (approx., monthly cadence): <span class="mono">{{ data.live.next_trend_rebalance_due or "n/a" }}</span>
+        {% if not data.live.alpha_sleeve_enabled %}
+        &middot; crypto/alpha sleeve: <span class="mono">disabled</span> (see research notes)
+        {% endif %}
+    </p>
+
+    <h2>Positions</h2>
+    {% if data.live.positions %}
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr><th>Symbol</th><th>Qty</th><th>Market Value</th><th>Unrealized P/L</th><th>Price</th></tr>
+            </thead>
+            <tbody>
+                {% for p in data.live.positions %}
+                <tr>
+                    <td class="mono">{{ p.symbol }}</td>
+                    <td class="mono">{{ p.qty }}</td>
+                    <td class="mono">${{ "{:,.2f}".format(p.market_value) if p.market_value is not none else "n/a" }}</td>
+                    <td class="mono {{ 'pnl-positive' if p.unrealized_pl is not none and p.unrealized_pl >= 0 else 'pnl-negative' }}">
+                        ${{ "{:,.2f}".format(p.unrealized_pl) if p.unrealized_pl is not none else "n/a" }}
+                        {% if p.unrealized_plpc is not none %}({{ "%+.2f"|format(p.unrealized_plpc * 100) }}%){% endif %}
+                    </td>
+                    <td class="mono">${{ "%.2f"|format(p.current_price) if p.current_price is not none else "n/a" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="muted">
+        No open positions right now. {% if data.live.pending_orders %}That's expected during a
+        rebalance in flight -- see pending orders below.{% else %}Not unusual between rebalances or
+        while the market is closed.{% endif %}
+    </p>
+    {% endif %}
+
+    {% if data.live.pending_orders %}
+    <h2>Pending Orders <span class="muted">({{ data.live.pending_order_count }})</span></h2>
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr><th>Symbol</th><th>Side</th><th>Notional</th><th>Qty</th><th>Submitted</th></tr>
+            </thead>
+            <tbody>
+                {% for o in data.live.pending_orders %}
+                <tr>
+                    <td class="mono">{{ o.symbol }}</td>
+                    <td class="mono">{{ o.side }}</td>
+                    <td class="mono">{{ "$%.2f"|format(o.notional) if o.notional is not none else "n/a" }}</td>
+                    <td class="mono">{{ o.qty if o.qty is not none else "n/a" }}</td>
+                    <td class="mono">{{ o.submitted_at }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    {% endif %}
+</section>
+{% endblock %}

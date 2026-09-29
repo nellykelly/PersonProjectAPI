@@ -446,6 +446,37 @@ class Config:
     )
 
     # ------------------------------------------------------------------
+    # Trading Bot (S:\Tradingbot -- an entirely separate repo/host, unlike
+    # market-data-warehouse above which is a sibling directory inside this
+    # one). It exports a JSON snapshot (scripts/export_stats.py) that has to
+    # be synced onto wherever this site actually runs; there's no shared
+    # filesystem to default into the way MARKET_WAREHOUSE_DB_PATH can. The
+    # default here is a path *inside this app's own instance/ folder*
+    # (gitignored, same place site.db lives) -- the sync step's job is to
+    # land the file there, not to point this app at some other repo. See
+    # app/blueprints/trading_bot/README.md for the sync options.
+    TRADING_BOT_STATS_PATH = os.environ.get(
+        "TRADING_BOT_STATS_PATH",
+        str(pathlib.Path(__file__).resolve().parent.parent / "instance" / "trading_bot_stats.json"),
+    )
+    # A snapshot older than this reads as stale on the page (still shown,
+    # just flagged) rather than silently passing off day-old numbers as
+    # current -- the bot's own job cadence is daily, so a couple of missed
+    # syncs is the normal ceiling before this should fire.
+    TRADING_BOT_STALE_AFTER_HOURS = float(os.environ.get("TRADING_BOT_STALE_AFTER_HOURS", "48"))
+
+    # Password gate on /projects/trading-bot -- a real (paper-for-now,
+    # possibly real-money-later) brokerage account, gated as hard as this
+    # site gates anything: exactly the same fail-closed model as
+    # DOCS_PASSWORD_HASH/JOB_TRACKER_PASSWORD_HASH above (a Werkzeug hash in
+    # the environment, never a plaintext or checked-in value; unset means
+    # the whole section 503s rather than defaulting open). A *separate*
+    # secret from the other two gates on purpose. The .env `$$`-escaping
+    # gotcha applies (Werkzeug hashes contain `$`) -- see the README.
+    TRADING_BOT_PASSWORD_HASH = os.environ.get("TRADING_BOT_PASSWORD_HASH")
+    TRADING_BOT_UNLOCK_RATE_LIMIT = os.environ.get("TRADING_BOT_UNLOCK_RATE_LIMIT", "10 per hour")
+
+    # ------------------------------------------------------------------
     # Personal AI assistant (app/services/assistant, app/blueprints/assistant)
     # ------------------------------------------------------------------
     # Chat runs on Groq's free tier (OpenAI-shaped API, no card). Unset

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Unlock job tracker | Nelson Koskela</title>
+<title>Unlock Trading Bot | Nelson Koskela</title>
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" href="{{ url_for('static', filename='assets/img/favicon.ico') }}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -63,18 +63,18 @@
 <body>
 <div class="gate-wrap">
   <div class="gate-card">
-    <h1>Job tracker</h1>
-    <p class="sub">A private page. Nothing to see here without the password.</p>
+    <h1>Trading Bot</h1>
+    <p class="sub">A private page over a real brokerage account. Nothing to see here without the password.</p>
 
     {% if error %}<div class="gate-err" role="alert">{{ error }}</div>{% endif %}
 
     {% if unavailable %}
       <p class="sub">No password is configured on this deployment, so the section is closed.</p>
     {% else %}
-      <form method="post" action="{{ url_for('job_tracker.unlock') }}">
+      <form method="post" action="{{ url_for('trading_bot.index') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <label for="jt-password">Password</label>
-        <input type="password" id="jt-password" name="password"
+        <label for="tb-password">Password</label>
+        <input type="password" id="tb-password" name="password"
                autocomplete="current-password" autofocus required>
         <button type="submit">Unlock</button>
       </form>

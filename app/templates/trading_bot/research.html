@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Trading Bot Research{% endblock %}
+{% block content_class %}wide{% endblock %}
+
+{% block content %}
+<section>
+    <p><a href="{{ url_for('trading_bot.index') }}">&larr; Back to overview</a> &middot; <a href="{{ url_for('trading_bot.lock') }}">Lock this section</a></p>
+    <h1 class="major">Trading Bot: research &amp; validation</h1>
+
+    <div class="disclaimer-banner">
+        <strong>Not investment advice.</strong> This is a walk-forward validation of a real, deployed
+        strategy -- not a pitch. The numbers below include the ones that don't flatter it (a down year,
+        a losing-week rate close to 40%). Past performance, backtested or live, is not a guarantee of
+        future results.
+    </div>
+
+    {% if not data.available %}
+    <div class="disclaimer-banner">{{ data.reason }}</div>
+    {% else %}
+    {% set r = data.research %}
+
+    <p class="muted">
+        As of {{ r.as_of }}. {{ r.methodology }}
+    </p>
+    <p class="muted">
+        <strong>Universe:</strong> {{ r.universe }}<br>
+        <strong>Strategy:</strong> {{ r.strategy }}<br>
+        <strong>Period:</strong> {{ r.period }}
+    </p>
+
+    <div class="stat-grid">
+        <div class="stat-tile">
+            <div class="value mono">{{ r.sharpe if r.sharpe is not none else "n/a" }}</div>
+            <div class="label">Sharpe</div>
+        </div>
+        <div class="stat-tile">
+            <div class="value mono">{{ "%+.1f"|format(r.annualized_return_pct) if r.annualized_return_pct is not none else "n/a" }}%</div>
+            <div class="label">Annualized Return</div>
+        </div>
+        <div class="stat-tile">
+            <div class="value mono">{{ "%+.1f"|format(r.total_return_pct) if r.total_return_pct is not none else "n/a" }}%</div>
+            <div class="label">Total Return</div>
+        </div>
+        <div class="stat-tile">
+            <div class="value mono pnl-negative">{{ "%.1f"|format(r.max_drawdown_pct) if r.max_drawdown_pct is not none else "n/a" }}%</div>
+            <div class="label">Max Drawdown</div>
+        </div>
+    </div>
+
+    <h2>Return by year</h2>
+    <div class="chart-wrapper">
+        <canvas id="trading-bot-by-year-chart" data-by-year='{{ r.by_year | tojson }}' height="90"></canvas>
+    </div>
+
+    <h2>Weekly hit rate</h2>
+    <p class="muted">
+        The honest answer to "will I see profit this week" -- included even though it's an uncomfortable
+        number. A profitable week is common, not certain.
+    </p>
+    <div class="stat-grid">
+        <div class="stat-tile">
+            <div class="value mono">{{ r.weekly_hit_rate_pct if r.weekly_hit_rate_pct is not none else "n/a" }}%</div>
+            <div class="label">Weeks Profitable</div>
+        </div>
+        <div class="stat-tile">
+            <div class="value mono {{ 'pnl-positive' if r.weekly_mean_return_pct is not none and r.weekly_mean_return_pct >= 0 else 'pnl-negative' }}">
+                {{ "%+.2f"|format(r.weekly_mean_return_pct) if r.weekly_mean_return_pct is not none else "n/a" }}%
+            </div>
+            <div class="label">Mean Weekly Return</div>
+        </div>
+        <div class="stat-tile">
+            <div class="value mono">{{ "%.2f"|format(r.weekly_std_pct) if r.weekly_std_pct is not none else "n/a" }}%</div>
+            <div class="label">Weekly Std Dev</div>
+        </div>
+    </div>
+
+    {% if r.notes %}
+    <h2>Caveats</h2>
+    <ul>
+        {% for note in r.notes %}
+        <li class="muted">{{ note }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% endif %}
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if data.available %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="{{ url_for('static', filename='js/trading_bot.js') }}"></script>
+{% endif %}
+{% endblock %}

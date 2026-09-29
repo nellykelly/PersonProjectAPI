@@ -222,6 +222,7 @@ def _register_blueprints(app: Flask) -> None:
     from app.blueprints.timed_squares import bp as timed_squares_bp
     from app.blueprints.tiny_jvm import bp as tiny_jvm_bp
     from app.blueprints.market_warehouse import bp as market_warehouse_bp
+    from app.blueprints.trading_bot import bp as trading_bot_bp
     from app.blueprints.leetcode import bp as leetcode_bp
     from app.blueprints.auth import bp as auth_bp
     from app.blueprints.job_tracker import bp as job_tracker_bp
@@ -249,6 +250,10 @@ def _register_blueprints(app: Flask) -> None:
     # market-data-warehouse sibling project's built DuckDB/MotherDuck
     # file (yfinance -> dbt star schema). GET-only, no state of its own.
     app.register_blueprint(market_warehouse_bp, url_prefix="/projects/market-warehouse")
+    # /projects/trading-bot -- overview + live stats, and /research for the
+    # backtest methodology/numbers. Read-only, no state of its own (see
+    # app/services/trading_bot.py); GET-only so no CSRF exemption needed.
+    app.register_blueprint(trading_bot_bp, url_prefix="/projects/trading-bot")
     app.register_blueprint(leetcode_bp, url_prefix="/leetcode-150")
     app.register_blueprint(auth_bp, url_prefix="/auth")
     # Private job-application tracker. Password-gated (JOB_TRACKER_PASSWORD_HASH),

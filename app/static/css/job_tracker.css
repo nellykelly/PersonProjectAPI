@@ -77,7 +77,7 @@ body.jt {
 .jt-stat-n { font-size: 1.6rem; font-weight: 700; line-height: 1; }
 .jt-stat-l {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: .68rem; letter-spacing: .1em; text-transform: uppercase;
+  font-size: .7rem; letter-spacing: .1em; text-transform: uppercase;
   color: var(--ink-3);
 }
 

@@ -128,6 +128,12 @@ PROJECTS = [
     },
 ]
 
+# Trading Bot (/projects/trading-bot) is deliberately NOT in this list --
+# it's password-gated like /job-tracker and /family (a real brokerage
+# account is the most sensitive data on this site), so it's never linked
+# from here, the nav, or the footer disclaimer. See
+# app/blueprints/trading_bot/README.md.
+
 # Smaller, earlier projects -- not part of this site's live demos, just
 # named + linked for range (Rails/game-dev, not just Flask) and, in
 # Beeznest's case, concrete social proof (a placement).
