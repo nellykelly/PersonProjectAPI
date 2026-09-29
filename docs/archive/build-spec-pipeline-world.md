@@ -1,3 +1,11 @@
+> **Archived 2026-09-28.** This was the original planning spec; both projects
+> are now fully built and live. For the current, as-built reference read
+> [`app/blueprints/pipeline_world/README.md`](../../app/blueprints/pipeline_world/README.md),
+> [`app/blueprints/sre_infra/README.md`](../../app/blueprints/sre_infra/README.md),
+> and section 1 of [`docs/reference/INTERVIEW-NOTES.md`](../reference/INTERVIEW-NOTES.md)
+> (a detailed end-to-end walkthrough of how the pipeline actually runs today).
+> Kept here as historical planning material, not as current documentation.
+
 # Projects 3 & 4: Pipeline World (SDLC Sim) + SRE Infra Layer
 
 These two projects share one codebase/dataset but are presented as **separate portfolio pieces** — Project 3 demonstrates DevOps/CI-CD + SQL depth, Project 4 demonstrates infra/SRE patterns (queueing, caching, rate limiting) built on top of it. Splitting them lets each one carry its own clear narrative on the site instead of being buried as a sub-feature.

@@ -4,7 +4,7 @@ A record of the actual train of thought from one conversation working
 through "can hashing solve fast semantic search," idea by idea -- not a
 rehearsed answer. The polished, interview-ready version of the same ground
 (with code references into this repo's own `/assistant`) lives in
-`docs/INTERVIEW-NOTES.md`, section J. This file is the log of how the
+`docs/reference/INTERVIEW-NOTES.md`, section J. This file is the log of how the
 reasoning actually got there, kept because the progression itself is worth
 remembering, not just the conclusion.
 

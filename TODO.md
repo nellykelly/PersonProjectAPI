@@ -23,8 +23,9 @@ Last swept for loose ends: 2026-09-24.
       run for real before Job Discovery/Hera-eval history stop being "on demand only"
 - [ ] Tiny JVM steps 5-6 (see `docs/build-spec-tiny-jvm.md` §11): Wokwi ESP32
       firmware view, standalone GitHub repo + README for the VM/toolchain
-- [ ] `HANDOVER.md` is a session artifact and its "nothing committed" section is
-      now stale (the warehouse is committed). Delete it or move it to `docs/`
+- [x] `HANDOVER.md` is a session artifact and its "nothing committed" section is
+      now stale (the warehouse is committed). Moved to `docs/archive/HANDOVER.md`
+      (2026-09-28 documentation audit)
 - [ ] Market warehouse ideas, optional (from HANDOVER): fundamentals via
       `INFO_FIELDS`, earnings calendar fact, a live Snowflake run
 - [ ] Jev is built but **off on purpose** (no `TYPESAFE_API_KEY`); only turn it on

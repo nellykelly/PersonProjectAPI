@@ -1,3 +1,10 @@
+> **Archived 2026-09-28**, per this repo's own `TODO.md` ("HANDOVER.md is a
+> session artifact and its 'nothing committed' section is now stale — the
+> warehouse is committed. Delete it or move it to `docs/`"). Moved rather than
+> deleted; its "nothing committed" claim is stale (the market-data-warehouse
+> work it describes has since been committed) and its drive-relocation section
+> is a one-time task already completed. Kept for history, not current state.
+
 # Session Handover — 2026-09-17
 
 Written for whoever (human or the next Claude Code session) picks this

@@ -1,5 +1,13 @@
 # Build Prompt: Nelson Koskela Personal Website
 
+> **Status: historical.** This is the original build prompt. All three
+> projects it specifies (Trading Simulator, QR/Company Scorer, Network
+> Sniffer) are long since built and live -- for their current, as-built
+> behavior read `app/blueprints/trading/README.md`, `app/blueprints/qr/README.md`,
+> and `app/blueprints/sniffer/README.md` instead. Kept in place (not moved to
+> `docs/archive/`) because `app/services/pricing.py` and
+> `app/services/net_monitor.py` still cite this exact path in code comments.
+
 ## Context
 Build a personal portfolio website for a software engineer (JPMorgan Chase & Co., BS Computer Science). The site should be built in **Flask (Python)**, containerized with **Docker**, and showcase both professional background and independent technical projects. This is a portfolio piece meant to impress technical recruiters/hiring managers, so code quality and clean architecture matter as much as the final UI.
 

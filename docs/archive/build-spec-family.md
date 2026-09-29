@@ -1,3 +1,11 @@
+> **Archived 2026-09-28.** This was the pre-build implementation authority for
+> `/family`; the section is now fully built and live. For the current, as-built
+> reference read [`app/blueprints/family/README.md`](../../app/blueprints/family/README.md)
+> (routes, data model, config, tests, deploy) and
+> [`docs/family-design.md`](../family-design.md) (the current visual-design
+> record). Kept here as the historical build authority, not as current
+> documentation.
+
 # Build Spec: the `/family` section
 
 A password-gated, solarpunk-themed, mobile-first mini-suite for a two-person

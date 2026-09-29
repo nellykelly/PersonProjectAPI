@@ -138,7 +138,7 @@ ticker and watch its PnL update against real (delayed, free-tier) market data.
   abbreviates past `$100K` (`K`) and `$1M` (`M`) rather than printing the full
   comma-grouped figure -- a 6-figure value, especially a negative one with its own minus
   sign, is wide enough to overflow a stat-tile's fixed width otherwise (found live, twice,
-  in two different shapes -- see `docs/INTERVIEW-NOTES.md`).
+  in two different shapes -- see `docs/reference/INTERVIEW-NOTES.md`).
 - **"Live" ticking:** the shared trade book auto-refreshes every 30s; a position's detail
   page polls a JSON quote endpoint every 15s and renders a PnL/price chart (Chart.js via
   CDN) built from `yfinance` history. Free-tier `yfinance` is rate-limited, so this is

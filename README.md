@@ -3,8 +3,9 @@
 Personal portfolio site for Nelson Koskela, a software engineer in Houston, TX (Software
 Engineer II at JPMorgan Chase & Co., Corporate & Investment Banking, 2022&ndash;2026).
 Built with Flask (blueprints, one per section/project),
-Docker, and (for Pipeline World) Redis + Postgres, per [`docs/build-spec.md`](docs/build-spec.md)
-and [`docs/build-spec-pipeline-world.md`](docs/build-spec-pipeline-world.md).
+Docker, and (for Pipeline World) Redis + Postgres. Original build specs (historical --
+both projects are long since built) at [`docs/build-spec.md`](docs/build-spec.md)
+and [`docs/archive/build-spec-pipeline-world.md`](docs/archive/build-spec-pipeline-world.md).
 
 - **GitHub:** https://github.com/nellykelly
 - **LinkedIn:** https://www.linkedin.com/in/nelson-k-70180a101
@@ -105,9 +106,15 @@ app/                  Flask package (application factory in app/__init__.py)
                        pipeline.py, queue.py, world_cache.py, analytics.py
   static/ templates/    Dark theme (HTML5 UP "Dimension", see below) + custom CSS/JS
 tests/                 pytest, one file per blueprint/service
-docs/                  build-spec.md, build-spec-pipeline-world.md (original specs), SECURITY-NOTE.md,
-                        INTERVIEW-NOTES.md (personal reference: decisions/tradeoffs/bugs worth
-                        discussing in an interview -- not linked from the live site)
+docs/                  Start at CLAUDE.md (repo root) for a one-page index. In brief:
+                        build-spec.md / build-spec-tiny-jvm.md / family-design.md
+                        (active, still cited from code/templates -- see below),
+                        SECURITY-NOTE.md (still-actionable secret-rotation note),
+                        archive/ (completed build specs + retired session notes,
+                        kept for history), reference/ (INTERVIEW-NOTES.md -- personal
+                        reference: decisions/tradeoffs/bugs worth discussing in an
+                        interview, not linked from the live site -- and the RAG/hashing
+                        brainstorm log it cites)
 legacy/                Retired code from the original repo (blog, Google Calendar
                         integration, the licensed "pink" Colorlib template) -- kept for
                         history, not part of the running app. See legacy/README.md.
@@ -320,7 +327,7 @@ the Site Traffic Analytics board tracks p50/p90/p99 latency and 4xx/5xx rates fo
 the app's own traffic. There's deliberately no external uptime monitor, no alerting,
 and no log aggregation past what `docker compose logs` gives you -- reasonable for a
 single-owner personal site, and the honest limit to name if this question comes up
-(see `docs/INTERVIEW-NOTES.md`).
+(see `docs/reference/INTERVIEW-NOTES.md`).
 
 See [`/documentation`](https://www.nelsonkoskela.dev/documentation) on the live site
 (section 29, "Containerisation") for the Dockerfile itself explained line by line --
