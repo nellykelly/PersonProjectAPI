@@ -141,6 +141,10 @@ python run.py check --target snowflake    # connection + dbt debug, loads nothin
 python run.py all --target snowflake
 ```
 
+Once it's loaded, [`snowflake/labs/`](snowflake/labs/README.md) has
+five hands-on labs on this data: Time Travel and cloning, query profiles
+and pruning, roles and masking, stage/COPY loading, and streams for CDC.
+
 `snowflake/setup.sql` creates a least-privilege `MARKET_ETL` role, an
 X-Small `MARKET_WH` warehouse (60s auto-suspend) under a 20-credit/month
 resource monitor, the `MARKET` database, and a `TYPE=SERVICE` user that
