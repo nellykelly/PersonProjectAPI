@@ -73,6 +73,28 @@ contain other visitors' own text), nothing from a conversation history,
 nothing said to the owner. See that function's docstring for the reasoning
 behind each individual rule.
 
+Semantic layer (`semantic_lookup()`, opt-in via `ASSISTANT_SEMANTIC_CACHE_ENABLED`,
+default off). The exact-match cache above only ever helps when a visitor's
+wording normalizes to a byte-identical key -- "what does he do" and "tell
+me what Nelson does" are different keys even though a good answer to one
+answers the other. `semantic_lookup()` is a fallback tried only after an
+exact-match miss: it embeds the question with the same local, free
+`fastembed` embedder retrieval already uses (no network call, no added
+cost) and compares it against every live cached answer's own stored
+embedding, returning the closest one if its cosine similarity clears
+`ASSISTANT_SEMANTIC_CACHE_THRESHOLD` (default 0.93). `store()` only
+attaches an embedding (`_semantic_vector`) and a fingerprint
+(`_semantic_fingerprint`, the same content/prompt/config triple
+`_cache_key()` hashes) to a payload when the flag is on, so a disabled
+semantic layer costs the exact-match cache nothing extra. The fingerprint
+is re-checked at lookup time, independently of Redis TTL, so a semantic hit
+can never serve an answer generated under a retired corpus, prompt, or
+model/retrieval setting even if an old entry happens to still be live.
+Never embedding-similarity across visitor-specific or time-sensitive
+content: the same `is_cacheable_turn()` rules gate what gets stored in the
+first place, semantic or not, so there's nothing visitor-specific or live
+for this layer to accidentally replay.
+
 Known residual risk (flagged by red-cell review, not fully closed here):
 `is_cacheable_turn()` and the Prompt Guard both check for *unsafe* inputs
 and *unsafe* outputs (tool data, owner context, injected instructions),
@@ -93,6 +115,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import unicodedata
 
 from app.services.queue import get_redis_connection
@@ -167,17 +190,48 @@ def _config_fingerprint(config) -> str:
     return "\x1f".join(parts)
 
 
+def _fingerprint_parts(config) -> list[str]:
+    """The three-part fingerprint (content, prompt, tunable config) that
+    both `_cache_key()` and the semantic layer's staleness check are built
+    from -- a list (not a tuple) so it round-trips through JSON unchanged
+    for the equality check in `semantic_lookup()`."""
+    return [_content_version(), _prompt_version(), _config_fingerprint(config)]
+
+
 def _cache_key(question: str, config) -> str:
-    fingerprint = "\x1f".join(
-        [
-            _normalize_question(question),
-            _content_version(),
-            _prompt_version(),
-            _config_fingerprint(config),
-        ]
-    )
+    fingerprint = "\x1f".join([_normalize_question(question), *_fingerprint_parts(config)])
     digest = hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()
     return f"{_KEY_PREFIX}{digest}"
+
+
+_DEFAULT_SEMANTIC_THRESHOLD = 0.93
+_DEFAULT_SEMANTIC_MAX_SCAN = 500
+
+
+def _semantic_cache_enabled(config) -> bool:
+    return bool(config.get("ASSISTANT_SEMANTIC_CACHE_ENABLED", False))
+
+
+def _embed_for_semantic_cache(question: str, config) -> list[float]:
+    """The same local, free embedder retrieval already uses -- imported
+    lazily so this module (and every caller of `store()`/`lookup()` with
+    the semantic flag off) never pays for loading an embedding model it
+    isn't using."""
+    from .embeddings import build_embedder
+
+    embedder = build_embedder(config)
+    return embedder.embed_query(_normalize_question(question))
+
+
+def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(x * x for x in b))
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    return dot / (norm_a * norm_b)
 
 
 def lookup(question: str, config) -> dict | None:
@@ -201,18 +255,99 @@ def lookup(question: str, config) -> dict | None:
         return None
 
 
+def semantic_lookup(question: str, config) -> dict | None:
+    """A fallback for an exact-match `lookup()` miss: compare `question`'s
+    embedding against every live cached answer's own stored embedding and
+    return the closest one if it clears `ASSISTANT_SEMANTIC_CACHE_THRESHOLD`
+    (default 0.93). Off by default (`ASSISTANT_SEMANTIC_CACHE_ENABLED`);
+    the caller is expected to try `lookup()` first since an exact match is
+    cheaper and this never needs to run when one already hit.
+
+    Only ever matches against entries stored with a semantic vector under
+    the *current* fingerprint (`_fingerprint_parts`) -- an entry cached
+    before a reindex, a prompt edit, or a retrieval/model config change is
+    silently skipped rather than served stale, independent of whether its
+    Redis TTL has expired yet.
+
+    Bounded scan: at most `ASSISTANT_SEMANTIC_CACHE_MAX_SCAN` (default 500)
+    live cache entries are compared, so a lookup can never become unbounded
+    work -- on this site's traffic and the default six-hour TTL, that cap
+    is normally far more than the cache ever actually holds at once.
+
+    Fails open exactly like `lookup()`: a disabled flag, Redis being down,
+    the embedder being unavailable, or a corrupt entry are all treated as a
+    plain miss, never an error the visitor sees."""
+    if not _semantic_cache_enabled(config):
+        return None
+    try:
+        threshold = float(
+            config.get("ASSISTANT_SEMANTIC_CACHE_THRESHOLD", _DEFAULT_SEMANTIC_THRESHOLD)
+        )
+        max_scan = int(
+            config.get("ASSISTANT_SEMANTIC_CACHE_MAX_SCAN", _DEFAULT_SEMANTIC_MAX_SCAN)
+        )
+        query_vector = _embed_for_semantic_cache(question, config)
+        current_fingerprint = _fingerprint_parts(config)
+
+        connection = get_redis_connection()
+        best_score = -1.0
+        best_payload: dict | None = None
+        for i, key in enumerate(connection.scan_iter(match=f"{_KEY_PREFIX}*")):
+            if i >= max_scan:
+                break
+            raw = connection.get(key)
+            if raw is None:
+                continue
+            payload = json.loads(raw)
+            vector = payload.get("_semantic_vector")
+            if vector is None or payload.get("_semantic_fingerprint") != current_fingerprint:
+                continue
+            score = _cosine_similarity(query_vector, vector)
+            if score > best_score:
+                best_score, best_payload = score, payload
+
+        if best_payload is not None and best_score >= threshold:
+            logger.info(
+                "assistant semantic cache hit (score=%.4f, threshold=%.4f)",
+                best_score,
+                threshold,
+            )
+            best_payload.pop("_semantic_vector", None)
+            best_payload.pop("_semantic_fingerprint", None)
+            return best_payload
+        return None
+    except Exception:
+        logger.warning(
+            "assistant semantic cache lookup failed; treating as a miss",
+            exc_info=True,
+        )
+        return None
+
+
 def store(question: str, payload: dict, config) -> None:
     """Cache `payload` (must be JSON-serializable, e.g. {"reply",
     "sources", "charts", "model"}) for `question`, for
     ASSISTANT_CACHE_TTL_SECONDS. A no-op if the cache is disabled, and
     fails open -- never raises -- if Redis or the content/prompt-version
-    lookups it needs for the key are unavailable."""
+    lookups it needs for the key are unavailable.
+
+    When `ASSISTANT_SEMANTIC_CACHE_ENABLED` is on, also embeds `question`
+    (local `fastembed`, no network call) and stores that vector plus the
+    current fingerprint alongside the payload, under keys prefixed `_` so
+    they're unambiguously metadata rather than part of the cached answer
+    `_from_cache()` reads back. Skipped entirely when the flag is off, so a
+    disabled semantic layer adds no embedding cost to every cache store."""
     if not config.get("ASSISTANT_CACHE_ENABLED", True):
         return
     try:
         key = _cache_key(question, config)
         ttl = int(config.get("ASSISTANT_CACHE_TTL_SECONDS", 21600))
-        get_redis_connection().set(key, json.dumps(payload), ex=ttl)
+        to_store = payload
+        if _semantic_cache_enabled(config):
+            to_store = dict(payload)
+            to_store["_semantic_vector"] = _embed_for_semantic_cache(question, config)
+            to_store["_semantic_fingerprint"] = _fingerprint_parts(config)
+        get_redis_connection().set(key, json.dumps(to_store), ex=ttl)
     except Exception:
         logger.warning(
             "assistant answer cache store failed; continuing without caching this answer",

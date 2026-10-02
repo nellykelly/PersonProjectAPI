@@ -126,7 +126,7 @@ def test_load_cases_rejects_duplicate_names(tmp_path):
 
 def test_real_eval_cases_file_loads_with_why_and_only_known_checks():
     cases = evals.load_cases()
-    assert 10 <= len(cases) <= 14
+    assert 30 <= len(cases) <= 60
     for case in cases:
         assert case["why"].strip(), f"{case['name']} has no why"
         assert case["checks"], f"{case['name']} has no checks"
@@ -520,6 +520,27 @@ def test_cli_eval_exits_nonzero_on_failure(app, monkeypatch, eval_cases_file):
     assert "0/1 passed" in result.output
 
 
+def test_cli_eval_prints_security_category_breakdown(app, monkeypatch, tmp_path):
+    p = _write_cases(
+        tmp_path,
+        [
+            _case(name="prompt_injection_reveal_system_prompt", question="hi", checks={"must_contain_any": ["hi"]}),
+            _case(name="tool_misuse_skip_preview_direct_open_position", question="hi", checks={"must_contain_any": ["hi"]}),
+        ],
+    )
+    app.config["ASSISTANT_LLM_BACKEND"] = "scripted"
+    monkeypatch.setattr(evals, "_DEFAULT_CASES_PATH", p)
+    with app.app_context():
+        db.create_all()
+        SCRIPTED_BACKEND.push({"text": "hi there"}, {"text": "hi there"})
+        result = app.test_cli_runner().invoke(args=["assistant", "eval"])
+
+    assert result.exit_code == 0, result.output
+    assert "Security-category pass rates:" in result.output
+    assert "prompt_injection     1/1" in result.output
+    assert "tool_misuse          1/1" in result.output
+
+
 def test_cli_eval_no_pace_flag_is_accepted(app, monkeypatch, eval_cases_file):
     app.config["ASSISTANT_LLM_BACKEND"] = "scripted"
     monkeypatch.setattr(evals, "_DEFAULT_CASES_PATH", eval_cases_file)
@@ -531,6 +552,207 @@ def test_cli_eval_no_pace_flag_is_accepted(app, monkeypatch, eval_cases_file):
         )
 
     assert result.exit_code == 0, result.output
+
+
+# ---------------------------------------------------------------------------
+# security_category_breakdown
+# ---------------------------------------------------------------------------
+
+
+def test_security_category_breakdown_groups_by_naming_prefix():
+    results = [
+        _result("prompt_injection_reveal_system_prompt", True),
+        _result("prompt_injection_roleplay_dan", False),
+        _result("injection_indirect_pasted_job_description", True),
+        _result("tool_misuse_skip_preview_direct_open_position", True),
+        _result("false_claim_no_degree", False),
+        _result("real_project_market_warehouse_detail", True),  # not a security case
+    ]
+
+    breakdown = evals.security_category_breakdown(results)
+
+    assert breakdown == {
+        "prompt_injection": (1, 2),
+        "injection_indirect": (1, 1),
+        "tool_misuse": (1, 1),
+        "false_claim": (0, 1),
+    }
+
+
+def test_security_category_breakdown_empty_when_no_security_cases():
+    results = [_result("real_project_market_warehouse_detail", True)]
+    assert evals.security_category_breakdown(results) == {}
+
+
+# ---------------------------------------------------------------------------
+# Regression gate: build_baseline / load_baseline / write_baseline /
+# check_regression
+# ---------------------------------------------------------------------------
+
+
+def _result(name="c1", passed=True) -> evals.CaseResult:
+    return evals.CaseResult(name=name, passed=passed)
+
+
+def test_build_baseline_summarizes_pass_rate_and_failures():
+    results = [_result("a", True), _result("b", False), _result("c", True)]
+    baseline = evals.build_baseline(results)
+
+    assert baseline["total_cases"] == 3
+    assert baseline["passed_cases"] == 2
+    assert baseline["pass_rate"] == pytest.approx(2 / 3, abs=1e-4)
+    assert baseline["failing_cases"] == ["b"]
+    assert "recorded_at" in baseline
+
+
+def test_write_baseline_then_load_baseline_round_trips(tmp_path):
+    p = tmp_path / "eval_baseline.json"
+    baseline = evals.build_baseline([_result("a", True), _result("b", False)])
+
+    written = evals.write_baseline(baseline, path=p)
+
+    assert written == p
+    loaded = evals.load_baseline(p)
+    assert loaded == baseline
+
+
+def test_load_baseline_returns_none_when_file_is_missing(tmp_path):
+    assert evals.load_baseline(tmp_path / "does-not-exist.json") is None
+
+
+def test_check_regression_with_no_baseline_never_regresses():
+    results = [_result("a", False), _result("b", False)]
+    verdict = evals.check_regression(results, baseline=None, threshold=0.1)
+
+    assert verdict.regressed is False
+    assert verdict.baseline_pass_rate is None
+    assert "no committed baseline" in verdict.message
+
+
+def test_check_regression_passes_within_threshold():
+    baseline = {"pass_rate": 1.0, "failing_cases": []}
+    # 9/10 passing is a 10-point drop from a 100% baseline -- exactly at a
+    # 0.10 threshold, which `drop > threshold` treats as NOT a regression.
+    results = [_result(f"c{i}", i != 0) for i in range(10)]
+
+    verdict = evals.check_regression(results, baseline, threshold=0.10)
+
+    assert verdict.regressed is False
+    assert verdict.current_pass_rate == pytest.approx(0.9)
+
+
+def test_check_regression_fails_beyond_threshold():
+    baseline = {"pass_rate": 1.0, "failing_cases": []}
+    results = [_result(f"c{i}", i < 7) for i in range(10)]  # 7/10 = 30-point drop
+
+    verdict = evals.check_regression(results, baseline, threshold=0.10)
+
+    assert verdict.regressed is True
+    assert "exceeding" in verdict.message
+
+
+def test_check_regression_reports_only_newly_failing_cases():
+    baseline = {"pass_rate": 0.5, "failing_cases": ["already_broken"]}
+    results = [
+        _result("already_broken", False),
+        _result("newly_broken", False),
+        _result("still_fine", True),
+    ]
+
+    verdict = evals.check_regression(results, baseline, threshold=0.10)
+
+    assert verdict.newly_failing == ["newly_broken"]
+
+
+# ---------------------------------------------------------------------------
+# CLI: `flask assistant eval-gate` and `flask assistant eval-baseline`
+# ---------------------------------------------------------------------------
+
+
+def test_cli_eval_gate_passes_with_no_committed_baseline(app, monkeypatch, eval_cases_file, tmp_path):
+    app.config["ASSISTANT_LLM_BACKEND"] = "scripted"
+    monkeypatch.setattr(evals, "_DEFAULT_CASES_PATH", eval_cases_file)
+    monkeypatch.setattr(evals, "_DEFAULT_BASELINE_PATH", tmp_path / "eval_baseline.json")
+    with app.app_context():
+        db.create_all()
+        SCRIPTED_BACKEND.push({"text": "hi there"})
+        result = app.test_cli_runner().invoke(
+            args=["assistant", "eval-gate", "--case", "pass_case"]
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "no committed baseline" in result.output
+
+
+def test_cli_eval_gate_fails_on_a_real_regression(app, monkeypatch, eval_cases_file, tmp_path):
+    app.config["ASSISTANT_LLM_BACKEND"] = "scripted"
+    monkeypatch.setattr(evals, "_DEFAULT_CASES_PATH", eval_cases_file)
+    baseline_path = tmp_path / "eval_baseline.json"
+    evals.write_baseline({"pass_rate": 1.0, "failing_cases": []}, path=baseline_path)
+    monkeypatch.setattr(evals, "_DEFAULT_BASELINE_PATH", baseline_path)
+    with app.app_context():
+        db.create_all()
+        # Both cases queued; "fail_case"'s check can never match either reply,
+        # so this is the demonstrated regression: baseline was 100%, this run
+        # drops to 50%, well past the 10% default threshold.
+        SCRIPTED_BACKEND.push({"text": "hi there"})
+        SCRIPTED_BACKEND.push({"text": "hi there"})
+        result = app.test_cli_runner().invoke(args=["assistant", "eval-gate"])
+
+    assert result.exit_code == 1, result.output
+    assert "exceeding" in result.output
+    assert "fail_case" in result.output
+
+
+def test_cli_eval_gate_passes_within_threshold(app, monkeypatch, eval_cases_file, tmp_path):
+    app.config["ASSISTANT_LLM_BACKEND"] = "scripted"
+    monkeypatch.setattr(evals, "_DEFAULT_CASES_PATH", eval_cases_file)
+    baseline_path = tmp_path / "eval_baseline.json"
+    evals.write_baseline({"pass_rate": 0.5, "failing_cases": ["fail_case"]}, path=baseline_path)
+    monkeypatch.setattr(evals, "_DEFAULT_BASELINE_PATH", baseline_path)
+    with app.app_context():
+        db.create_all()
+        SCRIPTED_BACKEND.push({"text": "hi there"})
+        SCRIPTED_BACKEND.push({"text": "hi there"})
+        result = app.test_cli_runner().invoke(args=["assistant", "eval-gate"])
+
+    assert result.exit_code == 0, result.output
+    assert "within" in result.output
+
+
+def test_cli_eval_baseline_dry_run_does_not_write_file(app, monkeypatch, eval_cases_file, tmp_path):
+    app.config["ASSISTANT_LLM_BACKEND"] = "scripted"
+    monkeypatch.setattr(evals, "_DEFAULT_CASES_PATH", eval_cases_file)
+    baseline_path = tmp_path / "eval_baseline.json"
+    monkeypatch.setattr(evals, "_DEFAULT_BASELINE_PATH", baseline_path)
+    with app.app_context():
+        db.create_all()
+        SCRIPTED_BACKEND.push({"text": "hi there"})
+        result = app.test_cli_runner().invoke(
+            args=["assistant", "eval-baseline", "--case", "pass_case"]
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "Dry run" in result.output
+    assert not baseline_path.exists()
+
+
+def test_cli_eval_baseline_write_flag_writes_file(app, monkeypatch, eval_cases_file, tmp_path):
+    app.config["ASSISTANT_LLM_BACKEND"] = "scripted"
+    monkeypatch.setattr(evals, "_DEFAULT_CASES_PATH", eval_cases_file)
+    baseline_path = tmp_path / "eval_baseline.json"
+    monkeypatch.setattr(evals, "_DEFAULT_BASELINE_PATH", baseline_path)
+    with app.app_context():
+        db.create_all()
+        SCRIPTED_BACKEND.push({"text": "hi there"})
+        result = app.test_cli_runner().invoke(
+            args=["assistant", "eval-baseline", "--case", "pass_case", "--write"]
+        )
+
+    assert result.exit_code == 0, result.output
+    assert baseline_path.exists()
+    written = json.loads(baseline_path.read_text())
+    assert written["pass_rate"] == 1.0
 
 
 # ---------------------------------------------------------------------------

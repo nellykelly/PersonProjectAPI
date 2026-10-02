@@ -356,6 +356,22 @@ def _register_cli(app: Flask) -> None:
         cleared = invalidate_all()
         click.echo(f"Cleared {cleared} cached answer(s).")
 
+    def _echo_security_breakdown(results) -> None:
+        """Print the prompt-injection-suite's per-category pass rate
+        (direct injection, indirect injection, tool misuse, false claims --
+        see evals.security_category_breakdown) after the main table, so the
+        trend is visible in every `eval`/`eval-gate` run's own console
+        output without a separate command."""
+        from app.services.assistant import evals
+
+        breakdown = evals.security_category_breakdown(results)
+        if not breakdown:
+            return
+        click.echo("")
+        click.echo("Security-category pass rates:")
+        for category, (passed, total) in sorted(breakdown.items()):
+            click.echo(f"  {category:<20} {passed}/{total}")
+
     @assistant_cli.command("eval")
     @click.option(
         "--case",
@@ -421,8 +437,126 @@ def _register_cli(app: Flask) -> None:
 
         click.echo("-" * len(header))
         click.echo(f"{len(results) - failed}/{len(results)} passed")
+        _echo_security_breakdown(results)
         if failed:
             raise SystemExit(1)
+
+    @assistant_cli.command("eval-gate")
+    @click.option(
+        "--case",
+        "cases",
+        multiple=True,
+        help="Run only this case name (repeatable). Default: every case in eval_cases.json.",
+    )
+    @click.option(
+        "--no-pace",
+        is_flag=True,
+        help="Skip the inter-case pacing sleep (faster, but risks the tokens/minute cap).",
+    )
+    @click.option(
+        "--no-record",
+        is_flag=True,
+        help="Skip persisting this run to the database (console output only).",
+    )
+    @click.option(
+        "--threshold",
+        type=float,
+        default=None,
+        help="Override ASSISTANT_EVAL_REGRESSION_THRESHOLD for this run (e.g. 0.1 = 10 points).",
+    )
+    def assistant_eval_gate(
+        cases: tuple[str, ...], no_pace: bool, no_record: bool, threshold: float | None
+    ) -> None:
+        """Run the eval suite and fail the build on a real regression.
+
+        Runs exactly like `flask assistant eval`, then compares the run's
+        pass rate against the committed `eval_baseline.json`
+        (`app/services/assistant/eval_baseline.json`) and exits non-zero
+        only if the drop exceeds `ASSISTANT_EVAL_REGRESSION_THRESHOLD`
+        (default 10 percentage points) -- a single flaky live-model case
+        does not fail this gate by itself the way it would fail
+        `flask assistant eval`; a real drop in quality does. This is the
+        command meant to actually gate a deploy; wire it to CI or cron
+        instead of (or alongside) `flask assistant eval`.
+
+        No baseline committed yet? The gate passes (nothing to regress
+        against) and tells you to run
+        `flask assistant eval-baseline --write` once quality looks right.
+        """
+        from app.models import utcnow
+        from app.services.assistant import evals
+
+        names = list(cases) or None
+        started_at = utcnow()
+        results = evals.run_suite(app.config, names=names, pace=not no_pace)
+        finished_at = utcnow()
+
+        if not no_record:
+            evals.record_run(results, app.config, started_at, finished_at)
+
+        gate_threshold = (
+            threshold
+            if threshold is not None
+            else float(app.config.get("ASSISTANT_EVAL_REGRESSION_THRESHOLD", 0.10))
+        )
+        baseline = evals.load_baseline()
+        verdict = evals.check_regression(results, baseline, gate_threshold)
+
+        failed_cases = [r.name for r in results if not r.passed]
+        click.echo(f"{len(results) - len(failed_cases)}/{len(results)} passed this run")
+        if failed_cases:
+            click.echo(f"failing this run: {', '.join(failed_cases)}")
+        if verdict.newly_failing:
+            click.echo(f"newly failing vs. baseline: {', '.join(verdict.newly_failing)}")
+        click.echo(verdict.message)
+        _echo_security_breakdown(results)
+
+        if verdict.regressed:
+            raise SystemExit(1)
+
+    @assistant_cli.command("eval-baseline")
+    @click.option(
+        "--case",
+        "cases",
+        multiple=True,
+        help="Run only this case name (repeatable). Default: every case in eval_cases.json.",
+    )
+    @click.option(
+        "--no-pace",
+        is_flag=True,
+        help="Skip the inter-case pacing sleep (faster, but risks the tokens/minute cap).",
+    )
+    @click.option(
+        "--write",
+        "do_write",
+        is_flag=True,
+        help="Actually overwrite eval_baseline.json. Without this, just prints what would be written.",
+    )
+    def assistant_eval_baseline(cases: tuple[str, ...], no_pace: bool, do_write: bool) -> None:
+        """Run the eval suite and (with --write) record its pass rate as the
+        new committed baseline for `flask assistant eval-gate` to compare
+        future runs against.
+
+        Run this once to create the first baseline, and again -- deliberately,
+        after reviewing why the numbers moved -- whenever a real, intentional
+        change (a prompt edit, a retrieval tuning change, new cases) changes
+        the suite's expected pass rate. Never run this reflexively just to
+        make a failing gate pass again; that defeats the point of having one.
+        """
+        import json
+
+        from app.services.assistant import evals
+
+        names = list(cases) or None
+        results = evals.run_suite(app.config, names=names, pace=not no_pace)
+        baseline = evals.build_baseline(results)
+
+        click.echo(json.dumps(baseline, indent=2, sort_keys=True))
+        if do_write:
+            path = evals.write_baseline(baseline)
+            click.echo(f"Wrote {path}")
+        else:
+            click.echo("Dry run -- pass --write to actually update eval_baseline.json.")
 
     @app.cli.group("job-tracker")
     def job_tracker_cli() -> None:

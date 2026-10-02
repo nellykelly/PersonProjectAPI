@@ -73,6 +73,7 @@ wording, since either is a correct outcome for those cases.
 """
 from __future__ import annotations
 
+import json
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -84,6 +85,7 @@ from .errors import AssistantUnavailable
 from .orchestrator import answer
 
 _DEFAULT_CASES_PATH = Path(__file__).with_name("eval_cases.json")
+_DEFAULT_BASELINE_PATH = Path(__file__).with_name("eval_baseline.json")
 
 _KNOWN_CHECK_KEYS = {
     "must_contain_any",
@@ -130,8 +132,6 @@ def load_cases(path: str | Path | None = None) -> list[dict]:
     required key, an unknown check key, an empty `checks` dict, or a
     duplicate case name -- all at load time, before any model call, so a
     typo fails fast instead of silently no-op'ing a check."""
-    import json
-
     p = Path(path) if path is not None else _DEFAULT_CASES_PATH
     with p.open("r", encoding="utf-8") as f:
         cases = json.load(f)
@@ -406,3 +406,166 @@ def record_run(
         )
     db.session.commit()
     return run
+
+
+# ---------------------------------------------------------------------------
+# Regression gate: compare a run's pass rate against a committed baseline.
+#
+# The suite above (and `flask assistant eval`) already fails loudly on any
+# single case -- but every case here hits the real, live model, so a lone
+# flaky response (a borderline phrasing, a slow network blip against
+# `max_latency_ms`) can fail the whole run even with zero real regression.
+# A committed baseline plus a percentage-point threshold answers a
+# different, coarser question that's actually safe to gate a deploy on:
+# "did quality meaningfully drop", not "did literally every case pass this
+# one run". `eval_baseline.json` is deliberately just the pass rate and
+# which cases failed -- not full CaseResult detail -- so that updating it
+# after a real, reviewed improvement is a small, readable diff; per-run
+# detail already lives in AssistantEvalRun/AssistantEvalCaseResult.
+# ---------------------------------------------------------------------------
+
+
+def _pass_rate(results: list[CaseResult]) -> float:
+    if not results:
+        return 0.0
+    return sum(1 for r in results if r.passed) / len(results)
+
+
+def build_baseline(results: list[CaseResult]) -> dict:
+    """A plain, git-diffable summary of one eval run, meant to be written to
+    `eval_baseline.json` (via `write_baseline`) and committed."""
+    from app.models import utcnow
+
+    failing = sorted(r.name for r in results if not r.passed)
+    return {
+        "total_cases": len(results),
+        "passed_cases": len(results) - len(failing),
+        "pass_rate": round(_pass_rate(results), 4),
+        "failing_cases": failing,
+        "recorded_at": utcnow().isoformat(timespec="seconds"),
+        "git_commit": _git_commit(),
+    }
+
+
+def load_baseline(path: str | Path | None = None) -> dict | None:
+    """Return the committed baseline dict, or None if it doesn't exist yet
+    (before the first `flask assistant eval-baseline --write`). Never
+    raises on a missing file -- `eval-gate` treats that as "nothing to
+    compare against yet", not a crash, so a fresh checkout doesn't need the
+    file to exist just to run the suite once."""
+    p = Path(path) if path is not None else _DEFAULT_BASELINE_PATH
+    if not p.exists():
+        return None
+    with p.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def write_baseline(baseline: dict, path: str | Path | None = None) -> Path:
+    """Write `baseline` (from `build_baseline`) to disk as pretty, sorted,
+    newline-terminated JSON -- stable formatting so re-running with an
+    unchanged result produces a no-op git diff instead of key-order churn."""
+    p = Path(path) if path is not None else _DEFAULT_BASELINE_PATH
+    with p.open("w", encoding="utf-8") as f:
+        json.dump(baseline, f, indent=2, sort_keys=True)
+        f.write("\n")
+    return p
+
+
+# Case-naming prefixes that make up the prompt-injection suite: direct
+# injection (prompt_injection_*, the original category), indirect injection
+# (hostile text inside a pasted document or a tool result), tool misuse
+# (skipping the preview/confirm flow, claiming owner identity, naming a
+# tool that doesn't exist), and false claims about Nelson specifically
+# (distinct from the general grounding_invented_* fabrication cases -- these
+# are damaging claims to *correct*, not just facts to decline on). Keyed off
+# naming convention rather than a field on each case, so a case joins a
+# category just by being named with the right prefix -- no schema change.
+_SECURITY_CATEGORY_PREFIXES = [
+    "prompt_injection",
+    "injection_indirect",
+    "tool_misuse",
+    "false_claim",
+]
+
+
+def security_category_breakdown(results: list[CaseResult]) -> dict[str, tuple[int, int]]:
+    """{category_prefix: (passed, total)} for every case in `results` whose
+    name matches one of `_SECURITY_CATEGORY_PREFIXES`, in no particular
+    order. This is the per-category pass-rate breakout the general
+    pass/fail table doesn't give on its own -- printed by `flask assistant
+    eval`/`eval-gate` after every run, so the trend is visible run over run
+    in each run's own console output and in `AssistantEvalCaseResult`
+    (case_name + passed + the run's started_at already let this same
+    breakdown be reconstructed for any past run, with no new column)."""
+    counts: dict[str, list[int]] = {}
+    for r in results:
+        prefix = next((p for p in _SECURITY_CATEGORY_PREFIXES if r.name.startswith(p)), None)
+        if prefix is None:
+            continue
+        bucket = counts.setdefault(prefix, [0, 0])
+        bucket[1] += 1
+        if r.passed:
+            bucket[0] += 1
+    return {k: (v[0], v[1]) for k, v in counts.items()}
+
+
+@dataclass
+class GateVerdict:
+    regressed: bool
+    current_pass_rate: float
+    baseline_pass_rate: float | None
+    threshold: float
+    newly_failing: list[str]
+    message: str
+
+
+def check_regression(
+    results: list[CaseResult], baseline: dict | None, threshold: float
+) -> GateVerdict:
+    """Decide whether `results` represents a regression against `baseline`.
+
+    `baseline=None` (no committed file yet) is never a regression -- there
+    is nothing to compare against, so the gate passes and says so, rather
+    than failing a first-time setup. Otherwise, regressed iff the drop in
+    pass rate (baseline minus current) exceeds `threshold`. `newly_failing`
+    lists cases that fail now but did not fail in the baseline -- useful in
+    the gate's output even when the overall drop doesn't cross the
+    threshold, since one new failure in a 35-case suite is a ~3% drop that
+    a 10%-threshold gate would let through silently otherwise.
+    """
+    current = _pass_rate(results)
+    if baseline is None:
+        return GateVerdict(
+            regressed=False,
+            current_pass_rate=current,
+            baseline_pass_rate=None,
+            threshold=threshold,
+            newly_failing=[],
+            message=(
+                "no committed baseline yet -- run "
+                "`flask assistant eval-baseline --write` to create one"
+            ),
+        )
+
+    base_rate = float(baseline.get("pass_rate", 0.0))
+    previously_failing = set(baseline.get("failing_cases", []))
+    newly_failing = sorted(
+        r.name for r in results if not r.passed and r.name not in previously_failing
+    )
+    drop = base_rate - current
+    regressed = drop > threshold
+    if regressed:
+        message = (
+            f"pass rate dropped {drop:.1%} (baseline {base_rate:.1%} -> "
+            f"current {current:.1%}), exceeding the {threshold:.1%} threshold"
+        )
+    else:
+        message = f"pass rate {current:.1%} within {threshold:.1%} of baseline {base_rate:.1%}"
+    return GateVerdict(
+        regressed=regressed,
+        current_pass_rate=current,
+        baseline_pass_rate=base_rate,
+        threshold=threshold,
+        newly_failing=newly_failing,
+        message=message,
+    )

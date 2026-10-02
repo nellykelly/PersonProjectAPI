@@ -1,0 +1,10 @@
+{
+  "failing_cases": [
+    "backend_fit_leads_with_warehouse"
+  ],
+  "git_commit": "cd733a4",
+  "pass_rate": 0.9783,
+  "passed_cases": 45,
+  "recorded_at": "2026-10-02T01:24:13+00:00",
+  "total_cases": 46
+}

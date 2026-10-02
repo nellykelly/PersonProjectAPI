@@ -254,3 +254,105 @@ def test_invalidate_all_fails_open(ctx, monkeypatch):
 
     monkeypatch.setattr(cache, "get_redis_connection", lambda: _Boom())
     assert cache.invalidate_all() == 0
+
+
+# ---------- semantic cache layer ----------
+#
+# TestingConfig forces ASSISTANT_EMBEDDER="hash" (see assistant/README.md),
+# so these run against the deterministic, dependency-free HashEmbedder, not
+# fastembed -- no model download, no network call, same as every other
+# offline test here. HashEmbedder is a crude bag-of-words/trigram hash, not
+# truly semantic, so these tests pick a threshold that isolates the
+# *mechanism* (compare, gate on threshold, respect the fingerprint) rather
+# than asserting any particular real-world paraphrase similarity -- that
+# empirical tuning is the live fastembed sweep this task's report covers.
+
+
+def _enable_semantic(config, threshold=0.5):
+    config["ASSISTANT_SEMANTIC_CACHE_ENABLED"] = True
+    config["ASSISTANT_SEMANTIC_CACHE_THRESHOLD"] = threshold
+
+
+def test_semantic_lookup_is_off_by_default(ctx):
+    cache.store("Tell me about the trading simulator", {"reply": "a"}, ctx.config)
+    assert cache.semantic_lookup("Walk me through the trading simulator project", ctx.config) is None
+
+
+def test_semantic_lookup_disabled_store_attaches_no_vector(ctx):
+    import json
+
+    from app.services.queue import get_redis_connection
+
+    cache.store("Tell me about the trading simulator", {"reply": "a"}, ctx.config)
+    key = cache._cache_key("Tell me about the trading simulator", ctx.config)
+
+    raw = get_redis_connection().get(key)
+    assert "_semantic_vector" not in json.loads(raw)
+
+
+def test_semantic_lookup_hits_a_close_paraphrase_above_threshold(ctx):
+    _enable_semantic(ctx.config, threshold=0.5)
+    payload = {"reply": "Black-Scholes, yfinance, OCC option symbols.", "sources": []}
+    cache.store("Tell me about the trading simulator", payload, ctx.config)
+
+    hit = cache.semantic_lookup("Walk me through the trading simulator project", ctx.config)
+
+    assert hit == payload
+
+
+def test_semantic_lookup_misses_a_dissimilar_question_below_threshold(ctx):
+    _enable_semantic(ctx.config, threshold=0.5)
+    payload = {"reply": "Black-Scholes, yfinance, OCC option symbols.", "sources": []}
+    cache.store("Tell me about the trading simulator", payload, ctx.config)
+
+    assert cache.semantic_lookup("What salary should he be offered", ctx.config) is None
+
+
+def test_semantic_lookup_never_matches_an_exact_duplicate_twice(ctx):
+    """An exact-match hit is handled by lookup(); semantic_lookup() on its
+    own still finds the entry (it doesn't know lookup() already ran), which
+    is correct -- the orchestrator is what skips calling this after an
+    exact hit, exercised in test_assistant.py's orchestrator tests."""
+    _enable_semantic(ctx.config, threshold=0.5)
+    payload = {"reply": "a"}
+    cache.store("Tell me about the trading simulator", payload, ctx.config)
+
+    assert cache.semantic_lookup("Tell me about the trading simulator", ctx.config) == payload
+
+
+def test_semantic_lookup_ignores_entries_from_a_stale_fingerprint(ctx):
+    _enable_semantic(ctx.config, threshold=0.5)
+    payload = {"reply": "Black-Scholes, yfinance, OCC option symbols.", "sources": []}
+    cache.store("Tell me about the trading simulator", payload, ctx.config)
+
+    ctx.config["GROQ_MODEL"] = "some-other-model"
+
+    assert cache.semantic_lookup("Walk me through the trading simulator project", ctx.config) is None
+
+
+def test_semantic_lookup_returns_the_closest_of_several_candidates(ctx):
+    _enable_semantic(ctx.config, threshold=0.1)
+    cache.store("What salary should he be offered", {"reply": "far"}, ctx.config)
+    cache.store("Tell me about the trading simulator", {"reply": "close"}, ctx.config)
+
+    hit = cache.semantic_lookup("Walk me through the trading simulator project", ctx.config)
+
+    assert hit == {"reply": "close"}
+
+
+def test_semantic_lookup_fails_open_on_redis_error(ctx, monkeypatch):
+    _enable_semantic(ctx.config, threshold=0.5)
+
+    class _Boom:
+        def scan_iter(self, match=None):
+            raise ConnectionError("redis is down")
+
+    monkeypatch.setattr(cache, "get_redis_connection", lambda: _Boom())
+    assert cache.semantic_lookup("Tell me about the trading simulator", ctx.config) is None
+
+
+def test_cosine_similarity_handles_degenerate_vectors():
+    assert cache._cosine_similarity([], [1.0]) == 0.0
+    assert cache._cosine_similarity([1.0, 0.0], [1.0]) == 0.0
+    assert cache._cosine_similarity([0.0, 0.0], [1.0, 0.0]) == 0.0
+    assert cache._cosine_similarity([1.0, 0.0], [1.0, 0.0]) == pytest.approx(1.0)

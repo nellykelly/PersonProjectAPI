@@ -154,6 +154,10 @@ class AssistantAnswer:
     fell_back: bool = False
     # Served from the repeat-answer cache: no model call, zero tokens.
     cache_hit: bool = False
+    # "exact" or "semantic" when cache_hit is True, "" otherwise -- lets a
+    # semantic-layer false hit be spotted in logs/the request-id trail
+    # without having to infer it from cache_hit alone.
+    cache_hit_type: str = ""
     # Prompt Guard's verdict on the visitor's message. guard_flagged means
     # the reply is the canned redirect and no chat model ran; guard_error
     # is set when the guard failed open (the turn ran normally).
@@ -871,9 +875,12 @@ def _cache_eligible(history, *, is_admin: bool, job_tools_authorized: bool) -> b
     return not history and not is_admin and not job_tools_authorized
 
 
-def _from_cache(payload, *, request_id: str) -> AssistantAnswer | None:
+def _from_cache(payload, *, request_id: str, hit_type: str = "exact") -> AssistantAnswer | None:
     """AssistantAnswer for a cache hit, or None if the payload is unusable
-    (treated as a miss). Zero tokens: nothing was sent to any model."""
+    (treated as a miss). Zero tokens: nothing was sent to any model.
+    `hit_type` is "exact" or "semantic" -- purely observability, recorded
+    onto the answer so a semantic false hit can be told apart from an
+    exact one in the logs."""
     if not isinstance(payload, dict):
         return None
     reply = payload.get("reply")
@@ -892,7 +899,21 @@ def _from_cache(payload, *, request_id: str) -> AssistantAnswer | None:
         completion_tokens=0,
         request_id=request_id,
         cache_hit=True,
+        cache_hit_type=hit_type,
     )
+
+
+def _cache_lookup_any(q: str, config) -> tuple[dict | None, str]:
+    """Exact-match lookup first (cheaper, always on by default); only on a
+    miss, and only when the semantic layer is enabled, fall back to
+    `cache.semantic_lookup()`. Centralised here so `answer()` and
+    `_stream_detailed()` can't drift on the order. Returns (payload,
+    hit_type) -- hit_type is "exact"/"semantic" when payload is not None,
+    meaningless otherwise."""
+    payload = cache.lookup(q, config)
+    if payload is not None:
+        return payload, "exact"
+    return cache.semantic_lookup(q, config), "semantic"
 
 
 def _apply_verdict(answer_: AssistantAnswer, verdict) -> None:
@@ -1044,7 +1065,8 @@ def answer(
 
     eligible = _cache_eligible(history, is_admin=is_admin, job_tools_authorized=job_tools_authorized)
     if eligible:
-        hit = _from_cache(cache.lookup(q, config), request_id=request_id)
+        payload, hit_type = _cache_lookup_any(q, config)
+        hit = _from_cache(payload, request_id=request_id, hit_type=hit_type)
         if hit is not None:
             return hit
 
@@ -1169,6 +1191,7 @@ def _final_event(answer_: AssistantAnswer) -> dict:
         "completion_tokens": answer_.completion_tokens,
         "n_chunks": answer_.n_chunks,
         "cache_hit": answer_.cache_hit,
+        "cache_hit_type": answer_.cache_hit_type,
         "guard_flagged": answer_.guard_flagged,
         "guard_score": answer_.guard_score,
         "guard_error": answer_.guard_error,
@@ -1218,7 +1241,8 @@ def _stream_detailed(q, history, initial_state, *, config, is_admin, job_tools_a
             history, is_admin=is_admin, job_tools_authorized=job_tools_authorized
         )
         if eligible:
-            hit = _from_cache(cache.lookup(q, config), request_id=request_id)
+            payload, hit_type = _cache_lookup_any(q, config)
+            hit = _from_cache(payload, request_id=request_id, hit_type=hit_type)
             if hit is not None:
                 yield _final_event(hit)
                 return

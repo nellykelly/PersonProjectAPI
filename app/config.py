@@ -586,10 +586,39 @@ class Config:
     ASSISTANT_CACHE_ENABLED = _bool("ASSISTANT_CACHE_ENABLED", True)
     ASSISTANT_CACHE_TTL_SECONDS = int(os.environ.get("ASSISTANT_CACHE_TTL_SECONDS", "21600"))
 
+    # Semantic (embedding-similarity) layer beside the exact-match cache
+    # above -- a separate flag, off by default, so turning the exact-match
+    # cache off/on is unaffected. 0.82 is a measured default, not a guess:
+    # scripts/semantic_cache_sweep.py swept a 33-pair hand-labeled fixture
+    # (app/services/assistant/semantic_cache_fixtures.json) of real BGE
+    # (fastembed) cosine similarities and found 0% false hits at every
+    # threshold >= 0.78 on that fixture, with the highest-scoring near-miss
+    # pair at 0.7790 -- 0.82 ships a margin above that empirical boundary
+    # rather than running right at it, given the fixture is small. Re-run
+    # that script (and update this default) if the embedding model ever
+    # changes. MAX_SCAN bounds how many live cache entries a lookup will
+    # compare against (see semantic_lookup()'s docstring).
+    ASSISTANT_SEMANTIC_CACHE_ENABLED = _bool("ASSISTANT_SEMANTIC_CACHE_ENABLED", False)
+    ASSISTANT_SEMANTIC_CACHE_THRESHOLD = float(
+        os.environ.get("ASSISTANT_SEMANTIC_CACHE_THRESHOLD", "0.82")
+    )
+    ASSISTANT_SEMANTIC_CACHE_MAX_SCAN = int(
+        os.environ.get("ASSISTANT_SEMANTIC_CACHE_MAX_SCAN", "500")
+    )
+
     # `flask assistant eval` paces itself to stay under this many prompt +
     # completion tokens per minute (the chat model's cap is 8,000; this
     # leaves headroom for real visitors during a live run).
     ASSISTANT_EVAL_TPM = int(os.environ.get("ASSISTANT_EVAL_TPM", "7000"))
+
+    # `flask assistant eval-gate` fails the build when the live suite's pass
+    # rate drops more than this many percentage points below the committed
+    # baseline (app/services/assistant/eval_baseline.json) -- a single
+    # flaky live-model case should not fail a gate, a real regression
+    # should. 0.10 = 10 percentage points.
+    ASSISTANT_EVAL_REGRESSION_THRESHOLD = float(
+        os.environ.get("ASSISTANT_EVAL_REGRESSION_THRESHOLD", "0.10")
+    )
 
 
 class DevelopmentConfig(Config):

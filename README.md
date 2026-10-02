@@ -256,7 +256,7 @@ cd ~/PersonProjectAPI && ./scripts/cron/install-cron.sh
 
 | Job | Schedule | Command |
 |---|---|---|
-| `flask assistant eval` | daily, 03:00 | Runs the 12-case gold-standard suite against the real model and persists it (`AssistantEvalRun`/`AssistantEvalCaseResult`), so `/assistant/stats` can show pass-rate history day-by-day instead of only the latest console run. |
+| `flask assistant eval-gate` | daily, 03:00 | Runs the gold-standard suite (`app/services/assistant/eval_cases.json`) against the real model, persists it (`AssistantEvalRun`/`AssistantEvalCaseResult`) so `/assistant/stats` can show pass-rate history day-by-day, and exits non-zero only when the pass rate drops more than a threshold below the committed baseline (`app/services/assistant/eval_baseline.json`) -- see `app/blueprints/assistant/README.md`'s "Regression eval suite" section. |
 | `flask job-tracker sweep` | daily, 03:20 | Job Discovery's multi-source search + LLM match-scoring. |
 | `flask job-tracker rescore` | hourly, on the hour | Re-scores tracked listings without re-fetching postings. |
 

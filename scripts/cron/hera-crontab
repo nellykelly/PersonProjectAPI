@@ -23,14 +23,21 @@ MAILTO=""
 # the latest run's output is kept. If run history matters more than that
 # later, switch to `>>` and add a logrotate config for $HOME/PersonProjectAPI/logs/*.log.
 
-# Hera's regression eval suite -- 12 gold-standard cases against the real
-# model, now persisted (AssistantEvalRun/AssistantEvalCaseResult) so
-# /assistant/stats can show day-by-day pass-rate history. Runs at 03:00,
-# before the two Job Discovery jobs below, so it isn't competing with
-# them for host CPU (each hits a *different* Groq API key/quota, so
-# there's no token-budget collision -- this is purely about not stacking
-# three concurrent `docker compose exec` processes on a 2-vCPU box).
-0 3 * * * cd "$HOME/PersonProjectAPI" && docker compose exec -T web flask assistant eval > "$HOME/PersonProjectAPI/logs/cron-assistant-eval.log" 2>&1
+# Hera's regression eval suite -- the gold-standard cases in eval_cases.json
+# against the real model, persisted (AssistantEvalRun/AssistantEvalCaseResult)
+# so /assistant/stats can show day-by-day pass-rate history. `eval-gate`
+# (not plain `eval`) is what's wired to cron: it runs the identical suite but
+# only exits non-zero when the run's pass rate drops more than
+# ASSISTANT_EVAL_REGRESSION_THRESHOLD (default 10 points) below the committed
+# `app/services/assistant/eval_baseline.json` -- a single flaky live-model
+# case does not fail this job the way it would fail plain `eval`; a real
+# regression does, and a non-zero exit here is what makes this job's failure
+# visible (cron's own logging, or wire in alerting on top). Runs at 03:00,
+# before the two Job Discovery jobs below, so it isn't competing with them
+# for host CPU (each hits a *different* Groq API key/quota, so there's no
+# token-budget collision -- this is purely about not stacking three
+# concurrent `docker compose exec` processes on a 2-vCPU box).
+0 3 * * * cd "$HOME/PersonProjectAPI" && docker compose exec -T web flask assistant eval-gate > "$HOME/PersonProjectAPI/logs/cron-assistant-eval.log" 2>&1
 
 # Job Discovery -- daily multi-source search + LLM match-scoring against
 # the resume and this site's own projects. See

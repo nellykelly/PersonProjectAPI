@@ -281,6 +281,69 @@ def test_cache_miss_then_store_then_hit_with_zero_backend_calls(ctx, monkeypatch
     assert len(guard_calls) == 1
 
 
+def test_semantic_cache_off_by_default_so_a_paraphrase_still_calls_the_backend(ctx, monkeypatch):
+    _flag(monkeypatch, flagged=False, score=0.001)
+    SCRIPTED_BACKEND.push(
+        {"text": "Black-Scholes, yfinance, OCC option symbols."},
+        {"text": "Second real answer."},
+    )
+
+    assistant.answer("Tell me about the trading simulator", [], config=ctx.config)
+    second = assistant.answer("Walk me through the trading simulator project", [], config=ctx.config)
+
+    assert second.cache_hit is False
+    assert len(SCRIPTED_BACKEND.calls) == 2
+
+
+def test_semantic_cache_enabled_serves_a_paraphrase_with_zero_backend_calls(ctx, monkeypatch):
+    guard_calls = _flag(monkeypatch, flagged=False, score=0.001)
+    ctx.config["ASSISTANT_SEMANTIC_CACHE_ENABLED"] = True
+    ctx.config["ASSISTANT_SEMANTIC_CACHE_THRESHOLD"] = 0.5
+    SCRIPTED_BACKEND.push({"text": "Black-Scholes, yfinance, OCC option symbols."})
+
+    first = assistant.answer("Tell me about the trading simulator", [], config=ctx.config)
+    assert first.cache_hit is False
+    assert first.cache_hit_type == ""
+
+    second = assistant.answer("Walk me through the trading simulator project", [], config=ctx.config)
+
+    assert second.cache_hit is True
+    assert second.cache_hit_type == "semantic"
+    assert second.reply == first.reply
+    # Zero backend calls, and not even a guard request, same as an exact hit.
+    assert len(SCRIPTED_BACKEND.calls) == 1
+    assert len(guard_calls) == 1
+
+
+def test_semantic_cache_enabled_still_prefers_an_exact_match(ctx, monkeypatch):
+    _flag(monkeypatch, flagged=False, score=0.001)
+    ctx.config["ASSISTANT_SEMANTIC_CACHE_ENABLED"] = True
+    ctx.config["ASSISTANT_SEMANTIC_CACHE_THRESHOLD"] = 0.5
+    SCRIPTED_BACKEND.push({"text": "He builds careful, well-tested systems."})
+
+    assistant.answer("What does he do?", [], config=ctx.config)
+    second = assistant.answer("  what does he do ", [], config=ctx.config)
+
+    assert second.cache_hit is True
+    assert second.cache_hit_type == "exact"
+
+
+def test_semantic_cache_enabled_still_misses_a_dissimilar_question(ctx, monkeypatch):
+    _flag(monkeypatch, flagged=False, score=0.001)
+    ctx.config["ASSISTANT_SEMANTIC_CACHE_ENABLED"] = True
+    ctx.config["ASSISTANT_SEMANTIC_CACHE_THRESHOLD"] = 0.5
+    SCRIPTED_BACKEND.push(
+        {"text": "Black-Scholes, yfinance, OCC option symbols."},
+        {"text": "Salary questions go to email."},
+    )
+
+    assistant.answer("Tell me about the trading simulator", [], config=ctx.config)
+    second = assistant.answer("What salary should he be offered", [], config=ctx.config)
+
+    assert second.cache_hit is False
+    assert len(SCRIPTED_BACKEND.calls) == 2
+
+
 def test_turn_with_history_is_not_stored_or_served(ctx):
     history = [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "Hello."}]
     SCRIPTED_BACKEND.push({"text": "Answer one."}, {"text": "Answer two."})
