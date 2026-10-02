@@ -99,8 +99,54 @@ function initHeroDotField() {
   var ctx = canvas.getContext("2d");
   var GAP = 22; // px between dots at rest, matching the old background-size
   var BASE_ALPHA = 0.09;
-  var INFLUENCE_RADIUS = 120; // px: how far the cursor's pull reaches
-  var MAX_PULL = 9; // px: how far a dot right under the cursor moves
+  // Pull reach/strength: raised from the original 120/9. Balls already
+  // collide against dotCurrentPosition() (see stepBall()), i.e. the
+  // pulled position, not the rest one -- the ask was for the dots to
+  // visibly track the cursor AND for that tracking to read as pushing
+  // the balls around, entirely through the dots (no direct pointer-ball
+  // interaction). At the old 9px against a 22px GAP, a dot's own pull was
+  // too small relative to a ball's path to ever look like it mattered;
+  // 16px makes a pulled dot visibly leave its lattice position. (The pull
+  // magnitude alone isn't what keeps dots from overlapping each other --
+  // see MIN_DOT_SPACING and dotCurrentPosition()'s clamp for that part.)
+  var INFLUENCE_RADIUS = 160; // px: how far the cursor's pull reaches
+  var MAX_PULL = 16; // px: how far a dot right under the cursor moves
+  // Every dot within range is pulled toward the SAME point (the
+  // pointer), so without a floor they'd converge on top of each other
+  // right at the cursor. dotCurrentPosition() clamps each dot's pull to
+  // stop MIN_DOT_SPACING short of the pointer instead of running through
+  // it -- keeps a visible gap at the cursor itself, which also reads as
+  // the dots parting around it rather than disappearing into one point.
+  var MIN_DOT_SPACING = 10; // px: how close to the pointer a dot's pulled position may get
+  // Slow diagonal-traveling wave, layered under the pointer pull -- runs
+  // continuously regardless of hover. A single sine cycle confined to a
+  // narrow band (WAVE_BAND_FRAC of the canvas diagonal) that sweeps
+  // top-left to bottom-right, rather than one faint cycle smeared across
+  // the full width -- an earlier full-width version read as weak,
+  // directionless noise instead of a wave. Confining it to ~20% of the
+  // diagonal, at a stronger amplitude, with exactly one crest-then-trough
+  // per sweep (no second harmonic) is what makes it read as ONE unified
+  // wave passing through, not a texture sitting over everything at once.
+  //
+  // The offset is still only ever applied to Y (see updateWaveGeometry()/
+  // dotCurrentPosition() below), even though the sweep now travels along
+  // a diagonal axis -- a dot's *timing* depends on its (x, y) projection
+  // onto that axis, but its motion is still a straight vertical bob, same
+  // as the original horizontal version. Two dots can only collide if
+  // their Y offsets differ by a full GAP while they started closer than
+  // that -- bounded by (amplitude * PI / bandHalfWidth) per px moved
+  // along the axis, which with these constants tops out around 5px even
+  // for two adjacent dots square-on to the sweep direction, comfortably
+  // under GAP. No MIN_DOT_SPACING-style clamp needed here either.
+  var WAVE_BAND_FRAC = 0.2; // fraction of the canvas diagonal the active band spans
+  var WAVE_PERIOD_MS = 9000; // ms: time for the band to sweep the full diagonal
+  // Top-left to bottom-right is 45deg in screen coords (+x right, +y
+  // down). Each sweep (see updateWaveGeometry()) picks a new angle
+  // within +/- the jitter of that -- still reliably the same broad
+  // diagonal, but rarely the identical angle twice in a row.
+  var WAVE_BASE_ANGLE = Math.PI / 4;
+  var WAVE_ANGLE_JITTER = Math.PI / 6; // +/- 30deg -> each sweep lands in [15deg, 75deg]
+  var WAVE_AMPLITUDE = 16; // px: strong enough to clearly read, same order as MAX_PULL
   // Elliptical falloff focus, as a fraction of the canvas's own box --
   // matches the old mask's "ellipse ... at 50% 38%" center. Dots inside
   // the 25%-radius core are fully opaque; outside the 92%-radius edge
@@ -139,6 +185,18 @@ function initHeroDotField() {
   var dots = []; // {x, y, alpha} at rest, in CSS-pixel space
   var dotGrid = {}; // "gx,gy" (rest coords) -> dot, for a ball's neighborhood lookup
   var pointer = null; // {x, y} in CSS-pixel space, or null when not hovering
+  var animTime = 0; // ms, set once per tick() -- the wave's clock, read by dotCurrentPosition()
+  // The sweep's travel axis, re-rolled once per sweep by updateWaveGeometry()
+  // (called from resize() and from tick() when a new cycle starts). A dot's
+  // position along this axis (dot.x * waveDirX + dot.y * waveDirY) is what
+  // dotCurrentPosition() compares against the traveling band -- waveMinProj/
+  // waveMaxProj are the canvas's own four corners projected onto that same
+  // axis, so the band's start/end cover the full diagonal at whatever angle
+  // this sweep landed on, not just a width- or height-aligned span.
+  var waveAngle = WAVE_BASE_ANGLE;
+  var waveDirX = Math.cos(waveAngle), waveDirY = Math.sin(waveAngle);
+  var waveMinProj = 0, waveMaxProj = 0;
+  var waveCycle = -1; // last sweep index updateWaveGeometry() was rolled for; -1 forces the first roll
   var balls = [];
   var obstacles = []; // real page furniture a ball also bounces off -- see collectObstacles()
   var nextSpawnAt = 0;
@@ -179,16 +237,64 @@ function initHeroDotField() {
     }
   }
 
-  // Where a dot actually draws right now: pulled toward the pointer
-  // within INFLUENCE_RADIUS, same as before pull math existed only
-  // inline in render(). Balls need this exact position too, or they'd
-  // bounce off a dot's rest spot instead of the (possibly dragged)
-  // spot it's actually rendered at.
+  // Re-rolls the sweep's travel axis within +/- WAVE_ANGLE_JITTER of the
+  // top-left-to-bottom-right base angle, then projects the canvas's four
+  // corners onto that axis so dotCurrentPosition() knows where "fully
+  // off one end of the diagonal" actually is for THIS sweep's angle.
+  // Called once up front from resize() and again every time tick() sees
+  // the sweep cycle advance, so consecutive sweeps rarely share an angle.
+  function updateWaveGeometry() {
+    waveAngle = WAVE_BASE_ANGLE + (Math.random() * 2 - 1) * WAVE_ANGLE_JITTER;
+    waveDirX = Math.cos(waveAngle);
+    waveDirY = Math.sin(waveAngle);
+    var corners = [[0, 0], [width, 0], [0, height], [width, height]];
+    waveMinProj = Infinity;
+    waveMaxProj = -Infinity;
+    for (var i = 0; i < corners.length; i++) {
+      var proj = corners[i][0] * waveDirX + corners[i][1] * waveDirY;
+      if (proj < waveMinProj) waveMinProj = proj;
+      if (proj > waveMaxProj) waveMaxProj = proj;
+    }
+  }
+
+  // Where a dot actually draws right now: the wave's Y offset applied
+  // first, then pulled toward the pointer from THAT position (not the
+  // bare rest position) within INFLUENCE_RADIUS -- same as before pull
+  // math existed only inline in render(). Balls need this exact position
+  // too, or they'd bounce off a dot's rest/wave spot instead of the
+  // (possibly pointer-dragged) spot it's actually rendered at -- which
+  // is how the wave ends up nudging balls around too, the same free ride
+  // the pointer pull already gets from this being the one shared place
+  // both read a dot's position from.
   function dotCurrentPosition(dot) {
-    var x = dot.x, y = dot.y, radius = 1, alpha = dot.alpha;
+    // Band sweeps from fully off one end of the diagonal to fully off the
+    // other end over WAVE_PERIOD_MS, then jumps back and repeats -- a
+    // "wipe," not a ping-pong, so it always reads as traveling the same
+    // direction. "Off the diagonal" is measured along the sweep's own
+    // axis (waveDirX/waveDirY, re-rolled per sweep by updateWaveGeometry()),
+    // not along plain X, so the wipe travels top-left-to-bottom-right
+    // instead of straight across.
+    var diagonal = Math.sqrt(width * width + height * height);
+    var bandHalfWidth = (diagonal * WAVE_BAND_FRAC) / 2;
+    var sweepProgress = (animTime % WAVE_PERIOD_MS) / WAVE_PERIOD_MS;
+    var waveRange = (waveMaxProj - waveMinProj) + bandHalfWidth * 2;
+    var waveCenterProj = waveMinProj - bandHalfWidth + sweepProgress * waveRange;
+    var dotProj = dot.x * waveDirX + dot.y * waveDirY;
+    var distFromBand = dotProj - waveCenterProj;
+    var waveY = 0;
+    if (Math.abs(distFromBand) < bandHalfWidth) {
+      // -PI..PI across the band's width -- sin() of that is already 0 at
+      // both edges (where it must match the undisturbed dots just
+      // outside the band) and runs through exactly one full
+      // crest-then-trough in between, with no separate fade-out needed.
+      var phase = (distFromBand / bandHalfWidth) * Math.PI;
+      waveY = WAVE_AMPLITUDE * Math.sin(phase);
+    }
+    var baseX = dot.x, baseY = dot.y + waveY;
+    var x = baseX, y = baseY, radius = 1, alpha = dot.alpha;
     if (pointer) {
-      var dx = dot.x - pointer.x;
-      var dy = dot.y - pointer.y;
+      var dx = baseX - pointer.x;
+      var dy = baseY - pointer.y;
       var dist = Math.sqrt(dx * dx + dy * dy);
       if (dist < INFLUENCE_RADIUS) {
         // 1 at the cursor, 0 at the radius's edge -- both the pull
@@ -197,11 +303,25 @@ function initHeroDotField() {
         var strength = 1 - dist / INFLUENCE_RADIUS;
         var pull = strength * MAX_PULL;
         if (dist > 0.01) {
-          x = dot.x - (dx / dist) * pull;
-          y = dot.y - (dy / dist) * pull;
+          // Clamped to dist - MIN_DOT_SPACING, not just `pull` straight:
+          // every dot in range moves toward the SAME point (the pointer),
+          // so an unclamped pull that exceeds a dot's own distance to the
+          // pointer sends it shooting past the cursor and out the other
+          // side. With MAX_PULL raised to make the tracking actually
+          // visible, that overshoot got big enough that dots approaching
+          // from different sides crossed paths and landed on top of each
+          // other. Stopping each dot at MIN_DOT_SPACING from the pointer
+          // instead keeps it on its own straight line from its own rest
+          // position, which is also, for free, what stops two dots from
+          // ever landing on each other away from the pointer too: two
+          // different rest positions' lines toward the pointer only ever
+          // meet at the pointer itself.
+          var clampedPull = Math.min(pull, Math.max(0, dist - MIN_DOT_SPACING));
+          x = baseX - (dx / dist) * clampedPull;
+          y = baseY - (dy / dist) * clampedPull;
         }
-        radius = 1 + strength * 1.4;
-        alpha = Math.min(1, dot.alpha + strength * 0.5);
+        radius = 1 + strength * 2;
+        alpha = Math.min(1, dot.alpha + strength * 0.7);
       }
     }
     return { x: x, y: y, radius: radius, alpha: alpha };
@@ -216,6 +336,7 @@ function initHeroDotField() {
     canvas.height = Math.round(height * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     buildDots();
+    updateWaveGeometry();
     render();
   }
 
@@ -477,6 +598,19 @@ function initHeroDotField() {
     // return and send every ball flying through the whole board at once.
     var dt = Math.min(0.05, (timestamp - lastTick) / 1000);
     lastTick = timestamp;
+    // Set once per frame, read by dotCurrentPosition() for every dot and
+    // ball-collision check this tick -- the wave's clock advances with
+    // real elapsed time, same timestamp rAF already hands this function.
+    animTime = timestamp;
+
+    // Re-roll the sweep's angle each time a new sweep starts (the cycle
+    // index ticks over), not every frame -- same sweep keeps the same
+    // travel axis all the way across; only the NEXT sweep gets a new one.
+    var currentWaveCycle = Math.floor(animTime / WAVE_PERIOD_MS);
+    if (currentWaveCycle !== waveCycle) {
+      waveCycle = currentWaveCycle;
+      updateWaveGeometry();
+    }
 
     if (timestamp >= nextSpawnAt) {
       spawnBall();
