@@ -6,6 +6,7 @@ from flask import Flask, session
 
 from app.config import CONFIG_BY_NAME
 from app.extensions import csrf, db, limiter, login_manager, migrate, socketio
+from app.services.site_analytics import analytics_csp_sources, build_analytics_context
 
 # Shared with app/blueprints/assistant/routes.py, which links straight to the
 # PDF (not just the About page) when Hera cites the resume -- one constant so
@@ -110,14 +111,17 @@ def create_app(config_name: str | None = None) -> Flask:
             response.headers.setdefault(
                 "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
             )
+        extra = analytics_csp_sources(app)  # Clarity/PostHog hosts, only if configured
         response.headers.setdefault(
             "Content-Security-Policy-Report-Only",
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net https://cdn.socket.io; "
+            "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net https://cdn.socket.io "
+            + " ".join(extra["script-src"])
+            + "; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com; "
-            "img-src 'self' data:; "
-            "connect-src 'self'; "
+            "img-src 'self' data: " + " ".join(extra["img-src"]) + "; "
+            "connect-src 'self' " + " ".join(extra["connect-src"]) + "; "
             "frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
         )
         return response
@@ -131,6 +135,10 @@ def create_app(config_name: str | None = None) -> Flask:
             "RESUME_PATH": RESUME_PATH,
             "CURRENT_YEAR": datetime.now(timezone.utc).year,
         }
+
+    @app.context_processor
+    def inject_analytics():
+        return build_analytics_context(app)
 
     @app.errorhandler(404)
     def not_found(_error):

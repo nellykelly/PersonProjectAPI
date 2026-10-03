@@ -49,6 +49,51 @@
   var history = []; // [{role, content}]
   var busy = false;
 
+  // ---------- analytics ----------
+  // Optional and failure-proof: window.siteAnalytics only exists when
+  // analytics is configured (see analytics.js), and a throw in here must
+  // never affect the chat. The question text is passed only so analytics.js
+  // can reduce it to a category -- it is never sent anywhere.
+  var turn = null; // the in-flight turn: { question, via, started, reported }
+
+  function track(name, props) {
+    try {
+      if (window.siteAnalytics) window.siteAnalytics.trackAssistantEvent(name, props);
+    } catch (e) { /* ignore */ }
+  }
+
+  function startTurn(message, via) {
+    turn = { question: message, via: via, started: Date.now(), reported: false };
+    track("assistant_question_submitted", {
+      question: message,
+      interface: via,
+      turn_number: Math.floor(history.length / 2) + 1,
+    });
+  }
+
+  // Reports a turn's outcome once, however many code paths reach it.
+  // outcome: "answered" | "busy" | "error" | "dropped" | "unreachable".
+  function endTurn(outcome, errorType, recoverable) {
+    if (!turn || turn.reported) return;
+    turn.reported = true;
+    var ok = outcome === "answered";
+    track("assistant_response_completed", {
+      question: turn.question,
+      interface: turn.via,
+      success: ok,
+      outcome: outcome,
+      response_time_ms: Date.now() - turn.started,
+    });
+    if (!ok) {
+      track("assistant_error", {
+        error_type: errorType || outcome,
+        component: "assistant_chat",
+        recoverable: !!recoverable,
+        interface: turn.via,
+      });
+    }
+  }
+
   // ---------- helpers ----------
 
   function csrfToken() {
@@ -416,6 +461,7 @@
   // error, and the JSON fallback) so all three render identically.
   function applyResult(body, message, ok, reply, sources, charts) {
     fillReply(body, reply || "Something went wrong. Please try again.", ok ? sources : null, ok ? charts : null);
+    endTurn(ok ? "answered" : "error", "server_error", true);
     if (ok) {
       history.push({ role: "user", content: message });
       history.push({ role: "assistant", content: reply });
@@ -428,6 +474,7 @@
   // nothing was actually answered.
   function applyBusy(body, message, text) {
     fillReply(body, text, null, null);
+    endTurn("busy", "rate_limited", true);
     input.value = message;
     autogrow();
   }
@@ -438,6 +485,7 @@
   // drop must never silently re-run the turn. Same one-click-retry
   // treatment as busy: hand the text back, don't touch history.
   function applyDropped(body, message) {
+    endTurn("dropped", "stream_dropped", true);
     fillReply(
       body,
       "The connection dropped before Hera finished answering. Ask again if you'd like to retry.",
@@ -481,6 +529,7 @@
       })
       .catch(function () {
         typing.stop();
+        endTurn("unreachable", "unreachable", true);
         fillReply(body, "The assistant is unreachable right now. Please try again later.", null, null);
       });
   }
@@ -586,8 +635,10 @@
 
   function send(message) {
     if (busy) return;
+    var via = message ? "suggested_chip" : "typed";
     message = (message || input.value || "").trim();
     if (!message) return;
+    startTurn(message, via);
 
     if (empty) empty.hidden = true;
     newBtn.hidden = false;

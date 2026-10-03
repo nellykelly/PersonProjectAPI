@@ -1,0 +1,24 @@
+{# Visitor analytics bootstrap (Microsoft Clarity + PostHog). Rendered from
+   base.html's <head> only when at least one of CLARITY_PROJECT_ID /
+   POSTHOG_API_KEY is set -- see app/services/site_analytics.py and README,
+   "Analytics". Everything else (init, page views, custom events) lives in
+   static/js/analytics.js so there is one place to read and change it. #}
+<script>
+  window.__SITE_ANALYTICS__ = {{ ANALYTICS | tojson }};
+  window.__SITE_ANALYTICS__.resumePath = {{ url_for('static', filename=RESUME_PATH) | tojson }};
+</script>
+{% if ANALYTICS.clarityId %}
+{# Microsoft Clarity's official install snippet (Settings > Setup > "Install
+   manually"), with the project id coming from CLARITY_PROJECT_ID. It
+   queues clarity() calls until the async tag loads, and a Do-Not-Track
+   visitor never loads it at all. #}
+<script>
+  (function (c, l, a, r, i, t, y) {
+    if (navigator.doNotTrack === "1" || window.doNotTrack === "1") return;
+    c[a] = c[a] || function () { (c[a].q = c[a].q || []).push(arguments); };
+    t = l.createElement(r); t.async = 1; t.src = "https://www.clarity.ms/tag/" + i;
+    y = l.getElementsByTagName(r)[0]; y.parentNode.insertBefore(t, y);
+  })(window, document, "clarity", "script", {{ ANALYTICS.clarityId | tojson }});
+</script>
+{% endif %}
+<script src="{{ url_for('static', filename='js/analytics.js') }}" defer></script>
