@@ -1,17 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <line x1="10" y1="46" x2="54" y2="46" stroke="#0a58ca" stroke-width="2.5" stroke-linecap="round" opacity="0.35"/>
-  <line x1="10" y1="46" x2="30" y2="46" stroke="#0a58ca" stroke-width="2.5" stroke-linecap="round"/>
-
-  <circle cx="10" cy="46" r="5" fill="#0d1117" stroke="#0a58ca" stroke-width="2.5"/>
-  <path d="M7.5 46 L9.3 47.8 L12.7 44" stroke="#4ade80" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-
-  <circle cx="24" cy="46" r="5" fill="#0d1117" stroke="#0a58ca" stroke-width="2.5"/>
-  <path d="M21.5 46 L23.3 47.8 L26.7 44" stroke="#4ade80" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-
-  <circle cx="38" cy="46" r="5" fill="#0d1117" stroke="#0a58ca" stroke-width="2.5" opacity="0.55"/>
-  <circle cx="52" cy="46" r="5" fill="#0d1117" stroke="#0a58ca" stroke-width="2.5" opacity="0.4"/>
-
-  <rect x="27" y="20" width="10" height="10" rx="2" fill="#dc2626"/>
-  <path d="M32 30 L32 40" stroke="#1b1f22" stroke-width="2" stroke-dasharray="2.5 2.5" opacity="0.75"/>
-  <path d="M28 15 L32 11 L36 15" fill="none" stroke="#1b1f22" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.45"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="128" height="128">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1f2937"/><stop offset="1" stop-color="#0b0f14"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#tile)"/>
+  <path d="M10 39 H54" stroke="#334155" stroke-width="3" stroke-linecap="round"/>
+  <path d="M10 39 H32" stroke="#60a5fa" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="16" cy="39" r="6" fill="#0b0f14" stroke="#4ade80" stroke-width="2"/>
+  <path d="M13.2 39 l2 2 3.6-3.8" fill="none" stroke="#4ade80" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="32" cy="39" r="6" fill="#0b0f14" stroke="#4ade80" stroke-width="2"/>
+  <path d="M29.2 39 l2 2 3.6-3.8" fill="none" stroke="#4ade80" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="48" cy="39" r="6" fill="#0b0f14" stroke="#475569" stroke-width="2"/>
+  <rect x="27" y="20" width="10" height="10" rx="2.5" fill="#f87171"/>
+  <path d="M32 31 V33" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-dasharray="1.5 2"/>
 </svg>
