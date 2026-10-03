@@ -131,6 +131,78 @@ also lived in this repo -- see `legacy/README-colorlib-license.txt`). Design cre
 [HTML5 UP](https://html5up.net) (Dimension, CCA 3.0). Project icons are hand-drawn SVGs
 (`app/static/assets/img/icons/`), not stock art.
 
+## Analytics
+
+Visitor analytics is two tools with a deliberate split: **Microsoft Clarity** answers
+"what did this visitor actually do?" (heatmaps, session recordings, rage/dead clicks,
+scroll maps) and **PostHog** answers "how often does that happen?" (unique visitors,
+funnels, event counts). Both are optional; with no env vars set nothing is rendered or
+loaded and the site is unchanged.
+
+| Env var | Meaning |
+|---|---|
+| `CLARITY_PROJECT_ID` | Clarity project ID. Empty = Clarity not loaded. |
+| `POSTHOG_API_KEY` | PostHog *project* API key (`phc_...`, public by design). Empty = PostHog not loaded. |
+| `POSTHOG_HOST` | `https://us.i.posthog.com` (default) or `https://eu.i.posthog.com`. |
+
+**Where it lives**
+- Config: `app/config.py` (`CLARITY_PROJECT_ID`, `POSTHOG_*`), exposed to templates by
+  `app/services/site_analytics.py` (also derives the current project from
+  `PROJECTS` in `app/blueprints/projects/routes.py` and adds the vendor hosts to the CSP).
+- Initialisation: `app/templates/_analytics.html` (included from `base.html`'s `<head>`
+  when configured) renders Clarity's official snippet and loads `static/js/analytics.js`,
+  which initialises PostHog exactly once (guarded on `window.siteAnalytics`) with
+  `capture_pageview: false` (we send our own `page_viewed`, so nothing double counts),
+  `capture_pageleave: true`, click-only autocapture on links/buttons, PostHog session
+  replay off (Clarity owns recordings), and Do-Not-Track respected. The site is
+  multi-page (server-rendered), so `page_viewed` fires once per load; a `history`
+  hook covers any future client-side route change, de-duplicated by path.
+- Custom events: the `EVENTS` catalogue at the top of `static/js/analytics.js`.
+  Gated/private pages (`/family`, `/job-tracker`, `/documentation`, `/projects/trading-bot`)
+  don't extend `base.html`, so they never load analytics.
+- Assistant events: `static/js/assistant.js` (`startTurn` / `endTurn`).
+
+**Events:** `page_viewed` (path, page_title, referrer), `external_link_clicked`
+(destination, destination_type, link_text, source_page), `project_viewed`
+(project_name, project_slug), `resume_viewed` / `resume_downloaded` (source_page),
+`scroll_depth_reached` (depth 25/50/75/100, path), `assistant_opened`,
+`assistant_question_submitted` (question_category, question_length bucket, interface
+`typed|suggested_chip`, turn_number), `assistant_response_completed` (success, outcome,
+response_time_ms, question_category), `assistant_error` (error_type, component,
+recoverable). Plus PostHog's own `$pageleave` and click autocapture.
+
+**Add analytics to a new project:** add it to `PROJECTS` in
+`app/blueprints/projects/routes.py` (as you already do to list it). Any page in that
+project's blueprint then fires `project_viewed` with its `slug` and `title`
+automatically; there is nothing else to wire.
+
+**Add a new custom event:** add its name to `EVENTS` in `analytics.js`, then call
+`window.siteAnalytics.trackEvent(EVENTS.X, {...})` (or `trackAssistantEvent` for anything
+involving assistant input) from the page script. Always guard with
+`if (window.siteAnalytics)` -- it doesn't exist when analytics is unconfigured.
+
+**Intentionally excluded:** query strings and URL fragments (paths only); the text of
+assistant questions (reduced to one of `about_me|resume|projects|job_search|technical|contact|other`
+in the browser, text dropped there) and of replies; anything typed into any input
+(Clarity masks every `input/textarea/select`, PostHog autocapture ignores them);
+resumes and their contents; credentials and tokens; job-search/job-tracker activity
+(owner-only and on gated pages, so deliberately not instrumented). Events carry no
+person profile (`person_profiles: identified_only`) and nobody is ever `identify()`ed.
+
+**Dashboard steps (manual):** in Clarity, Settings > Masking, choose at least
+*Balanced* (or *Strict*); consider the EEA/UK consent requirement (below). In PostHog,
+add your own IP/device under Project settings > "Filter out internal and test users".
+
+**Not handled here:** Clarity requires a consent signal for visitors in the EEA, UK and
+Switzerland. This site has no consent banner, so Clarity may not record those visitors
+until one is added (`clarity("consent", ...)`). The legal page discloses both tools.
+
+**Verify:** open the site with ids set, DevTools > Network, filter `posthog` / `clarity`:
+`array.js` loads once, `/e/` (capture) requests fire per event, and PostHog > Activity
+(live events) shows `page_viewed` within seconds. Clarity's dashboard takes a few
+minutes to show the first session. `pytest tests/test_site_analytics.py` covers the
+server side.
+
 ## Known local-environment quirk (not a code bug)
 
 If you're testing on a Windows machine with Avast (or similar antivirus doing HTTPS

@@ -96,6 +96,7 @@
         }
       } catch (e) { /* sessionStorage blocked (private mode, etc.) -- gate still runs, just every load */ }
     </script>
+    {% if ANALYTICS %}{% include "_analytics.html" %}{% endif %}
     {% block extra_head %}{% endblock %}
 </head>
 <body class="is-preload">

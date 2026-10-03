@@ -74,7 +74,7 @@ def test_legal_page_covers_the_compliance_surface(client):
         assert f'id="{anchor}"' in html
     assert "not financial, legal, or professional advice" in html
     assert "at least" in html and "13 years old" in html
-    assert "No third-party analytics" in html
+    assert "Visitor analytics" in html  # the page must disclose Clarity + PostHog
 
 
 def test_footer_links_to_legal_on_every_page(client):

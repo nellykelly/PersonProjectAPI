@@ -31,6 +31,14 @@ def _origin_list(name: str, default: list[str]) -> list[str]:
     return [item.strip() for item in val.split(",") if item.strip()]
 
 
+def _analytics_host(name: str, default: str) -> str:
+    # POSTHOG_HOST ends up inside an inline <script> and a script-src URL,
+    # so anything that isn't a plain http(s) origin is discarded rather
+    # than passed through. A trailing slash is trimmed.
+    val = (os.environ.get(name) or "").strip().rstrip("/")
+    return val if val.startswith(("https://", "http://")) else default
+
+
 # Curated whitelist of liquid large-cap tickers/ETFs. Used by both the
 # trading simulator (position tickers) and the Company Scorer (scorable /
 # backtestable tickers) so that user input never reaches yfinance/SEC
@@ -96,6 +104,16 @@ class Config:
     )
 
     TICKER_WHITELIST = _list("TICKER_WHITELIST", DEFAULT_TICKER_WHITELIST)
+
+    # Visitor analytics (Microsoft Clarity + PostHog) -- see README,
+    # "Analytics". Each is independent and fully optional: an empty value
+    # means that tool's snippet is simply not rendered. Both IDs are
+    # public by design (they ship to every browser), but they still come
+    # from the environment rather than source control so a fork or a local
+    # run doesn't pollute the real project's data.
+    CLARITY_PROJECT_ID = (os.environ.get("CLARITY_PROJECT_ID") or "").strip()
+    POSTHOG_API_KEY = (os.environ.get("POSTHOG_API_KEY") or "").strip()
+    POSTHOG_HOST = _analytics_host("POSTHOG_HOST", "https://us.i.posthog.com")
 
     # Flask-SocketIO's own CORS setting (separate from the plain HTTP
     # routes, which send no CORS headers at all and so are already
@@ -656,6 +674,10 @@ class TestingConfig(Config):
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
     RATELIMIT_ENABLED = False
     WTF_CSRF_ENABLED = False
+    # Never inject real analytics into the suite, even with keys in .env --
+    # the analytics tests set their own.
+    CLARITY_PROJECT_ID = ""
+    POSTHOG_API_KEY = ""
 
     # The assistant never touches the network or downloads a model in the
     # suite: a canned generation backend and a deterministic, model-free

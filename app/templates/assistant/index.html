@@ -32,7 +32,7 @@
          data-stream-url="{{ url_for('assistant.chat_stream') }}">
 
         <div class="asst-scroll" id="asst-scroll">
-            <div class="asst-thread" id="asst-thread" aria-live="polite"></div>
+            <div class="asst-thread ph-no-capture" id="asst-thread" aria-live="polite" data-clarity-mask="True"></div>
 
             <div class="asst-empty" id="asst-empty">
                 <span class="asst-empty-avatar" aria-hidden="true">H</span>
@@ -51,7 +51,7 @@
         <form class="asst-composer" id="asst-form">
             <div class="asst-inputwrap">
                 <label class="asst-sr" for="asst-input">Message Hera</label>
-                <textarea id="asst-input" rows="1" placeholder="Message Hera..."
+                <textarea id="asst-input" rows="1" class="ph-no-capture" data-clarity-mask="True" placeholder="Message Hera..."
                           maxlength="{{ config['ASSISTANT_MAX_INPUT_CHARS'] }}"
                           autocomplete="off" spellcheck="false"></textarea>
                 <button type="submit" class="asst-send" id="asst-send" aria-label="Send message">
