@@ -43,7 +43,10 @@
     (heatmaps and anonymised session recordings) to understand how the site is used.
     Text you type into form fields and the assistant is masked in recordings, and the
     assistant's analytics record only a coarse topic category for a question, never its
-    text. Both tools are skipped if your browser sends Do Not Track. No advertising,
+    text. Neither tool loads, and nothing is recorded, until you click Accept on the
+    banner; Decline keeps both off. You can change your choice any time with "Cookie
+    settings" in the footer. Both tools are also skipped if your browser sends Do Not
+    Track. No advertising,
     no ad pixels, and data is not sold. Everything else (accounts, submissions, logs) lives
     on a single European VPS; analytics data is held by PostHog and Microsoft. To request
     deletion of an account or a submission, email the address below.
@@ -52,9 +55,11 @@
   <h2 id="cookies">Cookies</h2>
   <p>
     Strictly necessary cookies (session, rate-limit scope, optional "remember me") are
-    always set. When analytics is enabled, PostHog and Microsoft Clarity also set their
+    always set. If you accept analytics, PostHog and Microsoft Clarity also set their
     own first-party analytics cookies/local storage to recognise a returning browser.
-    Block them in your browser, or send Do Not Track, and the site works the same.
+    Your choice is saved in your browser's local storage (a key named
+    <code>siteAnalyticsConsent</code>). Decline, or leave the banner closed without
+    choosing, and the site works the same with nothing from either tool loaded.
   </p>
 
   <h2 id="assistant">AI assistant disclaimer</h2>

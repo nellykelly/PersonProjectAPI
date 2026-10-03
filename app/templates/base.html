@@ -187,6 +187,7 @@
             <a href="{{ LINKEDIN_URL }}" target="_blank" rel="noopener">LinkedIn</a>
             <a href="mailto:{{ EMAIL }}">{{ EMAIL }}</a>
             <a href="{{ url_for('legal.index') }}">Legal &amp; privacy</a>
+            {% if ANALYTICS %}<button type="button" class="cookie-settings-link" data-cookie-settings>Cookie settings</button>{% endif %}
         </div>
         <div class="footer-credit">
             &copy; {{ CURRENT_YEAR }} Nelson Koskela &middot; Built with Flask &middot;

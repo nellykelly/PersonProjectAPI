@@ -10,6 +10,11 @@
 // (see `track` in assistant.js). Every public function here swallows its own
 // errors: analytics must never break the site.
 //
+// CONSENT: nothing loads and nothing is recorded until the visitor clicks
+// Accept in the banner built below. Decline (or Do-Not-Track) loads nothing.
+// Storage blocked = no choice can be saved, so the banner returns each load
+// and tracking stays off. The footer's "Cookie settings" button reopens it.
+//
 // The site is server-rendered (one full page load per navigation), so
 // "page_viewed" fires once per load. The history hook below also covers any
 // future client-side route change, de-duplicated by path.
@@ -42,6 +47,27 @@
   };
 
   var DNT = navigator.doNotTrack === "1" || window.doNotTrack === "1";
+
+  // ---------- consent state ----------
+  // "granted" | "denied" | null (no choice yet). Stored in localStorage.
+  var CONSENT_KEY = "siteAnalyticsConsent";
+  var started = false; // true once the visitor has accepted this load
+
+  function readConsent() {
+    try {
+      return window.localStorage.getItem(CONSENT_KEY);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function writeConsent(value) {
+    try {
+      window.localStorage.setItem(CONSENT_KEY, value);
+    } catch (e) {
+      /* blocked: the banner comes back next load */
+    }
+  }
 
   // ---------- helpers ----------
 
@@ -159,10 +185,40 @@
     document.head.appendChild(s);
   });
 
+  // ---------- Clarity ----------
+  // Microsoft's official install snippet, run only after consent. It queues
+  // clarity() calls until the tag loads. The "consent" call is the signal
+  // Clarity needs before it records visitors in the EEA, UK and Switzerland.
+  var loadClarity = safely(function () {
+    if (!cfg.clarityId || DNT) return;
+    window.clarity = window.clarity || function () {
+      (window.clarity.q = window.clarity.q || []).push(arguments);
+    };
+    var t = document.createElement("script");
+    t.async = true;
+    t.src = "https://www.clarity.ms/tag/" + cfg.clarityId;
+    document.head.appendChild(t);
+    window.clarity("consent");
+  });
+
+  // Starts both tools. Runs once, and only after the visitor accepts (or on
+  // a load where they already accepted).
+  var startTracking = safely(function () {
+    if (started || DNT) return;
+    started = true;
+    initPostHog();
+    loadClarity();
+    trackPageView();
+    if (cfg.project) trackProjectView(cfg.project.slug, cfg.project.name);
+    if (document.getElementById("asst-window")) {
+      trackAssistantEvent(EVENTS.ASSISTANT_OPENED, { interface: "page" });
+    }
+  });
+
   // ---------- public API ----------
 
   var trackEvent = safely(function (name, props, opts) {
-    if (!cfg.posthogKey || DNT || phFailed) return;
+    if (!started || !cfg.posthogKey || DNT || phFailed) return;
     var payload = props || {};
     if (phReady) window.posthog.capture(name, payload, opts);
     else if (queue.length < 50) queue.push({ name: name, props: payload, opts: opts });
@@ -299,13 +355,15 @@
   // Client-side route changes (none today -- the site is multi-page -- but
   // this keeps page_viewed correct if one is ever added). De-duplicated by
   // path so replaceState calls / hash changes don't double count.
+  // Before consent it only updates lastPath; startTracking() sends the page
+  // view for the path the visitor is on when they accept.
   var lastPath = null;
   function maybePageView() {
     if (location.pathname === lastPath) return;
     lastPath = location.pathname;
     scrollSeen = {};
     // Wait a tick so a client router has updated document.title.
-    setTimeout(trackPageView, 0);
+    if (started) setTimeout(trackPageView, 0);
   }
 
   function hookHistory() {
@@ -336,6 +394,68 @@
     for (var i = 0; i < all.length; i++) maskField(all[i]);
   }
 
+  // ---------- consent banner ----------
+  // Built here, not in the template, so the markup and its behaviour live in
+  // one file. Accept and Decline carry equal weight on purpose: refusing
+  // should be as easy as agreeing.
+
+  var bannerEl = null;
+
+  function hideBanner() {
+    if (bannerEl && bannerEl.parentNode) bannerEl.parentNode.removeChild(bannerEl);
+    bannerEl = null;
+  }
+
+  function makeButton(label, className, onPress) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = className;
+    b.textContent = label;
+    b.addEventListener("click", safely(onPress));
+    return b;
+  }
+
+  function choose(value) {
+    writeConsent(value);
+    hideBanner();
+    if (value === "granted") {
+      startTracking();
+    } else if (started) {
+      // Already-loaded tags can only be stopped by a reload.
+      window.location.reload();
+    }
+  }
+
+  var showBanner = safely(function () {
+    if (bannerEl || DNT) return;
+    var box = document.createElement("div");
+    box.className = "consent-banner";
+    box.setAttribute("role", "dialog");
+    box.setAttribute("aria-label", "Analytics choice");
+
+    var text = document.createElement("p");
+    text.appendChild(document.createTextNode(
+      "This site uses PostHog and Microsoft Clarity to see how it is used: anonymous " +
+      "page views and clicks, and session recordings with typed text masked. Nothing " +
+      "loads until you choose. "
+    ));
+    var legal = document.createElement("a");
+    legal.href = cfg.legalPath || "/legal";
+    legal.textContent = "Privacy and cookies";
+    text.appendChild(legal);
+    text.appendChild(document.createTextNode("."));
+
+    var actions = document.createElement("div");
+    actions.className = "consent-actions";
+    actions.appendChild(makeButton("Decline", "consent-button", function () { choose("denied"); }));
+    actions.appendChild(makeButton("Accept", "consent-button consent-accept", function () { choose("granted"); }));
+
+    box.appendChild(text);
+    box.appendChild(actions);
+    document.body.appendChild(box);
+    bannerEl = box;
+  });
+
   // ---------- go ----------
 
   window.siteAnalytics = {
@@ -346,21 +466,24 @@
     trackExternalLink: trackExternalLink,
     trackAssistantEvent: trackAssistantEvent,
     categorizeQuestion: categorizeQuestion, // exposed for tests
+    openConsent: showBanner,
   };
 
   safely(function () {
-    initPostHog();
     hookHistory();
     maskInputs();
     document.addEventListener("focusin", function (e) { safely(maskField)(e.target); }, true);
     document.addEventListener("click", onLinkClick, true);
     document.addEventListener("auxclick", onLinkClick, true);
+    document.addEventListener("click", safely(function (e) {
+      if (e.target.closest && e.target.closest("[data-cookie-settings]")) showBanner();
+    }), true);
     window.addEventListener("scroll", onScroll, { passive: true });
 
-    maybePageView(); // initial load (also arms the de-dupe)
-    if (cfg.project) trackProjectView(cfg.project.slug, cfg.project.name);
-    if (document.getElementById("asst-window")) {
-      trackAssistantEvent(EVENTS.ASSISTANT_OPENED, { interface: "page" });
-    }
+    maybePageView(); // arms the de-dupe; sends only once consent is given
+    var choice = readConsent();
+    if (choice === "granted") startTracking();
+    else if (choice === null) showBanner();
+    // "denied": nothing loads, nothing is shown.
   })();
 })();

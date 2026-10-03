@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 
-from flask import Flask, request
+from flask import Flask, request, url_for
 
 # Clarity project IDs are short alphanumeric strings (e.g. "k3x9abc12d");
 # PostHog project keys look like "phc_...". Anything else is dropped rather
@@ -63,6 +63,7 @@ def build_analytics_context(app: Flask) -> dict:
         "posthogHost": host,
         "posthogAssetsHost": _posthog_assets_host(host),
         "project": _current_project(),
+        "legalPath": url_for("legal.index"),
     }
     return {"ANALYTICS": config}
 

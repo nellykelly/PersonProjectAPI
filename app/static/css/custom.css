@@ -416,6 +416,66 @@ html.js-reveal .reveal-up.is-visible {
   font-size: 0.8rem;
 }
 
+/* "Cookie settings" in the footer: a button styled to sit with the links. */
+.site-footer .cookie-settings-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* Analytics consent banner (analytics.js). Shown until a choice is made. */
+.consent-banner {
+  position: fixed;
+  left: 1rem;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 10000;
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 1rem 1.25rem;
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--surface-border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.consent-banner p {
+  margin: 0 0 0.75rem;
+}
+
+.consent-banner a {
+  color: var(--accent);
+}
+
+.consent-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+.consent-banner .consent-button {
+  padding: 0.45rem 1rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.consent-banner .consent-accept {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0f1012;
+}
+
 .site-footer .footer-credit {
   text-align: center;
   font-size: 0.7rem;

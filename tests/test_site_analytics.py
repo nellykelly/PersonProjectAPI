@@ -30,24 +30,40 @@ def test_nothing_rendered_when_unconfigured(client):
     assert "clarity" not in csp and "posthog" not in csp
 
 
-def test_both_tools_rendered_when_configured(configured, client):
+def test_both_tools_configured_and_loaded_by_the_consent_script(configured, client):
     html = client.get("/").get_data(as_text=True)
-    assert "https://www.clarity.ms/tag/" in html
     assert CLARITY_ID in html and PH_KEY in html
-    assert "https://eu.i.posthog.com" in html
-    assert "https://eu-assets.i.posthog.com" in html
+    assert '"posthogHost": "https://eu.i.posthog.com"' in html
+    assert '"posthogAssetsHost": "https://eu-assets.i.posthog.com"' in html
     assert html.count("js/analytics.js") == 1  # loaded once -> initialised once
     csp = client.get("/").headers["Content-Security-Policy-Report-Only"]
     assert "https://www.clarity.ms" in csp and "https://eu-assets.i.posthog.com" in csp
 
 
+def test_no_vendor_script_is_loaded_before_consent(configured, client):
+    # Clarity's tag URL lives in analytics.js now, behind the banner. If it
+    # ever reappears inline, Clarity records visitors who never accepted.
+    html = client.get("/").get_data(as_text=True)
+    assert "clarity.ms/tag" not in html
+    assert "array.js" not in html
+    js = client.get("/static/js/analytics.js").get_data(as_text=True)
+    assert "https://www.clarity.ms/tag/" in js
+    assert "siteAnalyticsConsent" in js
+
+
 def test_each_tool_is_independent(app, client):
     app.config.update(CLARITY_PROJECT_ID=CLARITY_ID, POSTHOG_API_KEY="")
     html = client.get("/").get_data(as_text=True)
-    assert "clarity.ms/tag" in html and '"posthogKey": null' in html
+    assert f'"clarityId": "{CLARITY_ID}"' in html and '"posthogKey": null' in html
     app.config.update(CLARITY_PROJECT_ID="", POSTHOG_API_KEY=PH_KEY)
     html = client.get("/").get_data(as_text=True)
-    assert "clarity.ms/tag" not in html and PH_KEY in html
+    assert '"clarityId": null' in html and PH_KEY in html
+
+
+def test_cookie_settings_button_only_when_analytics_is_on(app, client):
+    assert "data-cookie-settings" not in client.get("/").get_data(as_text=True)
+    app.config.update(CLARITY_PROJECT_ID=CLARITY_ID)
+    assert "data-cookie-settings" in client.get("/").get_data(as_text=True)
 
 
 @pytest.mark.parametrize("bad", ['x"});alert(1);//', "has space", "<script>", "ab"])

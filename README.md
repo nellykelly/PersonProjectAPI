@@ -150,8 +150,10 @@ loaded and the site is unchanged.
   `app/services/site_analytics.py` (also derives the current project from
   `PROJECTS` in `app/blueprints/projects/routes.py` and adds the vendor hosts to the CSP).
 - Initialisation: `app/templates/_analytics.html` (included from `base.html`'s `<head>`
-  when configured) renders Clarity's official snippet and loads `static/js/analytics.js`,
-  which initialises PostHog exactly once (guarded on `window.siteAnalytics`) with
+  when configured) only passes the public config and loads `static/js/analytics.js`.
+  That file shows the consent banner and, once the visitor accepts, loads Clarity's
+  official snippet (`loadClarity`, then `clarity("consent")`) and initialises PostHog
+  exactly once (guarded on `window.siteAnalytics`) with
   `capture_pageview: false` (we send our own `page_viewed`, so nothing double counts),
   `capture_pageleave: true`, click-only autocapture on links/buttons, PostHog session
   replay off (Clarity owns recordings), and Do-Not-Track respected. The site is
@@ -193,9 +195,15 @@ person profile (`person_profiles: identified_only`) and nobody is ever `identify
 *Balanced* (or *Strict*); consider the EEA/UK consent requirement (below). In PostHog,
 add your own IP/device under Project settings > "Filter out internal and test users".
 
-**Not handled here:** Clarity requires a consent signal for visitors in the EEA, UK and
-Switzerland. This site has no consent banner, so Clarity may not record those visitors
-until one is added (`clarity("consent", ...)`). The legal page discloses both tools.
+**Consent:** every visitor sees a banner (Accept / Decline, equal weight) and nothing
+from either tool loads or records until Accept. The choice is stored in localStorage
+under `siteAnalyticsConsent` (`granted` / `denied`). Declining, or blocked storage, means
+no tracking. The footer's "Cookie settings" button (`data-cookie-settings`) reopens the
+banner, and declining after accepting reloads the page to stop the tools. The banner is
+shown to everyone, not only EEA/UK/Swiss visitors, because the site can't reliably tell
+which visitors are in those regions. Clarity's `clarity("consent")` is called after
+accept for its EEA/UK/CH requirement. To test: clear `siteAnalyticsConsent`, reload,
+and check the banner, then Network for `clarity.ms` and `posthog` requests only after Accept.
 
 **Verify:** open the site with ids set, DevTools > Network, filter `posthog` / `clarity`:
 `array.js` loads once, `/e/` (capture) requests fire per event, and PostHog > Activity
