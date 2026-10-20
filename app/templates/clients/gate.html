@@ -6,16 +6,16 @@
     <div class="eyebrow">Client access</div>
     <h1>{{ client }}</h1>
     {% if unavailable %}
-      <p>This page isn't available right now. Please check back soon.</p>
+      <p>This site isn't available right now. Please check back soon.</p>
     {% else %}
-      <p>This page is private. Enter the password you were given to continue.</p>
-      <form method="post" action="{{ url_for('clients.page', slug=slug) }}">
+      <p>This site is private. Enter the password you were given to continue.</p>
+      <form method="post" action="{{ url_for('clients.site', slug=slug, path='') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label for="client-pw">Password</label>
         <input id="client-pw" type="password" name="password"
                autocomplete="current-password" autofocus required>
         {% if error %}<p class="err" role="alert">{{ error }}</p>{% endif %}
-        <button type="submit">View page</button>
+        <button type="submit">View site</button>
       </form>
     {% endif %}
     <small>Prepared by Nelson Koskela</small>
