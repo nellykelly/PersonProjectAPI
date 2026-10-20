@@ -352,6 +352,15 @@ class Config:
     # in docker-compose's .env.
     FAMILY_PASSWORD_HASH = os.environ.get("FAMILY_PASSWORD_HASH")
     FAMILY_UNLOCK_RATE_LIMIT = os.environ.get("FAMILY_UNLOCK_RATE_LIMIT", "10 per hour")
+
+    # /clients/<slug> -- private client handover pages (app/blueprints/
+    # clients). Same fail-closed model as the gates above: one Werkzeug hash
+    # per client in the environment, never a checked-in value; unset means
+    # that client's page returns 503. `$$`-escape the `$` in compose's .env.
+    CLIENT_ESPRESSOCARIBBEAN_PASSWORD_HASH = os.environ.get(
+        "CLIENT_ESPRESSOCARIBBEAN_PASSWORD_HASH"
+    )
+    CLIENTS_UNLOCK_RATE_LIMIT = os.environ.get("CLIENTS_UNLOCK_RATE_LIMIT", "10 per hour")
     # The Hera chatbot at /family/chat -- its own Groq key, separate from
     # the portfolio assistant's. Unset -> the chat panel is offline (503),
     # the rest of /family still works. FAMILY_GROQ_MODEL must support tool

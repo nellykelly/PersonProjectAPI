@@ -166,6 +166,7 @@ def robots():
         "Disallow: /job-tracker\n"
         "Disallow: /api/job-tracker\n"
         "Disallow: /family\n"
+        "Disallow: /clients\n"
         "Disallow: /projects/trading-bot\n"
         "Disallow: /auth/\n"
         f"\nSitemap: {sitemap_url}\n"

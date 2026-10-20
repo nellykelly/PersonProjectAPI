@@ -238,6 +238,7 @@ def _register_blueprints(app: Flask) -> None:
     from app.blueprints.assistant import bp as assistant_bp
     from app.blueprints.legal import bp as legal_bp
     from app.blueprints.family import bp as family_bp
+    from app.blueprints.clients import bp as clients_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(about_bp, url_prefix="/about")
@@ -285,6 +286,10 @@ def _register_blueprints(app: Flask) -> None:
     # chat). Password-gated (FAMILY_PASSWORD_HASH), fails closed, noindex,
     # never linked. Its own standalone solarpunk theme. NOT csrf-exempt.
     app.register_blueprint(family_bp, url_prefix="/family")
+    # /clients/<slug> -- private handover pages for freelance clients.
+    # One password hash per client, fails closed, noindex, never linked.
+    # Standalone templates. NOT csrf-exempt.
+    app.register_blueprint(clients_bp, url_prefix="/clients")
 
     # CSRF is on app-wide (see extensions.csrf), but these blueprints
     # predate accounts and post without a token -- from public,
