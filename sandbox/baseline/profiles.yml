@@ -1,0 +1,15 @@
+# Local stand-in for the team's Snowflake profile. No hard-coded paths:
+# the runner sets ATLAS_WAREHOUSE (your sandbox) and ATLAS_CHECK_WAREHOUSE (the grader's copy).
+atlas:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('ATLAS_WAREHOUSE') }}"
+      schema: main
+      threads: 1
+    check:
+      type: duckdb
+      path: "{{ env_var('ATLAS_CHECK_WAREHOUSE', 'unused.duckdb') }}"
+      schema: main
+      threads: 1

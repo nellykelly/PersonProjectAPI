@@ -1,0 +1,25 @@
+# The profile dbt actually uses in the sandbox. It lives outside the editable repo so a
+# visitor can't change it. The sandbox_lockdown plugin (tools/sandbox_lockdown.py) turns
+# off DuckDB file/network access on every connection, except the visitor's own seeds/
+# folder, which `dbt seed` reads with read_csv.
+atlas:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('ATLAS_WAREHOUSE') }}"
+      schema: main
+      threads: 1
+      module_paths: ["{{ env_var('ATLAS_TOOLS_DIR') }}"]
+      plugins:
+        - module: sandbox_lockdown
+          config: {seeds_dir: "{{ env_var('ATLAS_SEEDS_DIR') }}"}
+    check:
+      type: duckdb
+      path: "{{ env_var('ATLAS_CHECK_WAREHOUSE', 'unused.duckdb') }}"
+      schema: main
+      threads: 1
+      module_paths: ["{{ env_var('ATLAS_TOOLS_DIR') }}"]
+      plugins:
+        - module: sandbox_lockdown
+          config: {seeds_dir: "{{ env_var('ATLAS_SEEDS_DIR') }}"}

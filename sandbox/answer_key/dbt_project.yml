@@ -1,0 +1,43 @@
+name: atlas_conversion
+version: "1.0.0"
+config-version: 2
+profile: atlas
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+# Runtime filters for the EXPORT_VIEWS layer. The DAG overrides these with --vars.
+vars:
+  record_state: null        # e.g. "KY" or ["KY", "TN"]
+  changed_since: null    # delta sync: only records updated at/after this timestamp
+  policy_numbers: []     # targeted testing (ATL-101): e.g. ["PN1001", "IW2002"] or "PN1001,IW2002"
+
+seeds:
+  atlas_conversion:
+    +schema: reference
+
+models:
+  atlas_conversion:
+    staging:
+      +schema: staging
+      +materialized: table
+      +tags: ["export"]
+    intermediate:
+      +schema: intermediate
+      +materialized: table
+      +tags: ["export"]
+    pre_export:
+      +schema: pre_export
+      +materialized: table
+      +tags: ["export"]
+    export:
+      +schema: export
+      +tags: ["export"]
+    export_views:
+      +schema: export_views
+      +materialized: view
+      +tags: ["views"]

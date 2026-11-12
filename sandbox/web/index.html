@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ATL-101 Practice Sandbox</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div id="shell">
+  <nav id="dock">
+    <div class="dock-title" title="Practice sandbox: all data is fictional">ATL-101<small>sandbox</small></div>
+    <button data-app="jira" title="Jira"><svg viewBox="0 0 24 24"><path d="M12 2 3 11l9 9 9-9-9-9Zm0 5 4 4-4 4-4-4 4-4Z"/></svg><span>Jira</span></button>
+    <button data-app="snowflake" title="Snowflake"><svg viewBox="0 0 24 24"><path d="M11 2h2v5.3l3.2-2 1 1.7L13 9.6v2.6l2.3-1.3 4.4-2.5 1 1.7-3.6 2.1L21 14l-1 1.7-4.4-2.5L13 14.5v2.6l4.2 2.6-1 1.7-3.2-2V22h-2v-2.6l-3.2 2-1-1.7 4.2-2.6v-2.6l-2.3 1.3-4.4 2.5-1-1.7 3.6-2.1L3 10l1-1.7 4.4 2.5 2.6 1.4V9.6L6.8 7l1-1.7 3.2 2Z"/></svg><span>Snowflake</span></button>
+    <button data-app="dbt" title="dbt Cloud IDE"><svg viewBox="0 0 24 24"><path d="M4 4h6l2 4 2-4h6l-5 8 5 8h-6l-2-4-2 4H4l5-8-5-8Z"/></svg><span>dbt</span></button>
+    <button data-app="airflow" title="Airflow"><svg viewBox="0 0 24 24"><path d="M12 12 4 3c4 0 7 3 8 9Zm0 0 9-8c0 4-3 7-9 8Zm0 0 8 9c-4 0-7-3-8-9Zm0 0-9 8c0-4 3-7 9-8Z"/></svg><span>Airflow</span></button>
+    <button data-app="s3" title="Amazon S3"><svg viewBox="0 0 24 24"><path d="M12 3c5 0 8 1.3 8 3v12c0 1.7-3 3-8 3s-8-1.3-8-3V6c0-1.7 3-3 8-3Zm0 2c-3.9 0-6 1-6 1s2.1 1 6 1 6-1 6-1-2.1-1-6-1Z"/></svg><span>S3</span></button>
+    <button data-app="github" title="GitHub"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.5 2.3 1.1 2.9.8.1-.6.3-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.7 1a9.4 9.4 0 0 1 5 0c1.9-1.3 2.7-1 2.7-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.4 4.7-4.6 5 .4.3.7.9.7 1.8V21c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"/></svg><span>GitHub</span></button>
+    <div class="dock-spacer"></div>
+    <button id="coach-toggle" class="coach-btn" title="Practice coach"><svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2Zm-3 17h6v1a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2v-1Z"/></svg><span>Coach</span></button>
+    <button id="reset-btn" class="reset-btn" title="Reset sandbox (lose all changes)"><svg viewBox="0 0 24 24"><path d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7Z"/></svg><span>Reset</span></button>
+  </nav>
+  <main id="apps">
+    <section id="app-jira" class="app"></section>
+    <section id="app-snowflake" class="app"></section>
+    <section id="app-dbt" class="app"></section>
+    <section id="app-airflow" class="app"></section>
+    <section id="app-s3" class="app"></section>
+    <section id="app-github" class="app"></section>
+  </main>
+  <aside id="coach" class="hidden"></aside>
+</div>
+<div id="small-screen" role="note">This sandbox is built for a laptop screen. It works on a phone, but the editors are cramped. <button type="button">Got it</button></div>
+<div id="toast"></div>
+<div id="modal-root"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/sql/sql.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/yaml/yaml.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/mode/overlay.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/comment/comment.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/selection/active-line.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/sql-hint.min.js"></script>
+<script src="common.js"></script>
+<script src="jira.js"></script>
+<script src="snowflake.js"></script>
+<script src="dbt.js"></script>
+<script src="airflow.js"></script>
+<script src="s3.js"></script>
+<script src="github.js"></script>
+<script src="coach.js"></script>
+<script src="main.js"></script>
+</body>
+</html>

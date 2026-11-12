@@ -1,0 +1,7 @@
+data
+repo
+warehouse
+s3
+**/__pycache__
+Dockerfile
+.venv

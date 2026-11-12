@@ -17,13 +17,44 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-pipelineworld}:${POSTGRES_PASSWORD:-pipelineworld}@postgres:5432/${POSTGRES_DB:-pipelineworld}
       REDIS_URL: redis://redis:6379/0
       RATELIMIT_STORAGE_URI: redis://redis:6379/1
+      # Overrides any local-dev value in .env: inside compose the sandbox
+      # is reached by service name on the internal network.
+      PRACTICE_SANDBOX_URL: http://sandbox:8765
     volumes:
       - ./instance:/app/instance
+    networks:
+      - default
+      - sandbox_net
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: unless-stopped
+
+  # ATL-101 dbt + SQL practice sandbox (sandbox/, served at /practice by the
+  # web app after its password gate). Runs visitor-edited dbt projects, so
+  # it is boxed in: no published port, no env_file (no secrets to read), and
+  # only on `sandbox_net`, which is `internal` -- no route to the internet
+  # and nothing else on it but `web`. Each visitor's sandbox lives on the
+  # sandbox_data volume so work survives redeploys.
+  sandbox:
+    build: ./sandbox
+    image: personal-site-sandbox:latest
+    networks:
+      - sandbox_net
+    volumes:
+      - sandbox_data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1536m
+    cpus: 1.0
+    pids_limit: 256
     restart: unless-stopped
 
   worker:
@@ -98,7 +129,13 @@ services:
       - web
     restart: unless-stopped
 
+networks:
+  default:
+  sandbox_net:
+    internal: true
+
 volumes:
+  sandbox_data:
   postgres_data:
   caddy_data:
   caddy_config:

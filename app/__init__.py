@@ -238,6 +238,7 @@ def _register_blueprints(app: Flask) -> None:
     from app.blueprints.assistant import bp as assistant_bp
     from app.blueprints.legal import bp as legal_bp
     from app.blueprints.family import bp as family_bp
+    from app.blueprints.practice import bp as practice_bp
     from app.blueprints.clients import bp as clients_bp
 
     app.register_blueprint(main_bp)
@@ -290,6 +291,11 @@ def _register_blueprints(app: Flask) -> None:
     # One password hash per client, fails closed, noindex, never linked.
     # Standalone templates. NOT csrf-exempt.
     app.register_blueprint(clients_bp, url_prefix="/clients")
+    # /practice -- the ATL-101 dbt/SQL practice sandbox. Password-gated
+    # (PRACTICE_PASSWORD_HASH), fails closed, noindex, never linked. After
+    # unlock it proxies to the internal `sandbox` service. Only the proxy
+    # view is csrf-exempt (it requires an X-Sandbox header on POSTs instead).
+    app.register_blueprint(practice_bp, url_prefix="/practice")
 
     # CSRF is on app-wide (see extensions.csrf), but these blueprints
     # predate accounts and post without a token -- from public,

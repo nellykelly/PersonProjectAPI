@@ -1,0 +1,19 @@
+version: 2
+
+sources:
+  - name: raw
+    description: Raw legacy data landed in Snowflake as-is.
+    schema: raw
+    tables:
+      - name: pn_policy
+        description: Pinnacle Pinnacle auto policy terms. One row per policy term.
+      - name: pn_vehicle
+        description: Pinnacle auto vehicles, keyed by policy number.
+      - name: pn_household
+        description: Pinnacle households (accounts).
+      - name: iw_policy
+        description: Ironway legacy policy terms. Dates are YYYYMMDD text.
+      - name: iw_vehicle
+        description: Ironway legacy vehicle units.
+      - name: iw_account
+        description: Ironway legacy accounts.

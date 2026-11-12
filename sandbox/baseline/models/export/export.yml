@@ -1,0 +1,28 @@
+version: 2
+
+models:
+  - name: export_account
+    description: Migration-ready target account records (all sources, all domains).
+    columns:
+      - name: record_id
+        data_tests: [unique, not_null]
+      - name: payload_id
+        data_tests: [unique, not_null]
+
+  - name: export_policyperiod
+    description: Migration-ready target policy periods (one row per policy term).
+    columns:
+      - name: record_id
+        data_tests: [unique, not_null]
+      - name: payload_id
+        data_tests: [unique, not_null]
+      - name: policy_number
+        data_tests: [not_null]
+
+  - name: export_vehicle
+    description: Migration-ready target vehicles. Linked to the policy term by payload_id.
+    columns:
+      - name: record_id
+        data_tests: [unique, not_null]
+      - name: payload_id
+        data_tests: [not_null]

@@ -361,6 +361,18 @@ class Config:
         "CLIENT_ESPRESSOCARIBBEAN_PASSWORD_HASH"
     )
     CLIENTS_UNLOCK_RATE_LIMIT = os.environ.get("CLIENTS_UNLOCK_RATE_LIMIT", "10 per hour")
+
+    # /practice -- the ATL-101 dbt + SQL practice sandbox (app/blueprints/
+    # practice). Same fail-closed gate: a Werkzeug hash in the environment,
+    # unset means 503. `$$`-escape the `$` in compose's .env. Once unlocked,
+    # requests are proxied to the `sandbox` compose service (sandbox/), which
+    # is on an internal-only network and never published.
+    PRACTICE_PASSWORD_HASH = os.environ.get("PRACTICE_PASSWORD_HASH")
+    PRACTICE_UNLOCK_RATE_LIMIT = os.environ.get("PRACTICE_UNLOCK_RATE_LIMIT", "10 per hour")
+    PRACTICE_SANDBOX_URL = os.environ.get("PRACTICE_SANDBOX_URL", "http://sandbox:8765")
+    PRACTICE_PROXY_RATE_LIMIT = os.environ.get("PRACTICE_PROXY_RATE_LIMIT", "300 per minute")
+    # dbt build / the grader can take ~1 min; the read timeout covers the slowest call.
+    PRACTICE_PROXY_TIMEOUT = int(os.environ.get("PRACTICE_PROXY_TIMEOUT", "600"))
     # The Hera chatbot at /family/chat -- its own Groq key, separate from
     # the portfolio assistant's. Unset -> the chat panel is offline (503),
     # the rest of /family still works. FAMILY_GROQ_MODEL must support tool
